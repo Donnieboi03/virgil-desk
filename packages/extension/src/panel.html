@@ -9,6 +9,18 @@
       <h1>Virgil Desk</h1>
       <button id="handoff">Hand off this tab</button>
     </header>
+    <div id="status-strip" class="status-strip">
+      <span id="host-status">Host …</span>
+      <span id="ws-status">WS …</span>
+      <span id="backend-status"></span>
+    </div>
+    <div id="decomposition" class="decomposition hidden"></div>
+    <div id="last-handoff" class="last-handoff hidden">
+      <span>Run</span>
+      <code id="run-id"></code>
+      <button id="copy-run-id" type="button">Copy</button>
+    </div>
+    <div id="handoff-error" class="error hidden"></div>
     <div class="columns">
       <section><h2>You</h2><ul id="col-you"></ul></section>
       <section><h2>Agent</h2><ul id="col-agent"></ul></section>

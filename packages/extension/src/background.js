@@ -45,6 +45,7 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
       .catch((err) => sendResponse({ ok: false, error: String(err), wsConnected }));
     return true;
   }
+  if (msg.type === "getBoard") {
     loadBoard().then((board) => sendResponse({ board }));
     return true;
   }
