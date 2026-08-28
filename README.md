@@ -1,6 +1,6 @@
 # Virgil Desk
 
-**Virgil Desk** is a Chrome extension + local Host that allocates work between **you** and **agents** in the browser you already use. Sibling to [Virgil Hub](https://github.com/Donnieboi03/Virgil) (Notion + tick); standalone at runtime.
+**Virgil Desk** is a Chrome extension + local Host that allocates work between **you** and **agents** in the browser you already use.
 
 ## Problem
 
@@ -31,6 +31,7 @@ Set agent backend: `DESK_AGENT_BACKEND=mock|hermes|openclaw`
 
 ## Docs
 
+- [docs/PRODUCT.md](docs/PRODUCT.md) — product scope and boundaries
 - [docs/OPERATOR.md](docs/OPERATOR.md) — first dogfood + Hermes wiring
 - [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)
 - [docs/PROTOCOL.md](docs/PROTOCOL.md)

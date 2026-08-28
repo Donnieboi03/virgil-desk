@@ -31,7 +31,7 @@ Run once with a real tab ([`packages/e2e/README.md`](../packages/e2e/README.md))
 2. Different URL → `openTab` in **Virgil · Agent** group
 3. Same page work → `duplicateTab`; human tab untouched
 4. Post-click `command_result` includes scrape + screenshot
-5. **Accept** on a Waiting calendar proposal (no Notion)
+5. **Accept** on a Waiting calendar proposal
 6. Reload Chrome — board persists (`storage.local`)
 
 ## 3. Wire Hermes (real agent)
@@ -44,4 +44,4 @@ DESK_AGENT_BACKEND=hermes desk-host
 - Load **`desk-browser-bridge`** skill
 - Agent calls Host **`POST /v1/browser`** with `"wait": true`
 
-Hermes `decompose` is still structured/stub — live “think and act” on handoff is the next code slice if dogfood feels too thin.
+Hermes live decompose is enabled when `DESK_AGENT_BACKEND=hermes` (see [`HERMES_SETUP.md`](HERMES_SETUP.md)).

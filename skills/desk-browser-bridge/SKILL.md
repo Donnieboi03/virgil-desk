@@ -53,9 +53,9 @@ Do not mark WorkItem done without post-action screenshot + scrape in evidence.
 
 - Calendar / drafts → **Accept** or **Deny** via Host; no auto-commit.
 
-## Harness parity
+## Evidence
 
-Hub TO sees mailbox PNG; Desk agent sees `command_result.screenshot` (~4k tokens — cheap vs full workflow).
+Desk agents receive `command_result.screenshot` (PNG base64) plus capped scrape excerpts (~4k vision tokens per shot — prefer screenshots over extra replanning turns).
 
 ## Budget
 
