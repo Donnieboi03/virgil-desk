@@ -1,0 +1,21 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://virgil.dev/desk/work-item.json",
+  "type": "object",
+  "required": ["id", "column", "title", "source", "status"],
+  "properties": {
+    "id": { "type": "string" },
+    "column": { "enum": ["you", "agent", "waiting"] },
+    "title": { "type": "string" },
+    "status": { "enum": ["proposed", "running", "done", "failed", "denied"] },
+    "source": {
+      "type": "object",
+      "required": ["kind"],
+      "properties": {
+        "kind": { "enum": ["handoff", "inbox", "calendar"] },
+        "url": { "type": "string" },
+        "ref": { "type": "string" }
+      }
+    }
+  }
+}

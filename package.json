@@ -1,0 +1,18 @@
+{
+  "name": "virgil-desk",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Virgil Desk — browser allocation desk for you and agents",
+  "workspaces": [
+    "packages/protocol",
+    "packages/extension"
+  ],
+  "scripts": {
+    "build": "npm run build -w @virgil-desk/protocol && npm run build -w @virgil-desk/extension",
+    "test": "npm run test -w @virgil-desk/protocol && npm run test -w @virgil-desk/extension",
+    "validate:schema": "node scripts/validate-schemas.js"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

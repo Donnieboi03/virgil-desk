@@ -1,0 +1,29 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://virgil.dev/desk/browser-command.json",
+  "type": "object",
+  "required": ["command_id", "run_id", "op"],
+  "properties": {
+    "command_id": { "type": "string" },
+    "run_id": { "type": "string" },
+    "op": {
+      "enum": [
+        "captureHandoffSnapshot",
+        "openTab",
+        "duplicateTab",
+        "closeTab",
+        "scroll",
+        "scrape",
+        "screenshot",
+        "click",
+        "fill",
+        "wait",
+        "focusTab"
+      ]
+    },
+    "human_tab_id": { "type": "integer" },
+    "tab_id": { "type": "integer" },
+    "url": { "type": "string" },
+    "verify_level": { "enum": ["read", "action", "handoff"] }
+  }
+}
