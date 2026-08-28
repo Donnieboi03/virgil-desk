@@ -21,6 +21,7 @@ from .screenshot_store import persist_screenshot
 
 # In-memory proposal + extension connection state
 _proposals: dict[str, dict[str, Any]] = {}
+_work_items: dict[str, dict[str, Any]] = {}
 _handoff_urls: dict[str, str] = {}
 _screenshot_counts: dict[str, int] = {}
 _config_cache = None
@@ -131,7 +132,20 @@ async def _handle_handoff(payload: dict[str, Any]) -> dict[str, Any]:
         },
     )
     patch_id = uuid.uuid4().hex
-    ops = [{"op": "add", "item": item} for item in result.get("items", [])]
+    ops: list[dict[str, Any]] = [{"op": "clear"}]
+    ops.extend({"op": "add", "item": item} for item in result.get("items", []))
+    await _send_board_patch(run_id, patch_id, ops)
+    for item in result.get("items", []):
+        item["run_id"] = run_id
+        _work_items[item["id"]] = item
+        for prop in item.get("proposals") or []:
+            _proposals[prop["id"]] = {**prop, "work_item_id": item["id"], "run_id": run_id}
+    return result
+
+
+async def _send_board_patch(
+    run_id: str, patch_id: str, ops: list[dict[str, Any]]
+) -> None:
     await _send_to_extension(
         {
             "type": "board_patch",
@@ -140,11 +154,23 @@ async def _handle_handoff(payload: dict[str, Any]) -> dict[str, Any]:
             "ops": ops,
         }
     )
-    for item in result.get("items", []):
-        item["run_id"] = run_id
-        for prop in item.get("proposals") or []:
-            _proposals[prop["id"]] = {**prop, "work_item_id": item["id"], "run_id": run_id}
-    return result
+
+
+async def _patch_work_item(
+    item_id: str, *, status: str, run_id: str
+) -> dict[str, Any] | None:
+    item = _work_items.get(item_id)
+    if not item:
+        return None
+    updated = {**item, "status": status, "run_id": run_id}
+    _work_items[item_id] = updated
+    patch_id = uuid.uuid4().hex
+    await _send_board_patch(
+        run_id,
+        patch_id,
+        [{"op": "update", "item": updated}],
+    )
+    return updated
 
 
 async def _send_to_extension(message: dict[str, Any]) -> None:
@@ -157,6 +183,7 @@ def reset_state_for_tests() -> None:
     """Clear in-memory hub state between tests."""
     global _extension_ws, _extension_connected
     _proposals.clear()
+    _work_items.clear()
     _handoff_urls.clear()
     _screenshot_counts.clear()
     _command_results.clear()
@@ -177,11 +204,12 @@ async def accept_item(item_id: str, body: AcceptBody) -> dict[str, Any]:
     emit(
         "proposal.accepted",
         body.run_id,
-        {"proposal_id": body.proposal_id, "kind": prop.get("kind")},
+        {"proposal_id": body.proposal_id, "proposal_kind": prop.get("kind")},
     )
     committed: dict[str, Any] = {"kind": prop.get("kind")}
     if prop.get("kind") == "calendar_slot":
         committed.update(book_calendar_slot(prop.get("payload") or {}))
+    await _patch_work_item(item_id, status="done", run_id=body.run_id)
     return {"ok": True, "work_item_id": item_id, "status": "done", "committed": committed}
 
 
@@ -217,6 +245,7 @@ async def deny_item(item_id: str, body: DenyBody) -> dict[str, Any]:
         body.run_id,
         {"proposal_id": body.proposal_id, "reason": body.reason},
     )
+    await _patch_work_item(item_id, status="denied", run_id=body.run_id)
     return {"ok": True, "work_item_id": item_id, "status": "denied"}
 
 

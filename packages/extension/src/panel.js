@@ -33,27 +33,33 @@ function renderColumn(el, items, column) {
     if (column === "waiting" && (proposals.length || item.status === "proposed")) {
       const actions = document.createElement("div");
       actions.className = "item-actions";
-      const accept = document.createElement("button");
-      accept.textContent = "Accept";
-      accept.onclick = () =>
-        chrome.runtime.sendMessage({
-          type: "acceptProposal",
-          itemId: item.id,
-          proposalId: proposals[0]?.id || "",
-          runId: item.run_id || "",
-        });
-      const deny = document.createElement("button");
-      deny.textContent = "Deny";
-      deny.onclick = () =>
-        chrome.runtime.sendMessage({
-          type: "denyProposal",
-          itemId: item.id,
-          proposalId: proposals[0]?.id || "",
-          runId: item.run_id || "",
-          reason: "operator denied",
-        });
-      actions.appendChild(accept);
-      actions.appendChild(deny);
+      if (item.status !== "done" && item.status !== "denied") {
+        const accept = document.createElement("button");
+        accept.textContent = "Accept";
+        accept.onclick = async () => {
+          await chrome.runtime.sendMessage({
+            type: "acceptProposal",
+            itemId: item.id,
+            proposalId: proposals[0]?.id || "",
+            runId: item.run_id || "",
+          });
+          refresh();
+        };
+        const deny = document.createElement("button");
+        deny.textContent = "Deny";
+        deny.onclick = async () => {
+          await chrome.runtime.sendMessage({
+            type: "denyProposal",
+            itemId: item.id,
+            proposalId: proposals[0]?.id || "",
+            runId: item.run_id || "",
+            reason: "operator denied",
+          });
+          refresh();
+        };
+        actions.appendChild(accept);
+        actions.appendChild(deny);
+      }
       li.appendChild(actions);
     } else if (proposals.length) {
       for (const p of proposals) {

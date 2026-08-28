@@ -118,6 +118,7 @@ export type WsHostMessage =
   | { type: "error"; run_id?: string; code: string; message: string };
 
 export type BoardPatchOp =
+  | { op: "clear" }
   | { op: "add"; item: WorkItem }
   | { op: "update"; item: WorkItem }
   | { op: "remove"; id: string };
@@ -145,7 +146,11 @@ export function applyBoardPatch(
     waiting: [...board.waiting],
   };
   for (const patch of ops) {
-    if (patch.op === "add") {
+    if (patch.op === "clear") {
+      next.you = [];
+      next.agent = [];
+      next.waiting = [];
+    } else if (patch.op === "add") {
       const col = patch.item.column;
       next[col] = [...next[col], patch.item];
     } else if (patch.op === "update") {

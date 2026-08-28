@@ -32,7 +32,11 @@ export function applyBoardPatch(board, ops) {
     waiting: [...(board.waiting || [])],
   };
   for (const patch of ops) {
-    if (patch.op === "add") {
+    if (patch.op === "clear") {
+      next.you = [];
+      next.agent = [];
+      next.waiting = [];
+    } else if (patch.op === "add") {
       next[patch.item.column].push(patch.item);
     } else if (patch.op === "update") {
       const col = patch.item.column;

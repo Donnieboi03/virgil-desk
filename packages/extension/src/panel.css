@@ -101,6 +101,9 @@ li {
 .badge.done {
   background: #d1fae5;
 }
+.badge.denied {
+  background: #fee2e2;
+}
 .item-actions {
   margin-top: 4px;
   display: flex;

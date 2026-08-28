@@ -44,4 +44,16 @@ describe("applyBoardPatch", () => {
     expect(out.agent).toHaveLength(1);
     expect(out.agent[0].id).toBe("a1");
   });
+
+  it("clears board before add when clear op first", () => {
+    const board = {
+      you: [{ id: "old", column: "you", title: "Old" }],
+      agent: [],
+      waiting: [],
+    };
+    const item = { id: "n1", column: "agent", title: "New" };
+    const out = applyBoardPatch(board, [{ op: "clear" }, { op: "add", item }]);
+    expect(out.you).toHaveLength(0);
+    expect(out.agent).toHaveLength(1);
+  });
 });

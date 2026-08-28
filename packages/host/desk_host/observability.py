@@ -24,10 +24,10 @@ def emit(kind: str, run_id: str, fields: dict[str, Any] | None = None) -> None:
     path = events_path()
     path.parent.mkdir(parents=True, exist_ok=True)
     row = {
-        "kind": kind,
         "run_id": run_id,
         "ts": datetime.now(timezone.utc).isoformat(),
         **(fields or {}),
+        "kind": kind,
     }
     with path.open("a", encoding="utf-8") as fh:
         fh.write(json.dumps(row, ensure_ascii=False) + "\n")

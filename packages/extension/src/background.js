@@ -475,7 +475,10 @@ async function handoffActiveTab(intent) {
     });
   }
   if (data.items) {
-    await applyPatch(data.items.map((item) => ({ op: "add", item })), data.run_id);
+    await applyPatch(
+      [{ op: "clear" }, ...data.items.map((item) => ({ op: "add", item }))],
+      data.run_id,
+    );
   }
   return { ok: true, ...data };
 }
@@ -490,7 +493,9 @@ async function acceptProposal({ itemId, proposalId, runId }) {
       work_item_id: itemId,
     }),
   });
-  return res.json();
+  const data = await res.json();
+  chrome.runtime.sendMessage({ type: "boardUpdated" }).catch(() => {});
+  return data;
 }
 
 async function denyProposal({ itemId, proposalId, runId, reason }) {
@@ -503,5 +508,7 @@ async function denyProposal({ itemId, proposalId, runId, reason }) {
       reason,
     }),
   });
-  return res.json();
+  const data = await res.json();
+  chrome.runtime.sendMessage({ type: "boardUpdated" }).catch(() => {});
+  return data;
 }

@@ -47,6 +47,7 @@ class MockExtensionSession:
         self.ws.send_json({"type": "handoff_started", "handoff": handoff})
         patch = self.ws.receive_json()
         assert patch["type"] == "board_patch", patch
+        assert patch["ops"][0]["op"] == "clear", patch["ops"]
         result = self.ws.receive_json()
         assert result["type"] == "handoff_result", result
         return result
