@@ -97,8 +97,38 @@ class HermesBackend:
         raise DecomposeError("Hermes decompose failed and fallback disabled")
 
     async def execute_item(self, item: dict[str, Any], ctx: dict[str, Any]) -> dict[str, Any]:
-        prompt = build_execute_prompt(item, ctx)
+        from ..app import dispatch_browser_command_and_wait
+
         cfg = load_config()
+        run_id = ctx.get("run_id", "")
+        human_tab = ctx.get("human_tab_id") or item.get("human_tab_id")
+        agent_tab = ctx.get("agent_tab_id") or item.get("agent_tab_id")
+        if human_tab is None or agent_tab is None:
+            raise RuntimeError("execute missing human_tab_id or agent_tab_id")
+
+        scrape = await dispatch_browser_command_and_wait(
+            {
+                "run_id": run_id,
+                "op": "scrape",
+                "human_tab_id": human_tab,
+                "tab_id": agent_tab,
+                "handoff_url": ctx.get("handoff_url", ""),
+            },
+            timeout=cfg.host.browser_wait_timeout_sec,
+        )
+        if not scrape.get("ok", True):
+            raise RuntimeError(scrape.get("error") or "initial scrape failed")
+
+        excerpt_max = cfg.browser.scrape_excerpt_max_chars
+        ctx = {
+            **ctx,
+            "initial_scrape": {
+                "url": scrape.get("url"),
+                "title": scrape.get("title"),
+                "excerpt": (scrape.get("scrape_excerpt") or "")[:excerpt_max],
+            },
+        }
+        prompt = build_execute_prompt(item, ctx)
         result = await self._hermes_run(
             prompt,
             skills=["desk-browser-bridge"],

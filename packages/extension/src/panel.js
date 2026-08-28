@@ -38,6 +38,15 @@ function appendEvidence(li, item) {
   li.appendChild(el);
 }
 
+async function findBoardItem(itemId) {
+  const { board } = await chrome.runtime.sendMessage({ type: "getBoard" });
+  for (const col of ["you", "agent", "waiting"]) {
+    const hit = (board[col] || []).find((i) => i.id === itemId);
+    if (hit) return hit;
+  }
+  return null;
+}
+
 async function runAgentAction(item, li, runBtn) {
   runBtn.disabled = true;
   runBtn.textContent = "Running…";
@@ -54,10 +63,15 @@ async function runAgentAction(item, li, runBtn) {
   } catch (err) {
     appendItemError(li, String(err));
   } finally {
-    runBtn.textContent = item.status === "failed" ? "Retry agent" : "Run agent";
-    runBtn.disabled = !panelWsConnected;
     await refreshStatus();
     await refreshBoard();
+    const updated = await findBoardItem(item.id);
+    const status = updated?.status || item.status;
+    if (updated?.last_error) {
+      appendItemError(li, updated.last_error);
+    }
+    runBtn.textContent = status === "failed" ? "Retry agent" : "Run agent";
+    runBtn.disabled = !panelWsConnected || status === "done";
   }
 }
 
