@@ -22,6 +22,7 @@ class MockBackend:
                     "source": {"kind": "handoff", "url": url},
                     "status": "running",
                     "human_tab_id": handoff.get("human_tab_id"),
+                    "run_id": run_id,
                 },
                 {
                     "id": f"item_{run_id[:8]}_you",
@@ -30,6 +31,7 @@ class MockBackend:
                     "source": {"kind": "handoff", "url": url},
                     "status": "proposed",
                     "proposals": [],
+                    "run_id": run_id,
                 },
                 {
                     "id": f"item_{run_id[:8]}_wait",
@@ -37,6 +39,7 @@ class MockBackend:
                     "title": "Proposed calendar slot",
                     "source": {"kind": "handoff", "url": url},
                     "status": "proposed",
+                    "run_id": run_id,
                     "proposals": [
                         {
                             "id": f"prop_{run_id[:8]}",

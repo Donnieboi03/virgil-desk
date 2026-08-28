@@ -13,18 +13,38 @@ from pydantic import BaseModel, Field
 
 from .backends import get_backend, new_run_id
 from .calendar import book_calendar_slot
+from .config import config_for_extension, load_config
 from .navigation import normalize_browser_command
 from .observability import emit
 from .policy import policy_denied_reason
+from .screenshot_store import persist_screenshot
 
 # In-memory proposal + extension connection state
 _proposals: dict[str, dict[str, Any]] = {}
 _handoff_urls: dict[str, str] = {}
+_screenshot_counts: dict[str, int] = {}
+_config_cache = None
 _extension_ws: WebSocket | None = None
 _extension_connected = False
 _pending_commands: asyncio.Queue[dict[str, Any]] = asyncio.Queue()
 _command_results: dict[str, dict[str, Any]] = {}
 _command_waiters: dict[str, asyncio.Future[dict[str, Any]]] = {}
+
+SCREENSHOT_OPS = frozenset(
+    {"click", "fill", "scroll", "scrape", "screenshot", "openTab", "duplicateTab"}
+)
+
+
+def get_config():
+    global _config_cache
+    if _config_cache is None:
+        _config_cache = load_config()
+    return _config_cache
+
+
+def reset_config_cache() -> None:
+    global _config_cache
+    _config_cache = None
 
 
 class HandoffBody(BaseModel):
@@ -71,6 +91,11 @@ async def lifespan(_app: FastAPI):
 app = FastAPI(title="Virgil Desk Host", version="0.1.0", lifespan=lifespan)
 
 
+@app.get("/v1/config")
+async def get_desk_config() -> dict[str, Any]:
+    return config_for_extension(get_config())
+
+
 @app.get("/v1/health")
 async def health() -> dict[str, Any]:
     return {
@@ -112,6 +137,7 @@ async def _handle_handoff(payload: dict[str, Any]) -> dict[str, Any]:
         }
     )
     for item in result.get("items", []):
+        item["run_id"] = run_id
         for prop in item.get("proposals") or []:
             _proposals[prop["id"]] = {**prop, "work_item_id": item["id"], "run_id": run_id}
     return result
@@ -128,6 +154,7 @@ def reset_state_for_tests() -> None:
     global _extension_ws, _extension_connected
     _proposals.clear()
     _handoff_urls.clear()
+    _screenshot_counts.clear()
     _command_results.clear()
     for fut in list(_command_waiters.values()):
         if not fut.done():
@@ -135,6 +162,7 @@ def reset_state_for_tests() -> None:
     _command_waiters.clear()
     _extension_ws = None
     _extension_connected = False
+    reset_config_cache()
 
 
 @app.post("/v1/items/{item_id}/accept")
@@ -199,7 +227,13 @@ async def extension_ws(ws: WebSocket) -> None:
             raw = await ws.receive_json()
             msg_type = raw.get("type")
             if msg_type == "register":
-                await ws.send_json({"type": "registered", "ok": True})
+                await ws.send_json(
+                    {
+                        "type": "registered",
+                        "ok": True,
+                        "config": config_for_extension(get_config()),
+                    }
+                )
             elif msg_type == "handoff_started":
                 handoff = raw.get("handoff") or {}
                 result = await _handle_handoff(handoff)
@@ -223,6 +257,15 @@ async def extension_ws(ws: WebSocket) -> None:
                         "scrape_bytes": len(result.get("scrape_excerpt") or ""),
                     },
                 )
+                cfg = get_config()
+                if cfg.observability.persist_screenshots and result.get("screenshot"):
+                    path = persist_screenshot(
+                        raw.get("run_id", ""),
+                        cid or "",
+                        result["screenshot"],
+                    )
+                    if path:
+                        result["screenshot_ref"] = path
             elif msg_type == "item_ack":
                 pass
     except WebSocketDisconnect:
@@ -235,6 +278,21 @@ async def extension_ws(ws: WebSocket) -> None:
 
 async def dispatch_browser_command(command: dict[str, Any]) -> None:
     command = normalize_browser_command(command)
+    run_id = command.get("run_id", "")
+    op = command.get("op", "")
+    cfg = get_config()
+
+    if op in SCREENSHOT_OPS and run_id:
+        count = _screenshot_counts.get(run_id, 0)
+        if count >= cfg.browser.screenshot_max_per_run:
+            emit(
+                "policy.denied",
+                run_id,
+                {"rule": "screenshot_cap", "op": op, "count": count},
+            )
+            raise PermissionError("screenshot_cap")
+        _screenshot_counts[run_id] = count + 1
+
     reason = policy_denied_reason(
         command.get("op", ""),
         command.get("tab_id"),

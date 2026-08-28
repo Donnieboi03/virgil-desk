@@ -1,0 +1,16 @@
+browser:
+  scrape_text_max_chars: 8000
+  scrape_links_max: 50
+  scrape_excerpt_max_chars: 4000
+  handoff_excerpt_max_chars: 2000
+  screenshot_mode: captureVisibleTab
+  screenshot_max_per_run: 20
+  default_wait_ms: 500
+host:
+  browser_wait_timeout_sec: 30
+hermes:
+  decompose_timeout_sec: 120
+  decompose_fallback_stub: true
+  decompose_enabled: true
+observability:
+  persist_screenshots: false
