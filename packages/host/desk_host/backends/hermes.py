@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import json
 import os
+import re
 import subprocess
 from dataclasses import dataclass
 from pathlib import Path
@@ -17,6 +18,53 @@ from ..observability import record
 from ..execute_validation import execute_summary_indicates_failure
 from ..prompt_render import render_prompt
 from ..screenshot_store import persist_handoff_screenshot
+
+_SESSION_ID_LINE = re.compile(r"^session_id:\s*\S+\s*$", re.IGNORECASE | re.MULTILINE)
+_API_FAILURE_HINTS = (
+    "402",
+    "404",
+    "429",
+    "timeout",
+    "timed out",
+    "rate limit",
+    "insufficient",
+    "budget",
+    "payment required",
+    "not found",
+    "provider error",
+    "api error",
+)
+
+
+def strip_session_id_noise(text: str) -> str:
+    """Drop Hermes quiet-mode session_id footer lines."""
+    if not text:
+        return ""
+    return _SESSION_ID_LINE.sub("", text).strip()
+
+
+def format_hermes_summary(text: str, max_chars: int) -> str:
+    cleaned = strip_session_id_noise(text)
+    if not cleaned:
+        return ""
+    return cleaned[:max_chars]
+
+
+def format_hermes_failure(result: HermesRunResult) -> str:
+    """Prefer stderr / API snippets over a bare session_id line."""
+    stdout = strip_session_id_noise(result.stdout or "")
+    stderr = (result.stderr or "").strip()
+    combined = "\n".join(p for p in (stderr, stdout) if p).strip()
+    lower = combined.lower()
+    if any(h in lower for h in _API_FAILURE_HINTS):
+        return combined
+    if stderr and (not stdout or stdout.lower().startswith("session_id:")):
+        return stderr
+    if combined:
+        return combined
+    if result.exit_code:
+        return f"hermes exit {result.exit_code}"
+    return ""
 
 
 def build_decompose_prompt(handoff: dict[str, Any]) -> str:
@@ -75,6 +123,7 @@ class HermesBackend:
                 prompt,
                 image_path=image_path,
                 skills=["desk-browser-bridge"],
+                model=cfg.hermes.decompose_model,
                 timeout_sec=cfg.hermes.decompose_timeout_sec,
             )
             parsed = parse_decompose_json(result.text, run_id, handoff)
@@ -137,16 +186,20 @@ class HermesBackend:
             skills=["desk-browser-bridge"],
             toolsets=cfg.hermes.execute_toolsets,
             accept_hooks=cfg.hermes.execute_accept_hooks,
+            model=cfg.hermes.execute_model,
             timeout_sec=cfg.hermes.execute_timeout_sec,
         )
         if result.exit_code != 0:
             raise RuntimeError(
-                result.stderr or result.text or f"hermes exit {result.exit_code}"
+                format_hermes_failure(result) or f"hermes exit {result.exit_code}"
             )
         if not result.text:
             raise RuntimeError("hermes execute returned empty output")
-        max_chars = cfg.prompts.execute_summary_max_chars
-        summary = result.text[:max_chars]
+        summary = format_hermes_summary(result.text, cfg.prompts.execute_summary_max_chars)
+        if not summary:
+            raise RuntimeError(
+                format_hermes_failure(result) or "hermes execute returned empty output"
+            )
         if execute_summary_indicates_failure(summary):
             raise RuntimeError(summary)
         return {"summary": summary, "exit_code": result.exit_code}
@@ -266,6 +319,7 @@ class HermesBackend:
         skills: list[str] | None = None,
         toolsets: list[str] | None = None,
         accept_hooks: bool = False,
+        model: str | None = None,
         timeout_sec: int | None = None,
     ) -> HermesRunResult:
         cfg = load_config()
@@ -282,6 +336,8 @@ class HermesBackend:
             "--source",
             "tool",
         ]
+        if model:
+            cmd.extend(["-m", model])
         if toolsets:
             cmd.extend(["-t", ",".join(toolsets)])
         if accept_hooks:

@@ -39,6 +39,7 @@ class BrowserConfig:
     interact_targets_max: int
     observe_annotate_default: bool
     act_stall_max: int
+    observe_followup_excerpt_max_chars: int
 
 
 @dataclass
@@ -53,6 +54,8 @@ class HermesConfig:
     execute_require_browser_evidence: bool
     decompose_fallback_stub: bool
     decompose_enabled: bool
+    decompose_model: str
+    execute_model: str
     execute_toolsets: list[str]
     execute_accept_hooks: bool
 
@@ -178,6 +181,7 @@ def config_for_extension(cfg: DeskConfig | None = None) -> dict[str, Any]:
             "interact_targets_max": c.browser.interact_targets_max,
             "observe_annotate_default": c.browser.observe_annotate_default,
             "act_stall_max": c.browser.act_stall_max,
+            "observe_followup_excerpt_max_chars": c.browser.observe_followup_excerpt_max_chars,
         },
         "host": {
             "browser_wait_timeout_sec": c.host.browser_wait_timeout_sec,

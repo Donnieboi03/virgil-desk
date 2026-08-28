@@ -11,6 +11,7 @@ browser:
   interact_targets_max: 80
   observe_annotate_default: true
   act_stall_max: 3
+  observe_followup_excerpt_max_chars: 4000
 host:
   browser_wait_timeout_sec: 30
 hermes:
@@ -19,10 +20,12 @@ hermes:
   execute_require_browser_evidence: true
   decompose_fallback_stub: true
   decompose_enabled: true
+  decompose_model: google/gemini-3.1-flash-lite
+  execute_model: google/gemini-3.7-flash
   execute_toolsets:
     - terminal
     - skills
-  execute_accept_hooks: true
+  execute_accept_hooks: false
 observability:
   persist_screenshots: false
 memory:
