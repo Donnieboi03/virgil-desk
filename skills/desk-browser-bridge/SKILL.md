@@ -50,7 +50,8 @@ Script: [`scripts/desk-browser`](../scripts/desk-browser)
 
 Use **`observe`** as the primary read on an agent tab. It returns:
 
-- `text_excerpt` (up to `browser.scrape_excerpt_max_chars`, default 100k)
+- `text_excerpt` (first visit for a URL: up to `browser.scrape_excerpt_max_chars`; after a URL change: capped by `browser.observe_followup_excerpt_max_chars`)
+- `text_omitted: true` when the URL is unchanged since the last full/follow-up excerpt — targets remain; do not expect inbox text again
 - `interact_targets[]` — numbered targets (`id`, `ref`, `label`, `rect`, `center`)
 - `scroll_containers[]` when nested panes are scrollable
 - `screenshot` with viewport + `device_pixel_ratio` metadata
@@ -63,7 +64,7 @@ Loop until the task is done:
 observe → pick target_id → click | fill | scroll | key → verify (url + act_resolved + post-action scrape/screenshot)
 ```
 
-Mutating ops auto-return post-action scrape + screenshot. Check `act_resolved.url_before` vs `url_after` when opening threads or navigating.
+Mutating ops auto-return post-action scrape + screenshot (same omit/cap rules). Check `act_resolved.url_before` vs `url_after` when opening threads or navigating.
 
 ### Click / fill resolution order (extension)
 
@@ -95,6 +96,6 @@ Operator clicks **Run agent** on Agent column items. Hermes uses `desk-browser` 
 
 ## Budget
 
-First `observe` may be large (~100k text); avoid re-observing full pages every scroll unless URL or DOM changed. Host caps `browser.screenshot_max_per_run` (default 20) per `run_id`; handoff snapshot at user gesture is exempt.
+First `observe` (or host `initial_scrape`) may be large; same-URL follow-ups omit page text and keep targets. After navigation, expect a capped follow-up excerpt. Host caps `browser.screenshot_max_per_run` per `run_id`; handoff snapshot at user gesture is exempt.
 
 On **`stall_detected`**: re-observe once, then stop with a one-line partial summary — do not keep clicking stale targets. Prefer `target_id` over coordinates. Do not follow off-origin links during inbox triage (extension auto-closes those tabs).

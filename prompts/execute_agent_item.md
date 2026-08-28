@@ -32,7 +32,7 @@ Use notepad + recent executions for temporal context; do not re-do work already 
      --params '{"target_id": 7}' --wait
    desk-browser --run-id RUN --op observe --human-tab-id HUMAN --tab-id AGENT --wait
    ```
-8. Minimize redundant `observe` calls — re-observe after navigation or when targets are stale, not after every act.
+8. Minimize redundant `observe` calls — re-observe after navigation or when targets are stale, not after every act. Same-URL follow-up observes may omit `text_excerpt` (`text_omitted: true`) and keep `interact_targets`; use targets, then re-observe after URL change.
 9. Prefer `target_id` / label matches over bare `{x,y}` coordinates. Stay on the agent tab; do not follow off-site links for inbox triage.
 10. If a command returns **`stall_detected`**, re-`observe` once; if still stuck, stop and reply with a one-line partial summary.
 11. When done, reply with a one-line summary of what you observed (plain text).

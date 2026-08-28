@@ -8,6 +8,7 @@ from typing import Any
 from starlette.testclient import TestClient
 
 from desk_host.memory import apply_memory_patch, empty_memory
+from desk_host.observe_excerpt import decide_excerpt
 
 
 def fake_screenshot() -> dict[str, Any]:
@@ -19,16 +20,35 @@ def fake_screenshot() -> dict[str, Any]:
     }
 
 
-def fake_command_result(command_id: str, *, op: str = "click") -> dict[str, Any]:
+def fake_command_result(
+    command_id: str,
+    *,
+    op: str = "click",
+    url: str = "https://example.com/job/1",
+    text: str = "Apply now — example page text for verify.",
+    last_full_text_url: str | None = None,
+    full_max: int = 8000,
+    followup_max: int = 4000,
+) -> dict[str, Any]:
+    excerpt = decide_excerpt(
+        url=url,
+        text=text,
+        last_full_text_url=last_full_text_url,
+        full_max=full_max,
+        followup_max=followup_max,
+    )
     result: dict[str, Any] = {
         "command_id": command_id,
         "ok": True,
-        "url": "https://example.com/job/1",
+        "url": url,
         "title": "Job",
-        "scrape_excerpt": "Apply now — example page text for verify.",
+        "scrape_excerpt": excerpt["text"],
+        "text_omitted": excerpt["text_omitted"],
+        "excerpt_note": excerpt["note"],
         "screenshot": fake_screenshot(),
         "duration_ms": 42,
         "op": op,
+        "_next_baseline": excerpt["next_baseline"],
     }
     if op == "observe":
         result["interact_targets"] = [
@@ -47,9 +67,12 @@ def fake_command_result(command_id: str, *, op: str = "click") -> dict[str, Any]
             "viewport": {"w": 1280, "h": 720},
             "device_pixel_ratio": 2,
             "text_excerpt": result["scrape_excerpt"],
+            "text_omitted": excerpt["text_omitted"],
             "interact_targets": result["interact_targets"],
             "scroll_containers": [],
         }
+        if excerpt["note"]:
+            result["observe"]["excerpt_note"] = excerpt["note"]
         result["viewport"] = {"w": 1280, "h": 720}
         result["device_pixel_ratio"] = 2
     elif op == "click":
@@ -58,8 +81,8 @@ def fake_command_result(command_id: str, *, op: str = "click") -> dict[str, Any]
             "requested": {"target_id": 1},
             "used": "target_id",
             "hit": {"ref": "t1", "tag": "button", "center": {"x": 60, "y": 38}},
-            "url_before": "https://example.com/job/1",
-            "url_after": "https://example.com/job/1#applied",
+            "url_before": url,
+            "url_after": f"{url}#applied",
         }
     return result
 
@@ -75,6 +98,7 @@ class MockExtensionSession:
         assert reg.get("type") == "registered"
         self.memory: dict[str, Any] = empty_memory()
         self.messages: list[dict[str, Any]] = []
+        self._excerpt_baselines: dict[str, str] = {}
 
     def close(self) -> None:
         self._ws_ctx.__exit__(None, None, None)
@@ -137,16 +161,35 @@ class MockExtensionSession:
         self.memory = apply_memory_patch(self.memory, msg.get("ops") or [])
         self.messages.append(msg)
         return msg
+
     def respond_next_browser_command(
         self,
         *,
         run_id: str,
         op: str = "click",
+        url: str | None = None,
+        text: str | None = None,
     ) -> dict[str, Any]:
         msg = self.ws.receive_json()
         assert msg["type"] == "browser_command", msg
         command = msg["command"]
-        result = fake_command_result(command["command_id"], op=command.get("op", op))
+        cmd_op = command.get("op", op)
+        tab_id = command.get("tab_id")
+        page_url = url or "https://example.com/job/1"
+        page_text = text or ("Apply now — example page text for verify. " + ("x" * 200))
+        baseline_key = f"{run_id}:{tab_id}"
+        result = fake_command_result(
+            command["command_id"],
+            op=cmd_op,
+            url=page_url,
+            text=page_text,
+            last_full_text_url=self._excerpt_baselines.get(baseline_key),
+            full_max=8000,
+            followup_max=40,
+        )
+        next_base = result.pop("_next_baseline", None)
+        if next_base and tab_id is not None:
+            self._excerpt_baselines[baseline_key] = next_base
         self.ws.send_json(
             {
                 "type": "command_result",

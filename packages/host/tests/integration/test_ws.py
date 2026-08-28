@@ -72,3 +72,58 @@ def test_ws_observe_returns_interact_targets():
             assert body.get("observe")
         finally:
             ext.close()
+
+
+def test_ws_second_observe_same_url_omits_excerpt():
+    with TestClient(app) as client:
+        ext = MockExtensionSession(client)
+        try:
+            result = ext.handoff(
+                {
+                    "url": "https://example.com/inbox",
+                    "human_tab_id": 101,
+                    "window_id": 1,
+                }
+            )
+            run_id = result["run_id"]
+            url = "https://example.com/inbox"
+            long_text = "inbox body " + ("z" * 100)
+
+            first = run_browser_wait(
+                client,
+                {
+                    "run_id": run_id,
+                    "op": "observe",
+                    "human_tab_id": 101,
+                    "tab_id": 202,
+                },
+            )
+            ext.respond_next_browser_command(
+                run_id=run_id, op="observe", url=url, text=long_text
+            )
+            first["thread"].join(timeout=5)
+            body1 = first["holder"][0]["json"]["result"]
+            assert body1.get("text_omitted") is False
+            assert len(body1.get("scrape_excerpt") or "") > 40
+            assert body1.get("interact_targets")
+
+            second = run_browser_wait(
+                client,
+                {
+                    "run_id": run_id,
+                    "op": "observe",
+                    "human_tab_id": 101,
+                    "tab_id": 202,
+                },
+            )
+            ext.respond_next_browser_command(
+                run_id=run_id, op="observe", url=url, text=long_text
+            )
+            second["thread"].join(timeout=5)
+            body2 = second["holder"][0]["json"]["result"]
+            assert body2.get("text_omitted") is True
+            assert (body2.get("scrape_excerpt") or "") == ""
+            assert body2.get("interact_targets")
+            assert body2.get("observe", {}).get("text_omitted") is True
+        finally:
+            ext.close()

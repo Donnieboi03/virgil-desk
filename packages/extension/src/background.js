@@ -19,6 +19,13 @@ import {
 import { tabsToCloseForItem } from "./tabCleanup.js";
 import { shouldCloseSpawnedTab } from "./popupPolicy.js";
 import { updateActStall } from "./actStall.js";
+import {
+  decideExcerpt,
+  getLastFullTextUrl,
+  setLastFullTextUrl,
+  clearExcerptBaselinesForRun,
+  clearExcerptBaselinesForTab,
+} from "./observeExcerpt.js";
 
 const BUNDLE_FILE = "interactObserve.bundle.js";
 
@@ -39,6 +46,7 @@ let deskConfig = {
     interact_targets_max: 80,
     observe_annotate_default: true,
     act_stall_max: 3,
+    observe_followup_excerpt_max_chars: 4000,
   },
   memory: {
     recent_max: 3,
@@ -52,6 +60,8 @@ let pendingHandoffResolve = null;
 let activeExecute = null;
 /** @type {Map<string, number>} */
 let actStallMap = new Map();
+/** Last URL that received a full/followup text excerpt (run_id:tab_id → url) */
+let excerptBaselineMap = new Map();
 /** Pending spawn tabs awaiting URL (tabId → itemId) */
 const pendingSpawnTabs = new Map();
 
@@ -171,6 +181,10 @@ async function handleExecuteSession(msg) {
     handoffUrl: msg.handoff_url || (await handoffUrlForRun(msg.run_id)) || "",
   };
   actStallMap = new Map();
+  excerptBaselineMap = clearExcerptBaselinesForRun(
+    excerptBaselineMap,
+    msg.run_id,
+  );
 }
 
 async function trackSpawnedTab(runId, itemId, tabId) {
@@ -244,7 +258,9 @@ async function handleExecuteCleanup(msg) {
       /* tab may already be gone */
     }
     clearMapsForTab(tabId);
+    excerptBaselineMap = clearExcerptBaselinesForTab(excerptBaselineMap, tabId);
   }
+  excerptBaselineMap = clearExcerptBaselinesForRun(excerptBaselineMap, runId);
   if (pairs[runId]?.items) {
     delete pairs[runId].items[itemId];
   }
@@ -770,6 +786,28 @@ async function ensureTargetMapFresh(stored, runId, tabId, urlBeforeAct) {
   return { ok: true, liveUrl: liveUrl || stored.url };
 }
 
+function applyExcerptPolicy(runId, tabId, url, rawText) {
+  const fullMax = deskConfig.browser?.scrape_excerpt_max_chars ?? 8000;
+  const followupMax =
+    deskConfig.browser?.observe_followup_excerpt_max_chars ?? 4000;
+  const decided = decideExcerpt({
+    url: url || "",
+    text: rawText || "",
+    lastFullTextUrl: getLastFullTextUrl(excerptBaselineMap, runId, tabId),
+    fullMax,
+    followupMax,
+  });
+  if (decided.nextBaseline) {
+    excerptBaselineMap = setLastFullTextUrl(
+      excerptBaselineMap,
+      runId,
+      tabId,
+      decided.nextBaseline,
+    );
+  }
+  return decided;
+}
+
 async function runBrowserCommand(command) {
   command = await normalizeCommand(command);
   const started = Date.now();
@@ -811,7 +849,6 @@ async function runBrowserCommand(command) {
         command.params?.annotate ??
         deskConfig.browser?.observe_annotate_default ??
         true;
-      const excerptMax = deskConfig.browser?.scrape_excerpt_max_chars ?? 8000;
       const snap = await scrapeTab(tabId);
       const pageObserve = await runPageObserve(tabId, { maxTargets, annotate });
       const shot = command.skip_screenshot ? null : await screenshotTab(tabId);
@@ -819,26 +856,37 @@ async function runBrowserCommand(command) {
       const interact_targets = (pageObserve?.interact_targets || []).map(
         ({ mark_label, ...rest }) => rest,
       );
+      const pageUrl = pageObserve?.url || snap.url;
       storeTargetMap(command.run_id, tabId, {
         interact_targets,
         scroll_containers: pageObserve?.scroll_containers || [],
-        url: pageObserve?.url || snap.url,
+        url: pageUrl,
       });
+      const excerpt = applyExcerptPolicy(
+        command.run_id,
+        tabId,
+        pageUrl,
+        snap.text || "",
+      );
       const observe = {
-        url: pageObserve?.url || snap.url,
+        url: pageUrl,
         title: pageObserve?.title || snap.title,
         viewport: pageObserve?.viewport || { w: 0, h: 0 },
         device_pixel_ratio: pageObserve?.device_pixel_ratio ?? 1,
-        text_excerpt: snap.text?.slice(0, excerptMax) ?? "",
+        text_excerpt: excerpt.text,
+        text_omitted: excerpt.text_omitted,
         interact_targets,
         scroll_containers: pageObserve?.scroll_containers || [],
       };
+      if (excerpt.note) observe.excerpt_note = excerpt.note;
       return {
         ...base,
         tab_id: tabId,
         url: observe.url,
         title: observe.title,
         scrape_excerpt: observe.text_excerpt,
+        text_omitted: excerpt.text_omitted,
+        excerpt_note: excerpt.note,
         observe,
         interact_targets,
         scroll_containers: observe.scroll_containers,
@@ -1132,18 +1180,25 @@ async function runBrowserCommand(command) {
     }
 
     if (["click", "fill", "scroll", "key", "scrape", "screenshot", "openTab", "duplicateTab"].includes(command.op)) {
-      const excerptMax = deskConfig.browser?.scrape_excerpt_max_chars ?? 4000;
       const snap = await scrapeTab(tabId);
       let shot = null;
       if (!command.skip_screenshot) {
         shot = await screenshotTab(tabId);
       }
+      const excerpt = applyExcerptPolicy(
+        command.run_id,
+        tabId,
+        snap.url,
+        snap.text || "",
+      );
       const out = {
         ...base,
         tab_id: tabId,
         url: snap.url,
         title: snap.title,
-        scrape_excerpt: snap.text?.slice(0, excerptMax),
+        scrape_excerpt: excerpt.text,
+        text_omitted: excerpt.text_omitted,
+        excerpt_note: excerpt.note,
         screenshot: shot,
         act_resolved: actResolved,
         duration_ms: Date.now() - started,

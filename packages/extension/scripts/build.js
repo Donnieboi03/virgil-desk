@@ -29,6 +29,7 @@ const files = [
   "tabCleanup.js",
   "popupPolicy.js",
   "actStall.js",
+  "observeExcerpt.js",
   "background.js",
   "targetMap.js",
   "panel.html",
