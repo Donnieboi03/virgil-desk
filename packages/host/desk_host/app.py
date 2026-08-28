@@ -490,12 +490,15 @@ async def extension_ws(ws: WebSocket) -> None:
                         "duration_ms": result.get("duration_ms"),
                         "scrape_bytes": len(result.get("scrape_excerpt") or ""),
                         "screenshot_count_run_total": _screenshot_counts.get(run_id, 0),
+                        "target_count": len(result.get("interact_targets") or []),
                     },
                     flags={
                         "ok": result.get("ok"),
                         "has_screenshot": bool(result.get("screenshot")),
+                        "has_interact_targets": bool(result.get("interact_targets")),
                     },
                     command_id=cid,
+                    act_resolved=result.get("act_resolved"),
                 )
                 if run_id and result.get("ok"):
                     _browser_result_counts[run_id] = (

@@ -9,6 +9,12 @@
   "side_panel": { "default_path": "panel.html" },
   "action": { "default_title": "Virgil Desk" },
   "options_page": "options.html",
+  "web_accessible_resources": [
+    {
+      "resources": ["interactObserve.bundle.js"],
+      "matches": ["<all_urls>"]
+    }
+  ],
   "content_scripts": [
     {
       "matches": ["<all_urls>"],

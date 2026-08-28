@@ -42,7 +42,7 @@ High-frequency `browser.command` / `browser.command_result` omit `limits` (still
 
 ### `browser.command_result`
 
-`measure.duration_ms`, `measure.scrape_bytes`, `flags.ok`, `flags.has_screenshot`
+`measure.duration_ms`, `measure.scrape_bytes`, `measure.target_count`, `flags.ok`, `flags.has_screenshot`, `flags.has_interact_targets`, optional top-level `act_resolved` (`used`, `url_before`, `url_after`)
 
 ### `policy.denied`
 

@@ -1,9 +1,9 @@
 ---
 name: desk-browser-bridge
 description: >-
-  Virgil Desk browser bridge: desk-browser CLI, duplicateTab vs openTab,
-  screenshot-forward observe-act-observe, You/Agent/Waiting board, Accept/Deny proposals.
-version: 1.1.0
+  Virgil Desk browser bridge: desk-browser CLI, observe-first interact targets,
+  You/Agent/Waiting board, Accept/Deny proposals.
+version: 1.2.0
 metadata:
   hermes:
     tags: [virgil-desk, browser, handoff]
@@ -21,10 +21,15 @@ From the Virgil Desk repo root (or with `desk-browser` on PATH):
 export DESK_HOST=127.0.0.1
 export DESK_PORT=8787
 
-desk-browser --run-id desk_abc --op scrape --human-tab-id 1 --tab-id 2 --wait
+desk-browser --run-id desk_abc --op observe --human-tab-id 1 --tab-id 2 --wait
+desk-browser --run-id desk_abc --op click --human-tab-id 1 --tab-id 2 \
+  --params '{"target_id": 7}' --wait
+desk-browser --run-id desk_abc --op fill --human-tab-id 1 --tab-id 2 \
+  --params '{"target_id": 3, "value": "hello@example.com"}' --wait
 desk-browser --run-id desk_abc --op scroll --human-tab-id 1 --tab-id 2 \
   --params '{"direction":"down"}' --wait
-desk-browser --run-id desk_abc --op screenshot --human-tab-id 1 --tab-id 2 --wait
+desk-browser --run-id desk_abc --op key --human-tab-id 1 --tab-id 2 \
+  --params '{"key":"Enter"}' --wait
 ```
 
 - **`--tab-id`** = agent tab from handoff (`agent_tab_id`) — never automate `human_tab_id`.
@@ -37,46 +42,53 @@ Script: [`scripts/desk-browser`](../scripts/desk-browser)
 
 - **`openTab`** — agent needs a **different URL** than the handoff page.
 - **`duplicateTab`** — agent must interact with the **same page** the human is on (never automate the human tab).
-- Handoff now **duplicates first** — decompose snapshot comes from the agent tab (excerpt + screenshot).
+- Handoff duplicates first — decompose snapshot comes from the agent tab (excerpt + screenshot).
 
-## Observe–act–observe (screenshot-forward)
+## Observe–act–observe
 
-### After every `click`, `fill`, or navigation on an agent tab
+Use **`observe`** as the primary read on an agent tab. It returns:
 
-1. `wait` (short; DOM/URL settle)
-2. `scrape` (capped excerpt + http(s) links)
-3. `screenshot` (required — verify action landed)
+- `text_excerpt` (up to `browser.scrape_excerpt_max_chars`, default 100k)
+- `interact_targets[]` — numbered targets (`id`, `ref`, `label`, `rect`, `center`)
+- `scroll_containers[]` when nested panes are scrollable
+- `screenshot` with viewport + `device_pixel_ratio` metadata
 
-Do not mark WorkItem done without post-action screenshot + scrape in evidence.
+**Act** by `target_id` (preferred), `text`/`contains`, or `{x,y}` CSS pixels as fallback — not agent-authored CSS selectors.
 
-### Reading a page (no action yet)
+Loop until the task is done:
 
-1. `screenshot` (baseline — one per agent tab open)
-2. Loop: `scroll` → `scrape`
-3. Add `screenshot` when ANY:
-   - scrape excerpt below `prompts.thin_scrape_threshold_chars` (default 200) or no target link found
-   - `prompts.agent_scroll_stall_loops` scroll loops without progress (default 2)
-   - layout-heavy UI (forms, wizards, modals)
-   - preparing You-column handoff
+```
+observe → pick target_id → click | fill | scroll | key → verify (url + act_resolved + post-action scrape/screenshot)
+```
+
+Mutating ops auto-return post-action scrape + screenshot. Check `act_resolved.url_before` vs `url_after` when opening threads or navigating.
+
+### Click / fill resolution order (extension)
+
+1. `target_id` or `ref` from last `observe` on this tab+run
+2. `text` / `contains` match on target labels
+3. `{x, y}` CSS viewport coordinates
+4. Legacy `selector` only when explicitly needed
+
+If you see `stale_observe: run observe first`, call `observe` again after navigation.
 
 ## Forbidden
 
 - send, submit, pay on agent path without human Accept
-- any `click` / `fill` / `scrape` / `screenshot` on `human_tab_id` (except snapshot at user gesture)
+- any browser op on `human_tab_id` (except snapshot at user gesture)
 
 ## Proposals
 
-- Calendar / drafts → **Accept** or **Deny** via Host; no auto-commit.
+Calendar / drafts → **Accept** or **Deny** via Host; no auto-commit.
 
 ## Agent execution
 
-- Operator clicks **Run agent** on Agent column items (manual — not auto after decompose).
-- Hermes uses `desk-browser` + this skill during execute.
+Operator clicks **Run agent** on Agent column items. Hermes uses `desk-browser` + this skill during execute.
 
 ## Evidence
 
-Desk agents receive `command_result.screenshot` (PNG base64) plus capped scrape excerpts (~4k vision tokens per shot — prefer screenshots over extra replanning turns).
+`command_result` includes `act_resolved` (which resolution path succeeded), `interact_targets` on observe, and capped scrape + screenshot on acts.
 
 ## Budget
 
-Prefer screenshots over extra replanning turns. Cap `browser.screenshot_max_per_run` (default 20) screenshot ops per `run_id` via Host policy; handoff snapshot PNG at user gesture is exempt.
+First `observe` may be large (~100k text); avoid re-observing full pages every scroll unless URL or DOM changed. Host caps `browser.screenshot_max_per_run` (default 20) per `run_id`; handoff snapshot at user gesture is exempt.

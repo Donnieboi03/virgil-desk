@@ -8,9 +8,11 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "@virgil-desk/protocol": "0.1.0"
+    "@virgil-desk/protocol": "0.1.0",
+    "webmarker-js": "^0.7.0"
   },
   "devDependencies": {
+    "esbuild": "^0.28.2",
     "vitest": "^2.1.4"
   }
 }

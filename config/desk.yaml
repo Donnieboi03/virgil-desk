@@ -1,13 +1,15 @@
 browser:
-  scrape_text_max_chars: 16000
+  scrape_text_max_chars: 100000
   scrape_links_max: 200
-  scrape_excerpt_max_chars: 8000
-  handoff_excerpt_max_chars: 8000
+  scrape_excerpt_max_chars: 100000
+  handoff_excerpt_max_chars: 100000
   handoff_scroll_loops: 2
   handoff_scroll_viewport_ratio: 0.85
   screenshot_mode: captureVisibleTab
   screenshot_max_per_run: 20
   default_wait_ms: 500
+  interact_targets_max: 80
+  observe_annotate_default: true
 host:
   browser_wait_timeout_sec: 30
 hermes:

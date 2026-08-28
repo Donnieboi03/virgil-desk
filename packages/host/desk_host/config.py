@@ -36,6 +36,8 @@ class BrowserConfig:
     screenshot_mode: str
     screenshot_max_per_run: int
     default_wait_ms: int
+    interact_targets_max: int
+    observe_annotate_default: bool
 
 
 @dataclass
@@ -162,6 +164,8 @@ def config_for_extension(cfg: DeskConfig | None = None) -> dict[str, Any]:
             "handoff_scroll_viewport_ratio": c.browser.handoff_scroll_viewport_ratio,
             "screenshot_mode": c.browser.screenshot_mode,
             "default_wait_ms": c.browser.default_wait_ms,
+            "interact_targets_max": c.browser.interact_targets_max,
+            "observe_annotate_default": c.browser.observe_annotate_default,
         },
         "host": {
             "browser_wait_timeout_sec": c.host.browser_wait_timeout_sec,

@@ -41,3 +41,34 @@ def test_ws_handoff_and_click_with_screenshot():
             assert pending["holder"][0]["json"]["result"]["screenshot"]
         finally:
             ext.close()
+
+
+def test_ws_observe_returns_interact_targets():
+    with TestClient(app) as client:
+        ext = MockExtensionSession(client)
+        try:
+            result = ext.handoff(
+                {
+                    "url": "https://example.com/inbox",
+                    "human_tab_id": 101,
+                    "window_id": 1,
+                }
+            )
+            run_id = result["run_id"]
+            pending = run_browser_wait(
+                client,
+                {
+                    "run_id": run_id,
+                    "op": "observe",
+                    "human_tab_id": 101,
+                    "tab_id": 202,
+                },
+            )
+            ext.respond_next_browser_command(run_id=run_id, op="observe")
+            pending["thread"].join(timeout=5)
+            assert pending["holder"][0]["status"] == 200
+            body = pending["holder"][0]["json"]["result"]
+            assert body.get("interact_targets")
+            assert body.get("observe")
+        finally:
+            ext.close()

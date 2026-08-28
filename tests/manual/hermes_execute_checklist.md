@@ -16,6 +16,13 @@ Live proof that **Run agent** invokes Hermes → `desk-browser` → extension br
 3. Confirm Agent column item with `running` or `proposed` status
 4. Click **Run agent**
 5. Watch Host terminal / extension for agent tab activity
+6. Optional CLI smoke:
+   ```bash
+   desk-browser --run-id <run_id> --op observe --human-tab-id HUMAN --tab-id AGENT --wait
+   desk-browser --run-id <run_id> --op click --human-tab-id HUMAN --tab-id AGENT \
+     --params '{"target_id": 1}' --wait
+   ```
+   Expect `interact_targets` on observe and `act_resolved.used` on click.
 
 ## Expected events
 

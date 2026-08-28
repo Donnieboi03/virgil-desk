@@ -23,13 +23,21 @@ Board mutations from execute/complete/accept/deny require an active WebSocket; o
 
 ## BrowserOp
 
-`captureHandoffSnapshot`, `navigate` (host-normalized to `openTab` / `duplicateTab`), `openTab`, `duplicateTab`, `closeTab`, `scroll`, `scrape`, `screenshot`, `click`, `fill`, `wait`, `focusTab`
+`captureHandoffSnapshot`, `navigate` (host-normalized to `openTab` / `duplicateTab`), `openTab`, `duplicateTab`, `closeTab`, `scroll`, `scrape`, `screenshot`, **`observe`**, `click`, `fill`, **`key`**, `wait`, `focusTab`
+
+### Params (selected)
+
+| Op | Params |
+|----|--------|
+| `observe` | `{ "annotate": true }` — SoM overlay before screenshot (default from config) |
+| `click` | `{ "target_id": 7 }` \| `{ "text": "..." }` \| `{ "x": 120, "y": 340 }` \| `{ "selector": "..." }` |
+| `fill` | `{ "target_id": 3, "value": "..." }` |
+| `scroll` | `{ "direction": "down" }` \| `{ "target_id": 12, "direction": "down" }` |
+| `key` | `{ "key": "Enter" }` |
 
 ## command_result
 
-Required: `command_id`, `ok`, `duration_ms`. Include `scrape_excerpt` and `screenshot` after actions.
-
-Host auto-chains scrape + screenshot after `click` / `fill`.
+Required: `command_id`, `ok`, `duration_ms`. **`observe`** adds `interact_targets`, `viewport`, `device_pixel_ratio`. Mutating ops add `act_resolved` and auto-chain `scrape_excerpt` + `screenshot`.
 
 ## WorkItem fields (runtime)
 

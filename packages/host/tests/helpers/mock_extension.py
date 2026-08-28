@@ -18,7 +18,7 @@ def fake_screenshot() -> dict[str, Any]:
 
 
 def fake_command_result(command_id: str, *, op: str = "click") -> dict[str, Any]:
-    return {
+    result: dict[str, Any] = {
         "command_id": command_id,
         "ok": True,
         "url": "https://example.com/job/1",
@@ -28,6 +28,38 @@ def fake_command_result(command_id: str, *, op: str = "click") -> dict[str, Any]
         "duration_ms": 42,
         "op": op,
     }
+    if op == "observe":
+        result["interact_targets"] = [
+            {
+                "id": 1,
+                "ref": "t1",
+                "kind": "clickable",
+                "label": "Apply",
+                "rect": {"x": 10, "y": 20, "w": 100, "h": 36},
+                "center": {"x": 60, "y": 38},
+            }
+        ]
+        result["observe"] = {
+            "url": result["url"],
+            "title": result["title"],
+            "viewport": {"w": 1280, "h": 720},
+            "device_pixel_ratio": 2,
+            "text_excerpt": result["scrape_excerpt"],
+            "interact_targets": result["interact_targets"],
+            "scroll_containers": [],
+        }
+        result["viewport"] = {"w": 1280, "h": 720}
+        result["device_pixel_ratio"] = 2
+    elif op == "click":
+        result["act_resolved"] = {
+            "op": "click",
+            "requested": {"target_id": 1},
+            "used": "target_id",
+            "hit": {"ref": "t1", "tag": "button", "center": {"x": 60, "y": 38}},
+            "url_before": "https://example.com/job/1",
+            "url_after": "https://example.com/job/1#applied",
+        }
+    return result
 
 
 class MockExtensionSession:

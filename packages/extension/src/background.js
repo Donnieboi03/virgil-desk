@@ -4,6 +4,13 @@ const AGENT_GROUP_TITLE = "Virgil · Agent";
 const DEFAULT_HOST = "http://127.0.0.1:8787";
 
 import { applyBoardPatch, chooseNavigationOp, policyBlock as tabPolicyBlock } from "./tabPolicy.js";
+import {
+  storeTargetMap,
+  getTargetMap,
+  clearMapsForTab,
+} from "./targetMap.js";
+
+const BUNDLE_FILE = "interactObserve.bundle.js";
 
 const HANDOFF_URLS_KEY = "virgil_desk_handoff_urls";
 
@@ -19,6 +26,8 @@ let deskConfig = {
     handoff_scroll_viewport_ratio: 0.85,
     screenshot_mode: "captureVisibleTab",
     default_wait_ms: 500,
+    interact_targets_max: 80,
+    observe_annotate_default: true,
   },
 };
 let wsConnected = false;
@@ -312,10 +321,80 @@ async function scrapeTab(tabId) {
   return result;
 }
 
+function scrollViewportRatio() {
+  return deskConfig.browser?.handoff_scroll_viewport_ratio ?? 0.85;
+}
+
+async function injectInteractBundle(tabId) {
+  await chrome.scripting.executeScript({
+    target: { tabId },
+    files: [BUNDLE_FILE],
+    world: "MAIN",
+  });
+}
+
+async function readViewportMeta(tabId) {
+  const [{ result }] = await chrome.scripting.executeScript({
+    target: { tabId },
+    func: () => ({
+      w: window.innerWidth,
+      h: window.innerHeight,
+      device_pixel_ratio: window.devicePixelRatio || 1,
+    }),
+  });
+  return result;
+}
+
+async function runPageObserve(tabId, opts) {
+  await injectInteractBundle(tabId);
+  const [{ result }] = await chrome.scripting.executeScript({
+    target: { tabId },
+    world: "MAIN",
+    func: (o) => globalThis.deskObserve(o),
+    args: [opts],
+  });
+  return result;
+}
+
+async function runPageUnmark(tabId) {
+  try {
+    await injectInteractBundle(tabId);
+    await chrome.scripting.executeScript({
+      target: { tabId },
+      world: "MAIN",
+      func: () => globalThis.deskUnmark(),
+    });
+  } catch {
+    /* tab may be gone */
+  }
+}
+
+async function runPageAct(tabId, op, params, targets, urlBefore) {
+  await injectInteractBundle(tabId);
+  const [{ result }] = await chrome.scripting.executeScript({
+    target: { tabId },
+    world: "MAIN",
+    func: (operation, p, t, before) => globalThis.deskAct(operation, p, t, before),
+    args: [op, params, targets, urlBefore],
+  });
+  return result;
+}
+
 async function screenshotTab(tabId) {
   const mode = deskConfig.browser?.screenshot_mode || "captureVisibleTab";
+  const vp = await readViewportMeta(tabId).catch(() => ({
+    w: 0,
+    h: 0,
+    device_pixel_ratio: 1,
+  }));
   if (mode !== "captureVisibleTab") {
-    return screenshotTabCanvas(tabId);
+    const shot = await screenshotTabCanvas(tabId);
+    return {
+      ...shot,
+      width: shot.width || vp.w,
+      height: shot.height || vp.h,
+      device_pixel_ratio: vp.device_pixel_ratio,
+    };
   }
   const tab = await chrome.tabs.get(tabId);
   const windowId = tab.windowId;
@@ -327,7 +406,16 @@ async function screenshotTab(tabId) {
     await new Promise((r) => setTimeout(r, waitMs));
     const dataUrl = await chrome.tabs.captureVisibleTab(windowId, { format: "png" });
     const base64 = dataUrl.split(",")[1] || "";
-    return { mime: "image/png", base64, width: 0, height: 0 };
+    const dpr = vp.device_pixel_ratio || 1;
+    return {
+      mime: "image/png",
+      base64,
+      width: Math.round(vp.w * dpr),
+      height: Math.round(vp.h * dpr),
+      css_width: vp.w,
+      css_height: vp.h,
+      device_pixel_ratio: dpr,
+    };
   } finally {
     if (priorTabId && priorTabId !== tabId) {
       await chrome.tabs.update(priorTabId, { active: true }).catch(() => {});
@@ -400,64 +488,241 @@ async function runBrowserCommand(command) {
       return { ...base, ok: false, error: block, duration_ms: Date.now() - started };
     }
 
-    if (command.op === "scroll") {
-      const dir = command.params?.direction === "up" ? -1 : 1;
-      const ratio = scrollViewportRatio();
-      await chrome.scripting.executeScript({
-        target: { tabId },
-        func: (d, r) => window.scrollBy(0, d * window.innerHeight * r),
-        args: [dir, ratio],
+    if (command.op === "observe") {
+      const maxTargets = deskConfig.browser?.interact_targets_max ?? 80;
+      const annotate =
+        command.params?.annotate ??
+        deskConfig.browser?.observe_annotate_default ??
+        true;
+      const excerptMax = deskConfig.browser?.scrape_excerpt_max_chars ?? 8000;
+      const snap = await scrapeTab(tabId);
+      const pageObserve = await runPageObserve(tabId, { maxTargets, annotate });
+      const shot = await screenshotTab(tabId);
+      await runPageUnmark(tabId);
+      const interact_targets = (pageObserve?.interact_targets || []).map(
+        ({ mark_label, ...rest }) => rest,
+      );
+      storeTargetMap(command.run_id, tabId, {
+        interact_targets,
+        scroll_containers: pageObserve?.scroll_containers || [],
+        url: pageObserve?.url || snap.url,
       });
+      const observe = {
+        url: pageObserve?.url || snap.url,
+        title: pageObserve?.title || snap.title,
+        viewport: pageObserve?.viewport || { w: 0, h: 0 },
+        device_pixel_ratio: pageObserve?.device_pixel_ratio ?? 1,
+        text_excerpt: snap.text?.slice(0, excerptMax) ?? "",
+        interact_targets,
+        scroll_containers: pageObserve?.scroll_containers || [],
+      };
+      return {
+        ...base,
+        tab_id: tabId,
+        url: observe.url,
+        title: observe.title,
+        scrape_excerpt: observe.text_excerpt,
+        observe,
+        interact_targets,
+        scroll_containers: observe.scroll_containers,
+        viewport: observe.viewport,
+        device_pixel_ratio: observe.device_pixel_ratio,
+        screenshot: shot,
+        duration_ms: Date.now() - started,
+      };
+    }
+
+    let actResolved = undefined;
+    const urlBeforeAct = (await scrapeTab(tabId).catch(() => ({}))).url;
+
+    if (command.op === "scroll") {
+      const stored = getTargetMap(command.run_id, tabId);
+      const targets = stored?.interact_targets || [];
+      const scrollContainers = stored?.scroll_containers || [];
+      const allTargets = [...targets, ...scrollContainers.map((s) => ({ ...s, kind: "scroll_container" }))];
+      if (command.params?.target_id && allTargets.length) {
+        const act = await runPageAct(
+          tabId,
+          "scroll",
+          { ...command.params, ratio: scrollViewportRatio() },
+          allTargets,
+          urlBeforeAct,
+        );
+        if (!act?.ok) {
+          return { ...base, ok: false, error: act.error, act_resolved: act.act_resolved, duration_ms: Date.now() - started };
+        }
+        actResolved = act.act_resolved;
+      } else {
+        const dir = command.params?.direction === "up" ? -1 : 1;
+        const ratio = scrollViewportRatio();
+        await chrome.scripting.executeScript({
+          target: { tabId },
+          func: (d, r) => window.scrollBy(0, d * window.innerHeight * r),
+          args: [dir, ratio],
+        });
+        actResolved = {
+          op: "scroll",
+          requested: command.params || {},
+          used: "viewport",
+          url_before: urlBeforeAct,
+          url_after: (await scrapeTab(tabId).catch(() => ({}))).url,
+        };
+      }
     } else if (command.op === "focusTab") {
       await chrome.tabs.update(tabId, { active: true });
       return { ...base, tab_id: tabId, duration_ms: Date.now() - started };
     } else if (command.op === "click") {
-      const sel = command.params?.selector;
-      const [{ result: clicked }] = await chrome.scripting.executeScript({
-        target: { tabId },
-        func: (s) => {
-          const el = document.querySelector(s);
-          if (!el) return false;
-          el.click();
-          return true;
-        },
-        args: [sel],
-      });
-      if (!clicked) {
+      const params = command.params || {};
+      const stored = getTargetMap(command.run_id, tabId);
+      if (params.target_id != null || params.ref || params.text || params.contains || (params.x != null && params.y != null)) {
+        if (!stored?.interact_targets?.length) {
+          return {
+            ...base,
+            ok: false,
+            error: "stale_observe: run observe first",
+            duration_ms: Date.now() - started,
+          };
+        }
+        const act = await runPageAct(
+          tabId,
+          "click",
+          params,
+          stored.interact_targets,
+          urlBeforeAct || stored.url,
+        );
+        if (!act?.ok) {
+          return {
+            ...base,
+            ok: false,
+            error: act.error,
+            act_resolved: act.act_resolved,
+            duration_ms: Date.now() - started,
+          };
+        }
+        actResolved = act.act_resolved;
+      } else if (params.selector) {
+        const [{ result: clicked }] = await chrome.scripting.executeScript({
+          target: { tabId },
+          func: (s) => {
+            const el = document.querySelector(s);
+            if (!el) return false;
+            el.click();
+            return true;
+          },
+          args: [params.selector],
+        });
+        if (!clicked) {
+          return {
+            ...base,
+            ok: false,
+            error: `selector not found: ${params.selector}`,
+            duration_ms: Date.now() - started,
+          };
+        }
+        actResolved = {
+          op: "click",
+          requested: params,
+          used: "selector",
+          url_before: urlBeforeAct,
+          url_after: (await scrapeTab(tabId).catch(() => ({}))).url,
+        };
+      } else {
         return {
           ...base,
           ok: false,
-          error: `selector not found: ${sel}`,
+          error: "click requires target_id, text, coordinates, or selector",
           duration_ms: Date.now() - started,
         };
       }
     } else if (command.op === "fill") {
-      const sel = command.params?.selector;
-      const val = command.params?.value || "";
-      const [{ result: filled }] = await chrome.scripting.executeScript({
-        target: { tabId },
-        func: (s, v) => {
-          const el = document.querySelector(s);
-          if (!el) return false;
-          el.value = v;
-          el.dispatchEvent(new Event("input", { bubbles: true }));
-          return true;
-        },
-        args: [sel, val],
-      });
-      if (!filled) {
+      const params = command.params || {};
+      const stored = getTargetMap(command.run_id, tabId);
+      if (params.target_id != null || params.ref || params.text) {
+        if (!stored?.interact_targets?.length) {
+          return {
+            ...base,
+            ok: false,
+            error: "stale_observe: run observe first",
+            duration_ms: Date.now() - started,
+          };
+        }
+        const act = await runPageAct(
+          tabId,
+          "fill",
+          params,
+          stored.interact_targets,
+          urlBeforeAct || stored.url,
+        );
+        if (!act?.ok) {
+          return {
+            ...base,
+            ok: false,
+            error: act.error,
+            act_resolved: act.act_resolved,
+            duration_ms: Date.now() - started,
+          };
+        }
+        actResolved = act.act_resolved;
+      } else if (params.selector) {
+        const sel = params.selector;
+        const val = params.value || "";
+        const [{ result: filled }] = await chrome.scripting.executeScript({
+          target: { tabId },
+          func: (s, v) => {
+            const el = document.querySelector(s);
+            if (!el) return false;
+            el.value = v;
+            el.dispatchEvent(new Event("input", { bubbles: true }));
+            return true;
+          },
+          args: [sel, val],
+        });
+        if (!filled) {
+          return {
+            ...base,
+            ok: false,
+            error: `selector not found: ${sel}`,
+            duration_ms: Date.now() - started,
+          };
+        }
+        actResolved = {
+          op: "fill",
+          requested: params,
+          used: "selector",
+          url_before: urlBeforeAct,
+          url_after: (await scrapeTab(tabId).catch(() => ({}))).url,
+        };
+      } else {
         return {
           ...base,
           ok: false,
-          error: `selector not found: ${sel}`,
+          error: "fill requires target_id or selector",
           duration_ms: Date.now() - started,
         };
       }
+    } else if (command.op === "key") {
+      const act = await runPageAct(
+        tabId,
+        "key",
+        command.params || {},
+        getTargetMap(command.run_id, tabId)?.interact_targets || [],
+        urlBeforeAct,
+      );
+      if (!act?.ok) {
+        return {
+          ...base,
+          ok: false,
+          error: act.error,
+          act_resolved: act.act_resolved,
+          duration_ms: Date.now() - started,
+        };
+      }
+      actResolved = act.act_resolved;
     } else if (command.op === "wait") {
       await new Promise((r) => setTimeout(r, command.params?.ms || 500));
     }
 
-    if (["click", "fill", "scroll", "scrape", "screenshot", "openTab", "duplicateTab"].includes(command.op)) {
+    if (["click", "fill", "scroll", "key", "scrape", "screenshot", "openTab", "duplicateTab"].includes(command.op)) {
       const excerptMax = deskConfig.browser?.scrape_excerpt_max_chars ?? 4000;
       const snap = await scrapeTab(tabId);
       const shot = await screenshotTab(tabId);
@@ -468,13 +733,10 @@ async function runBrowserCommand(command) {
         title: snap.title,
         scrape_excerpt: snap.text?.slice(0, excerptMax),
         screenshot: shot,
+        act_resolved: actResolved,
         duration_ms: Date.now() - started,
       };
-      if (command.op === "click" || command.op === "fill") {
-        // auto-verify already included
-      }
       if (command.op === "scrape" || command.op === "screenshot") return out;
-      if (command.op === "click" || command.op === "fill") return out;
       return out;
     }
 

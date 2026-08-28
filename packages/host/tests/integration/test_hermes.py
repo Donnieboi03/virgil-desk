@@ -115,10 +115,25 @@ def test_hermes_path_browser_click_returns_screenshot(hermes_backend):
 
 
 def test_hermes_execute_invokes_browser_command(hermes_backend, monkeypatch):
+    import json
     import threading
     from typing import Any
 
-    from desk_host.backends.hermes import HermesBackend
+    from desk_host.backends.hermes import HermesBackend, HermesRunResult
+
+    payload = json.dumps(
+        {
+            "decomposition": "Review the app page.",
+            "items": [
+                {"column": "agent", "title": "Summarize page", "status": "running"},
+            ],
+        }
+    )
+
+    async def fake_run(_self, _message: str, **kwargs) -> HermesRunResult:
+        return HermesRunResult(stdout=payload, stderr="", exit_code=0)
+
+    monkeypatch.setattr(HermesBackend, "_hermes_run", fake_run)
 
     async def fake_execute(_self, item: dict[str, Any], ctx: dict[str, Any]) -> dict[str, Any]:
         from desk_host.app import dispatch_browser_command_and_wait
