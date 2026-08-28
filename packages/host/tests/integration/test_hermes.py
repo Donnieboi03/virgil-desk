@@ -162,3 +162,80 @@ def test_hermes_execute_invokes_browser_command(hermes_backend, monkeypatch):
             assert holder[0].status_code == 200
         finally:
             ext.close()
+
+
+def test_execute_hermes_subprocess_does_not_block_browser(hermes_backend, monkeypatch):
+    """While Hermes runs via thread pool, desk-browser POSTs must still reach the host."""
+    import json
+    import threading
+
+    from desk_host.backends.hermes import HermesBackend, HermesRunResult
+
+    subprocess_started = threading.Event()
+    allow_finish = threading.Event()
+
+    def slow_run_sync(cmd, *, env, timeout):
+        if any("Execute one Virgil Desk" in str(part) for part in cmd):
+            subprocess_started.set()
+            assert allow_finish.wait(timeout=5)
+            return HermesRunResult(stdout="Reviewed inbox thread.", stderr="", exit_code=0)
+        stub = {
+            "decomposition": "stub for test",
+            "items": [
+                {"column": "agent", "title": "Agent task", "status": "running"},
+                {"column": "you", "title": "Review", "status": "proposed"},
+            ],
+        }
+        return HermesRunResult(stdout=json.dumps(stub), stderr="", exit_code=0)
+
+    monkeypatch.setattr(HermesBackend, "_hermes_run_sync", staticmethod(slow_run_sync))
+
+    handoff = {
+        "run_id": "desk_noblock",
+        "url": "https://example.com/inbox",
+        "human_tab_id": 1,
+        "agent_tab_id": 2,
+        "window_id": 1,
+    }
+    with TestClient(app) as client:
+        ext = MockExtensionSession(client)
+        try:
+            result = ext.handoff(handoff)
+            run_id = result["run_id"]
+            agent = [i for i in result["items"] if i["column"] == "agent"][0]
+            holder: list = []
+
+            def _execute():
+                r = client.post(
+                    f"/v1/items/{agent['id']}/execute",
+                    json={"run_id": run_id},
+                )
+                holder.append(r)
+
+            thread = threading.Thread(target=_execute, daemon=True)
+            thread.start()
+            ext.respond_next_browser_command(run_id=run_id, op="scrape")
+            assert subprocess_started.wait(timeout=5), "Hermes subprocess should start"
+
+            pending = run_browser_wait(
+                client,
+                {
+                    "run_id": run_id,
+                    "op": "scrape",
+                    "human_tab_id": 1,
+                    "tab_id": 2,
+                    "wait": True,
+                    "wait_timeout_sec": 5,
+                },
+            )
+            ext.respond_next_browser_command(run_id=run_id, op="scrape")
+            pending["thread"].join(timeout=5)
+            assert pending["holder"][0]["status"] == 200
+
+            allow_finish.set()
+            thread.join(timeout=5)
+            assert holder
+            assert holder[0].status_code == 200
+            assert holder[0].json()["status"] == "done"
+        finally:
+            ext.close()

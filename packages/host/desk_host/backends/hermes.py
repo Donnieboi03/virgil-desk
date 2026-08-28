@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
 import os
 import subprocess
@@ -207,6 +208,55 @@ class HermesBackend:
 
         return await dispatch_browser_command_and_wait(command)
 
+    def _repo_root(self) -> Path:
+        return Path(__file__).resolve().parents[4]
+
+    def _hermes_subprocess_env(self, *, accept_hooks: bool) -> dict[str, str]:
+        """Env for Hermes CLI children — desk-browser must reach desk-host."""
+        env = os.environ.copy()
+        env["HERMES_HOME"] = self.home
+        if accept_hooks:
+            env["HERMES_ACCEPT_HOOKS"] = "1"
+        env.setdefault("DESK_HOST", "127.0.0.1")
+        env.setdefault("DESK_PORT", "8787")
+        repo_root = self._repo_root()
+        host_pkg = repo_root / "packages" / "host"
+        pythonpath_parts = [str(host_pkg)]
+        existing = env.get("PYTHONPATH", "")
+        if existing:
+            pythonpath_parts.append(existing)
+        env["PYTHONPATH"] = os.pathsep.join(pythonpath_parts)
+        repo_scripts = repo_root / "scripts"
+        if repo_scripts.is_dir():
+            env["PATH"] = f"{repo_scripts}{os.pathsep}{env.get('PATH', '')}"
+        return env
+
+    @staticmethod
+    def _hermes_run_sync(
+        cmd: list[str],
+        *,
+        env: dict[str, str],
+        timeout: int,
+    ) -> HermesRunResult:
+        try:
+            proc = subprocess.run(
+                cmd,
+                capture_output=True,
+                text=True,
+                timeout=timeout,
+                env=env,
+                check=False,
+            )
+            return HermesRunResult(
+                stdout=proc.stdout or "",
+                stderr=proc.stderr or "",
+                exit_code=proc.returncode,
+            )
+        except FileNotFoundError:
+            return HermesRunResult(stdout="", stderr="hermes CLI not found", exit_code=127)
+        except subprocess.TimeoutExpired:
+            return HermesRunResult(stdout="", stderr="hermes timeout", exit_code=124)
+
     async def _hermes_run(
         self,
         message: str,
@@ -219,13 +269,7 @@ class HermesBackend:
     ) -> HermesRunResult:
         cfg = load_config()
         timeout = timeout_sec or cfg.hermes.decompose_timeout_sec
-        env = os.environ.copy()
-        env["HERMES_HOME"] = self.home
-        if accept_hooks:
-            env["HERMES_ACCEPT_HOOKS"] = "1"
-        repo_scripts = Path(__file__).resolve().parents[4] / "scripts"
-        if repo_scripts.is_dir():
-            env["PATH"] = f"{repo_scripts}{os.pathsep}{env.get('PATH', '')}"
+        env = self._hermes_subprocess_env(accept_hooks=accept_hooks)
         cmd = [
             "hermes",
             "-p",
@@ -246,24 +290,12 @@ class HermesBackend:
                 cmd.extend(["-s", skill])
         if image_path and Path(image_path).is_file():
             cmd.extend(["--image", image_path])
-        try:
-            proc = subprocess.run(
-                cmd,
-                capture_output=True,
-                text=True,
-                timeout=timeout,
-                env=env,
-                check=False,
-            )
-            return HermesRunResult(
-                stdout=proc.stdout or "",
-                stderr=proc.stderr or "",
-                exit_code=proc.returncode,
-            )
-        except FileNotFoundError:
-            return HermesRunResult(stdout="", stderr="hermes CLI not found", exit_code=127)
-        except subprocess.TimeoutExpired:
-            return HermesRunResult(stdout="", stderr="hermes timeout", exit_code=124)
+        return await asyncio.to_thread(
+            self._hermes_run_sync,
+            cmd,
+            env=env,
+            timeout=timeout,
+        )
 
     async def execute_safe(self, item: dict[str, Any], ctx: dict[str, Any]) -> dict[str, Any]:
         run_id = ctx.get("run_id", "")
