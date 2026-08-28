@@ -7,6 +7,7 @@ import { applyBoardPatch, chooseNavigationOp, policyBlock as tabPolicyBlock } fr
 import {
   storeTargetMap,
   getTargetMap,
+  clearTargetMap,
   clearMapsForTab,
 } from "./targetMap.js";
 
@@ -449,8 +450,20 @@ async function screenshotTabCanvas(tabId) {
   return result;
 }
 
-function scrollViewportRatio() {
-  return deskConfig.browser?.handoff_scroll_viewport_ratio ?? 0.85;
+async function ensureTargetMapFresh(stored, runId, tabId, urlBeforeAct) {
+  if (!stored) {
+    return { ok: false, error: "stale_observe: run observe first" };
+  }
+  const liveUrl =
+    urlBeforeAct || (await scrapeTab(tabId).catch(() => ({}))).url || "";
+  if (stored.url && liveUrl && stored.url !== liveUrl) {
+    clearTargetMap(runId, tabId);
+    return {
+      ok: false,
+      error: "stale_observe: page navigated since observe — run observe again",
+    };
+  }
+  return { ok: true, liveUrl: liveUrl || stored.url };
 }
 
 async function runBrowserCommand(command) {
@@ -537,16 +550,43 @@ async function runBrowserCommand(command) {
 
     if (command.op === "scroll") {
       const stored = getTargetMap(command.run_id, tabId);
-      const targets = stored?.interact_targets || [];
-      const scrollContainers = stored?.scroll_containers || [];
-      const allTargets = [...targets, ...scrollContainers.map((s) => ({ ...s, kind: "scroll_container" }))];
-      if (command.params?.target_id && allTargets.length) {
+      const scrollParams = { ...command.params, ratio: scrollViewportRatio() };
+      const wantsContainer =
+        scrollParams.target_id != null ||
+        (scrollParams.ref && String(scrollParams.ref).startsWith("s"));
+      if (wantsContainer) {
+        const fresh = await ensureTargetMapFresh(
+          stored,
+          command.run_id,
+          tabId,
+          urlBeforeAct,
+        );
+        if (!fresh.ok) {
+          return {
+            ...base,
+            ok: false,
+            error: fresh.error,
+            duration_ms: Date.now() - started,
+          };
+        }
+        const scrollTargets = (stored?.scroll_containers || []).map((s) => ({
+          ...s,
+          kind: "scroll_container",
+        }));
+        if (!scrollTargets.length) {
+          return {
+            ...base,
+            ok: false,
+            error: "stale_observe: no scroll containers from observe",
+            duration_ms: Date.now() - started,
+          };
+        }
         const act = await runPageAct(
           tabId,
           "scroll",
-          { ...command.params, ratio: scrollViewportRatio() },
-          allTargets,
-          urlBeforeAct,
+          scrollParams,
+          scrollTargets,
+          urlBeforeAct || fresh.liveUrl,
         );
         if (!act?.ok) {
           return { ...base, ok: false, error: act.error, act_resolved: act.act_resolved, duration_ms: Date.now() - started };
@@ -574,7 +614,39 @@ async function runBrowserCommand(command) {
     } else if (command.op === "click") {
       const params = command.params || {};
       const stored = getTargetMap(command.run_id, tabId);
-      if (params.target_id != null || params.ref || params.text || params.contains || (params.x != null && params.y != null)) {
+      const hasCoords = params.x != null && params.y != null;
+      const needsMap =
+        params.target_id != null ||
+        params.ref ||
+        params.text ||
+        params.contains;
+      if (hasCoords && !needsMap) {
+        const act = await runPageAct(tabId, "click", params, [], urlBeforeAct);
+        if (!act?.ok) {
+          return {
+            ...base,
+            ok: false,
+            error: act.error,
+            act_resolved: act.act_resolved,
+            duration_ms: Date.now() - started,
+          };
+        }
+        actResolved = act.act_resolved;
+      } else if (needsMap) {
+        const fresh = await ensureTargetMapFresh(
+          stored,
+          command.run_id,
+          tabId,
+          urlBeforeAct,
+        );
+        if (!fresh.ok) {
+          return {
+            ...base,
+            ok: false,
+            error: fresh.error,
+            duration_ms: Date.now() - started,
+          };
+        }
         if (!stored?.interact_targets?.length) {
           return {
             ...base,
@@ -588,7 +660,7 @@ async function runBrowserCommand(command) {
           "click",
           params,
           stored.interact_targets,
-          urlBeforeAct || stored.url,
+          urlBeforeAct || fresh.liveUrl,
         );
         if (!act?.ok) {
           return {
@@ -638,6 +710,20 @@ async function runBrowserCommand(command) {
       const params = command.params || {};
       const stored = getTargetMap(command.run_id, tabId);
       if (params.target_id != null || params.ref || params.text) {
+        const fresh = await ensureTargetMapFresh(
+          stored,
+          command.run_id,
+          tabId,
+          urlBeforeAct,
+        );
+        if (!fresh.ok) {
+          return {
+            ...base,
+            ok: false,
+            error: fresh.error,
+            duration_ms: Date.now() - started,
+          };
+        }
         if (!stored?.interact_targets?.length) {
           return {
             ...base,
@@ -651,7 +737,7 @@ async function runBrowserCommand(command) {
           "fill",
           params,
           stored.interact_targets,
-          urlBeforeAct || stored.url,
+          urlBeforeAct || fresh.liveUrl,
         );
         if (!act?.ok) {
           return {

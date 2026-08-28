@@ -32,6 +32,7 @@ _pending_commands: asyncio.Queue[dict[str, Any]] = asyncio.Queue()
 _command_results: dict[str, dict[str, Any]] = {}
 _command_waiters: dict[str, asyncio.Future[dict[str, Any]]] = {}
 _browser_result_counts: dict[str, int] = {}
+_command_evidence_flags: dict[str, bool] = {}
 
 
 class ExtensionNotConnectedError(Exception):
@@ -101,6 +102,7 @@ class BrowserCommandBody(BaseModel):
     tab_id: int | None = None
     human_tab_id: int | None = None
     params: dict[str, Any] | None = None
+    count_evidence: bool = True
     wait: bool = False
     wait_timeout_sec: float = Field(default=30.0, ge=1.0, le=120.0)
 
@@ -261,6 +263,7 @@ def reset_state_for_tests() -> None:
             fut.cancel()
     _command_waiters.clear()
     _browser_result_counts.clear()
+    _command_evidence_flags.clear()
     _extension_ws = None
     _extension_connected = False
     reset_config_cache()
@@ -501,9 +504,11 @@ async def extension_ws(ws: WebSocket) -> None:
                     act_resolved=result.get("act_resolved"),
                 )
                 if run_id and result.get("ok"):
-                    _browser_result_counts[run_id] = (
-                        _browser_result_counts.get(run_id, 0) + 1
-                    )
+                    count_evidence = _command_evidence_flags.pop(cid or "", True)
+                    if count_evidence:
+                        _browser_result_counts[run_id] = (
+                            _browser_result_counts.get(run_id, 0) + 1
+                        )
                 cfg = get_config()
                 if cfg.observability.persist_screenshots and result.get("screenshot"):
                     path = persist_screenshot(
@@ -528,6 +533,9 @@ async def dispatch_browser_command(command: dict[str, Any]) -> None:
     run_id = command.get("run_id", "")
     op = command.get("op", "")
     cfg = get_config()
+    cid = command.get("command_id")
+    if cid:
+        _command_evidence_flags[cid] = command.get("count_evidence", True)
 
     if op in SCREENSHOT_OPS and run_id:
         count = _screenshot_counts.get(run_id, 0)

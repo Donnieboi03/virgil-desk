@@ -235,9 +235,16 @@ export function deskUnmark() {
   }
 }
 
-function resolveTarget(targets, params) {
-  if (params.target_id != null) {
-    const t = targets.find((x) => x.id === params.target_id);
+function normalizeTargetId(raw) {
+  if (raw == null || raw === "") return null;
+  const n = Number(raw);
+  return Number.isFinite(n) ? n : null;
+}
+
+export function resolveTarget(targets, params) {
+  const targetId = normalizeTargetId(params.target_id);
+  if (targetId != null) {
+    const t = targets.find((x) => x.id === targetId);
     if (t) return { target: t, used: "target_id" };
   }
   if (params.ref) {

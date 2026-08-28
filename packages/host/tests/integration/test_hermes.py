@@ -179,6 +179,55 @@ def test_hermes_execute_invokes_browser_command(hermes_backend, monkeypatch):
             ext.close()
 
 
+def test_hermes_execute_pre_scrape_alone_fails_evidence(hermes_backend, monkeypatch):
+    """Host pre-scrape must not satisfy execute_require_browser_evidence."""
+    import threading
+
+    from desk_host.backends.hermes import HermesBackend, HermesRunResult
+
+    async def fake_run(_self, _message: str, **kwargs) -> HermesRunResult:
+        return HermesRunResult(
+            stdout="Finished without calling desk-browser.",
+            stderr="",
+            exit_code=0,
+        )
+
+    monkeypatch.setattr(HermesBackend, "_hermes_run", fake_run)
+
+    handoff = {
+        "url": "https://example.com/app",
+        "human_tab_id": 1,
+        "agent_tab_id": 2,
+        "window_id": 1,
+    }
+    with TestClient(app) as client:
+        ext = MockExtensionSession(client)
+        try:
+            result = ext.handoff(handoff)
+            run_id = result["run_id"]
+            agent = [i for i in result["items"] if i["column"] == "agent"][0]
+            holder: list = []
+
+            def _execute():
+                r = client.post(
+                    f"/v1/items/{agent['id']}/execute",
+                    json={"run_id": run_id},
+                )
+                holder.append(r)
+
+            thread = threading.Thread(target=_execute, daemon=True)
+            thread.start()
+            handled = ext.respond_next_browser_command(run_id=run_id, op="scrape")
+            assert handled["command"].get("count_evidence") is False
+            thread.join(timeout=5)
+            assert holder
+            assert holder[0].status_code == 422
+            patch = ext.ws.receive_json()
+            assert patch["ops"][0]["item"]["status"] == "failed"
+        finally:
+            ext.close()
+
+
 def test_execute_hermes_subprocess_does_not_block_browser(hermes_backend, monkeypatch):
     """While Hermes runs via thread pool, desk-browser POSTs must still reach the host."""
     import json

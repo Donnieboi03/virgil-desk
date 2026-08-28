@@ -115,6 +115,7 @@ class HermesBackend:
                 "human_tab_id": human_tab,
                 "tab_id": agent_tab,
                 "handoff_url": ctx.get("handoff_url", ""),
+                "count_evidence": False,
             },
             timeout=cfg.host.browser_wait_timeout_sec,
         )

@@ -69,8 +69,11 @@ def test_execute_agent_posts_browser_command_and_marks_done():
 
             thread = threading.Thread(target=_execute, daemon=True)
             thread.start()
-            handled = ext.respond_next_browser_command(run_id=run_id, op="scrape")
-            assert handled["command"]["op"] == "scrape"
+            for expected_op in ("scrape", "observe"):
+                handled = ext.respond_next_browser_command(
+                    run_id=run_id, op=expected_op
+                )
+                assert handled["command"]["op"] == expected_op
             thread.join(timeout=5)
             assert holder
             resp = holder[0]

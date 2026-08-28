@@ -61,16 +61,25 @@ class MockBackend:
         from ..app import dispatch_browser_command_and_wait
 
         run_id = ctx.get("run_id", "")
-        result = await dispatch_browser_command_and_wait(
+        await dispatch_browser_command_and_wait(
             {
                 "run_id": run_id,
                 "op": "scrape",
                 "human_tab_id": ctx.get("human_tab_id") or item.get("human_tab_id"),
                 "tab_id": ctx.get("agent_tab_id") or item.get("agent_tab_id"),
+                "count_evidence": False,
+            }
+        )
+        result = await dispatch_browser_command_and_wait(
+            {
+                "run_id": run_id,
+                "op": "observe",
+                "human_tab_id": ctx.get("human_tab_id") or item.get("human_tab_id"),
+                "tab_id": ctx.get("agent_tab_id") or item.get("agent_tab_id"),
             }
         )
         excerpt = (result.get("scrape_excerpt") or "")[:500]
-        return {"summary": f"Mock agent finished: {excerpt or 'scrape ok'}"}
+        return {"summary": f"Mock agent finished: {excerpt or 'observe ok'}"}
 
     async def execute_safe(self, item: dict[str, Any], ctx: dict[str, Any]) -> dict[str, Any]:
         out = dict(item)
