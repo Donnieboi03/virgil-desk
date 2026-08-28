@@ -10,7 +10,7 @@
   "scripts": {
     "build": "npm run build -w @virgil-desk/protocol && npm run build -w @virgil-desk/extension",
     "test": "npm run test -w @virgil-desk/protocol && npm run test -w @virgil-desk/extension",
-    "validate:schema": "node scripts/validate-schemas.js"
+    "validate:schema": "node scripts/validate-schemas.mjs"
   },
   "engines": {
     "node": ">=20"

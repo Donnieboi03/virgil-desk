@@ -19,6 +19,7 @@ jobs:
       - run: npm install
       - run: npm run build -w @virgil-desk/protocol
       - run: npm run test -w @virgil-desk/protocol
-      - run: npm run build -w @virgil-desk/extension
+      - run: npm run test -w @virgil-desk/extension
+      - run: npm run validate:schema
       - run: pip install -e "./packages/host[dev]"
-      - run: pytest packages/host/tests
+      - run: pytest packages/host/tests -q

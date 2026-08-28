@@ -12,6 +12,7 @@ from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
 from pydantic import BaseModel, Field
 
 from .backends import get_backend, new_run_id
+from .calendar import book_calendar_slot
 from .observability import emit
 from .policy import policy_denied_reason, requires_auto_verify
 
@@ -44,6 +45,16 @@ class DenyBody(BaseModel):
     run_id: str
     proposal_id: str
     reason: str | None = None
+
+
+class BrowserCommandBody(BaseModel):
+    run_id: str
+    command_id: str | None = None
+    op: str
+    url: str | None = None
+    tab_id: int | None = None
+    human_tab_id: int | None = None
+    params: dict[str, Any] | None = None
 
 
 @asynccontextmanager
@@ -117,8 +128,21 @@ async def accept_item(item_id: str, body: AcceptBody) -> dict[str, Any]:
     )
     committed: dict[str, Any] = {"kind": prop.get("kind")}
     if prop.get("kind") == "calendar_slot":
-        committed["status"] = "booked_stub"
+        committed.update(book_calendar_slot(prop.get("payload") or {}))
     return {"ok": True, "work_item_id": item_id, "status": "done", "committed": committed}
+
+
+@app.post("/v1/browser")
+async def browser_command(body: BrowserCommandBody) -> dict[str, Any]:
+    """desk_browser tool entry — forwards BrowserOp to the extension."""
+    cmd = body.model_dump()
+    if not cmd.get("command_id"):
+        cmd["command_id"] = uuid.uuid4().hex
+    try:
+        await dispatch_browser_command(cmd)
+    except PermissionError as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
+    return {"ok": True, "command_id": cmd["command_id"]}
 
 
 @app.post("/v1/items/{item_id}/deny")

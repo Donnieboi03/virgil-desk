@@ -3,6 +3,8 @@ const PAIRS_KEY = "virgil_desk_tab_pairs";
 const AGENT_GROUP_TITLE = "Virgil · Agent";
 const DEFAULT_HOST = "http://127.0.0.1:8787";
 
+import { applyBoardPatch, policyBlock as tabPolicyBlock } from "./tabPolicy.js";
+
 let ws = null;
 let hostUrl = DEFAULT_HOST;
 
@@ -77,21 +79,7 @@ function connectWs() {
 
 async function applyPatch(ops) {
   const board = await loadBoard();
-  for (const patch of ops) {
-    if (patch.op === "add") {
-      board[patch.item.column].push(patch.item);
-    } else if (patch.op === "update") {
-      const col = patch.item.column;
-      board[col] = board[col].map((i) =>
-        i.id === patch.item.id ? patch.item : i,
-      );
-    } else if (patch.op === "remove") {
-      for (const col of ["you", "agent", "waiting"]) {
-        board[col] = board[col].filter((i) => i.id !== patch.id);
-      }
-    }
-  }
-  await saveBoard(board);
+  await saveBoard(applyBoardPatch(board, ops));
   chrome.runtime.sendMessage({ type: "boardUpdated" }).catch(() => {});
 }
 
@@ -156,14 +144,7 @@ async function resolveAgentTab(command) {
 }
 
 function policyBlock(command, tabId) {
-  if (
-    command.human_tab_id &&
-    tabId === command.human_tab_id &&
-    command.op !== "captureHandoffSnapshot"
-  ) {
-    return "human_tab_blocked";
-  }
-  return null;
+  return tabPolicyBlock(command, tabId);
 }
 
 async function scrapeTab(tabId) {

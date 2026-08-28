@@ -1,6 +1,6 @@
 # Virgil Desk
 
-**Virgil Desk** is a Chrome extension + local Host that allocates work between **you** and **agents** in the browser you already use. Sibling to [Virgil Hub](https://github.com/) (Notion + tick); standalone at runtime.
+**Virgil Desk** is a Chrome extension + local Host that allocates work between **you** and **agents** in the browser you already use. Sibling to [Virgil Hub](https://github.com/Donnieboi03/Virgil) (Notion + tick); standalone at runtime.
 
 ## Problem
 

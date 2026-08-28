@@ -10,6 +10,7 @@ mkdirSync(dist, { recursive: true });
 
 const files = [
   "manifest.json",
+  "tabPolicy.js",
   "background.js",
   "panel.html",
   "panel.css",

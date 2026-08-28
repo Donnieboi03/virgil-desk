@@ -31,6 +31,25 @@ class MockBackend:
                     "status": "proposed",
                     "proposals": [],
                 },
+                {
+                    "id": f"item_{run_id[:8]}_wait",
+                    "column": "waiting",
+                    "title": "Proposed calendar slot",
+                    "source": {"kind": "handoff", "url": url},
+                    "status": "proposed",
+                    "proposals": [
+                        {
+                            "id": f"prop_{run_id[:8]}",
+                            "kind": "calendar_slot",
+                            "payload": {
+                                "start": "2026-08-28T15:00:00-07:00",
+                                "end": "2026-08-28T15:30:00-07:00",
+                                "title": "Follow-up",
+                            },
+                            "requires": "accept",
+                        }
+                    ],
+                },
             ],
         }
 
