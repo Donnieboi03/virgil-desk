@@ -4,6 +4,7 @@ const AGENT_GROUP_TITLE = "Virgil · Agent";
 const DEFAULT_HOST = "http://127.0.0.1:8787";
 
 import { applyBoardPatch, chooseNavigationOp, policyBlock as tabPolicyBlock } from "./tabPolicy.js";
+import { withProvisionLock, planAgentTabForItem } from "./agentTabs.js";
 import {
   storeTargetMap,
   getTargetMap,
@@ -261,29 +262,49 @@ async function syncItemAgentTab(itemId, runId, agentTabId) {
   }
 }
 
-async function provisionAgentItemTabs(runId, ops) {
-  if (!runId) return ops;
+async function assignSnapshotTabToItem(runId, itemId, tabId, humanTabId) {
   const data = await chrome.storage.session.get(PAIRS_KEY);
   const pairs = data[PAIRS_KEY] || {};
-  const runPair = pairs[runId];
-  const humanTabId = runPair?.humanTabId;
-  if (!humanTabId) return ops;
+  if (!pairs[runId]) {
+    pairs[runId] = { humanTabId, items: {} };
+  }
+  if (!pairs[runId].items) pairs[runId].items = {};
+  pairs[runId].items[itemId] = tabId;
+  await chrome.storage.session.set({ [PAIRS_KEY]: pairs });
+}
 
+async function loadRunPair(runId) {
+  const data = await chrome.storage.session.get(PAIRS_KEY);
+  return data[PAIRS_KEY]?.[runId];
+}
+
+async function provisionAgentItemTabs(runId, ops) {
+  if (!runId) return ops;
   const agentAdds = ops.filter((p) => p.op === "add" && p.item?.column === "agent");
   if (!agentAdds.length) return ops;
 
-  for (const patch of agentAdds) {
-    const item = patch.item;
-    const existing = runPair.items?.[item.id];
-    let tabId = existing;
-    if (!tabId) {
-      tabId = await duplicateAgentTabForItem(humanTabId, runId, item.id);
+  return withProvisionLock(runId, async () => {
+    const runPair = await loadRunPair(runId);
+    const humanTabId = runPair?.humanTabId;
+    if (!humanTabId) return ops;
+
+    for (let index = 0; index < agentAdds.length; index++) {
+      const item = agentAdds[index].item;
+      const freshPair = (await loadRunPair(runId)) || runPair;
+      const plan = planAgentTabForItem(item.id, index, freshPair);
+      let tabId = plan.tabId;
+      if (plan.source === "duplicate") {
+        tabId = await duplicateAgentTabForItem(humanTabId, runId, item.id);
+      } else if (plan.source === "snapshot" && tabId) {
+        await assignSnapshotTabToItem(runId, item.id, tabId, humanTabId);
+      }
+      if (!tabId) continue;
+      item.agent_tab_id = tabId;
+      item.human_tab_id = item.human_tab_id || humanTabId;
+      await syncItemAgentTab(item.id, runId, tabId);
     }
-    item.agent_tab_id = tabId;
-    item.human_tab_id = item.human_tab_id || humanTabId;
-    await syncItemAgentTab(item.id, runId, tabId);
-  }
-  return ops;
+    return ops;
+  });
 }
 
 async function ensureAgentGroup(tabId, windowId) {
@@ -1089,6 +1110,7 @@ async function handoffActiveTab(intent, explicitTabId) {
 }
 
 async function acceptProposal({ itemId, proposalId, runId }) {
+  // Waiting Accept: commit proposal only — no agent tab provisioning until NEXTSTEPS ships.
   const res = await fetch(`${hostUrl}/v1/items/${itemId}/accept`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },

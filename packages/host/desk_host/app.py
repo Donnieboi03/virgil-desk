@@ -276,6 +276,7 @@ def reset_state_for_tests() -> None:
 
 @app.post("/v1/items/{item_id}/accept")
 async def accept_item(item_id: str, body: AcceptBody) -> dict[str, Any]:
+    """Commit a Waiting proposal. Tab provisioning for Waiting items is future work — see docs/NEXTSTEPS.md."""
     prop = _proposals.get(body.proposal_id)
     if not prop:
         raise HTTPException(status_code=404, detail="proposal not found")
