@@ -1,15 +1,22 @@
-# E2E (optional nightly)
+# E2E (mock extension)
 
-Manual checklist for live Chrome + Host (M2+):
+Automated E2E simulates the Chrome extension over WebSocket — no headed Chrome required.
 
-1. Handoff = snapshot only; no duplicate until agent needs same page
-2. Different URL → `openTab` in Agent group (not duplicate)
-3. Same-page agent work → `duplicateTab`; human tab untouched
-4. Post-click `command_result` includes scrape + screenshot
-5. Board shows You / Agent / Waiting; Accept without Notion
-6. Human tab never receives agent ops (policy test)
-7. Board persists after Chrome restart (`storage.local`)
-8. `desk-events --run-id …` shows screenshot metadata
-9. Hermes `skill_manage` works after handoff
+```bash
+npm run test:e2e
+```
 
-Automated Playwright E2E is deferred until unpacked-extension CI lane is stable.
+Coverage:
+
+1. WS handoff → board patch → `POST /v1/browser` (wait) → `command_result` with screenshot
+2. `navigate` + same URL → `duplicateTab`; different URL → `openTab`
+3. Calendar Accept after mock handoff
+4. Hermes backend path with calendar proposal + browser verify
+
+Helper: `packages/host/tests/helpers/mock_extension.py`
+
+## Manual Chrome checklist (M2+)
+
+See items 1–9 in the plan manual validation section — run after loading `packages/extension/dist` unpacked.
+
+Playwright against a real unpacked extension is deferred to nightly CI.

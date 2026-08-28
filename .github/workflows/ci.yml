@@ -19,7 +19,13 @@ jobs:
       - run: npm install
       - run: npm run build -w @virgil-desk/protocol
       - run: npm run test -w @virgil-desk/protocol
+      - run: npm run build -w @virgil-desk/extension
+      - run: cd packages/extension/dist && zip -r ../../extension-dist.zip .
       - run: npm run test -w @virgil-desk/extension
       - run: npm run validate:schema
       - run: pip install -e "./packages/host[dev]"
-      - run: pytest packages/host/tests -q
+      - run: pytest packages/host/tests packages/e2e -q
+      - uses: actions/upload-artifact@v4
+        with:
+          name: extension-dist
+          path: packages/extension-dist.zip

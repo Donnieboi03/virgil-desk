@@ -10,6 +10,8 @@
   "scripts": {
     "build": "npm run build -w @virgil-desk/protocol && npm run build -w @virgil-desk/extension",
     "test": "npm run test -w @virgil-desk/protocol && npm run test -w @virgil-desk/extension",
+    "test:e2e": "pip install -e ./packages/host[dev] -q && pytest packages/e2e packages/host/tests/integration/test_ws.py packages/host/tests/integration/test_hermes.py -q",
+    "test:host": "pip install -e ./packages/host[dev] -q && pytest packages/host/tests -q",
     "validate:schema": "node scripts/validate-schemas.mjs"
   },
   "engines": {

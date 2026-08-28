@@ -13,15 +13,18 @@ from pydantic import BaseModel, Field
 
 from .backends import get_backend, new_run_id
 from .calendar import book_calendar_slot
+from .navigation import normalize_browser_command
 from .observability import emit
-from .policy import policy_denied_reason, requires_auto_verify
+from .policy import policy_denied_reason
 
 # In-memory proposal + extension connection state
 _proposals: dict[str, dict[str, Any]] = {}
+_handoff_urls: dict[str, str] = {}
 _extension_ws: WebSocket | None = None
 _extension_connected = False
 _pending_commands: asyncio.Queue[dict[str, Any]] = asyncio.Queue()
 _command_results: dict[str, dict[str, Any]] = {}
+_command_waiters: dict[str, asyncio.Future[dict[str, Any]]] = {}
 
 
 class HandoffBody(BaseModel):
@@ -52,9 +55,12 @@ class BrowserCommandBody(BaseModel):
     command_id: str | None = None
     op: str
     url: str | None = None
+    handoff_url: str | None = None
     tab_id: int | None = None
     human_tab_id: int | None = None
     params: dict[str, Any] | None = None
+    wait: bool = False
+    wait_timeout_sec: float = Field(default=30.0, ge=1.0, le=120.0)
 
 
 @asynccontextmanager
@@ -86,6 +92,7 @@ async def _handle_handoff(payload: dict[str, Any]) -> dict[str, Any]:
         raise HTTPException(status_code=400, detail="url required")
     run_id = payload.get("run_id") or new_run_id()
     payload["run_id"] = run_id
+    _handoff_urls[run_id] = str(payload.get("url") or "")
     emit("handoff.started", run_id, {"url": payload.get("url")})
     backend = get_backend()
     result = await backend.decompose(payload)
@@ -116,6 +123,20 @@ async def _send_to_extension(message: dict[str, Any]) -> None:
     await _extension_ws.send_json(message)
 
 
+def reset_state_for_tests() -> None:
+    """Clear in-memory hub state between tests."""
+    global _extension_ws, _extension_connected
+    _proposals.clear()
+    _handoff_urls.clear()
+    _command_results.clear()
+    for fut in list(_command_waiters.values()):
+        if not fut.done():
+            fut.cancel()
+    _command_waiters.clear()
+    _extension_ws = None
+    _extension_connected = False
+
+
 @app.post("/v1/items/{item_id}/accept")
 async def accept_item(item_id: str, body: AcceptBody) -> dict[str, Any]:
     prop = _proposals.get(body.proposal_id)
@@ -135,13 +156,25 @@ async def accept_item(item_id: str, body: AcceptBody) -> dict[str, Any]:
 @app.post("/v1/browser")
 async def browser_command(body: BrowserCommandBody) -> dict[str, Any]:
     """desk_browser tool entry — forwards BrowserOp to the extension."""
-    cmd = body.model_dump()
+    cmd = body.model_dump(exclude={"wait", "wait_timeout_sec"})
+    if not cmd.get("handoff_url") and cmd.get("run_id"):
+        cmd["handoff_url"] = _handoff_urls.get(cmd["run_id"], "")
+    cmd = normalize_browser_command(cmd)
     if not cmd.get("command_id"):
         cmd["command_id"] = uuid.uuid4().hex
     try:
+        if body.wait:
+            if not _extension_connected:
+                raise HTTPException(status_code=503, detail="extension not connected")
+            result = await dispatch_browser_command_and_wait(
+                cmd, timeout=body.wait_timeout_sec
+            )
+            return {"ok": True, "command_id": cmd["command_id"], "result": result}
         await dispatch_browser_command(cmd)
     except PermissionError as exc:
         raise HTTPException(status_code=403, detail=str(exc)) from exc
+    except asyncio.TimeoutError as exc:
+        raise HTTPException(status_code=504, detail="command_result timeout") from exc
     return {"ok": True, "command_id": cmd["command_id"]}
 
 
@@ -176,6 +209,9 @@ async def extension_ws(ws: WebSocket) -> None:
                 cid = result.get("command_id")
                 if cid:
                     _command_results[cid] = result
+                    waiter = _command_waiters.pop(cid, None)
+                    if waiter and not waiter.done():
+                        waiter.set_result(result)
                 emit(
                     "browser.command_result",
                     raw.get("run_id", ""),
@@ -183,11 +219,10 @@ async def extension_ws(ws: WebSocket) -> None:
                         "command_id": cid,
                         "ok": result.get("ok"),
                         "duration_ms": result.get("duration_ms"),
+                        "screenshot_count": 1 if result.get("screenshot") else 0,
+                        "scrape_bytes": len(result.get("scrape_excerpt") or ""),
                     },
                 )
-                op = raw.get("op")
-                if op and requires_auto_verify(str(op)):
-                    pass  # extension already chained verify
             elif msg_type == "item_ack":
                 pass
     except WebSocketDisconnect:
@@ -199,6 +234,7 @@ async def extension_ws(ws: WebSocket) -> None:
 
 
 async def dispatch_browser_command(command: dict[str, Any]) -> None:
+    command = normalize_browser_command(command)
     reason = policy_denied_reason(
         command.get("op", ""),
         command.get("tab_id"),
@@ -220,3 +256,20 @@ async def dispatch_browser_command(command: dict[str, Any]) -> None:
         },
     )
     await _send_to_extension({"type": "browser_command", "command": command})
+
+
+async def dispatch_browser_command_and_wait(
+    command: dict[str, Any],
+    *,
+    timeout: float = 30.0,
+) -> dict[str, Any]:
+    cid = command.get("command_id") or uuid.uuid4().hex
+    command["command_id"] = cid
+    loop = asyncio.get_running_loop()
+    fut: asyncio.Future[dict[str, Any]] = loop.create_future()
+    _command_waiters[cid] = fut
+    try:
+        await dispatch_browser_command(command)
+        return await asyncio.wait_for(fut, timeout=timeout)
+    finally:
+        _command_waiters.pop(cid, None)

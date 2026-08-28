@@ -3,7 +3,9 @@ const PAIRS_KEY = "virgil_desk_tab_pairs";
 const AGENT_GROUP_TITLE = "Virgil · Agent";
 const DEFAULT_HOST = "http://127.0.0.1:8787";
 
-import { applyBoardPatch, policyBlock as tabPolicyBlock } from "./tabPolicy.js";
+import { applyBoardPatch, chooseNavigationOp, policyBlock as tabPolicyBlock } from "./tabPolicy.js";
+
+const HANDOFF_URLS_KEY = "virgil_desk_handoff_urls";
 
 let ws = null;
 let hostUrl = DEFAULT_HOST;
@@ -61,10 +63,11 @@ function connectWs() {
   ws.onmessage = async (ev) => {
     const msg = JSON.parse(ev.data);
     if (msg.type === "board_patch") {
-      await applyPatch(msg.ops);
+      await applyPatch(msg.ops, msg.run_id);
     }
     if (msg.type === "browser_command") {
-      const result = await runBrowserCommand(msg.command);
+      const command = await normalizeCommand(msg.command);
+      const result = await runBrowserCommand(command);
       ws.send(
         JSON.stringify({
           type: "command_result",
@@ -77,7 +80,37 @@ function connectWs() {
   ws.onclose = () => setTimeout(connectWs, 3000);
 }
 
-async function applyPatch(ops) {
+async function rememberHandoffUrl(runId, url) {
+  const data = await chrome.storage.session.get(HANDOFF_URLS_KEY);
+  const map = data[HANDOFF_URLS_KEY] || {};
+  map[runId] = url;
+  await chrome.storage.session.set({ [HANDOFF_URLS_KEY]: map });
+}
+
+async function handoffUrlForRun(runId) {
+  const data = await chrome.storage.session.get(HANDOFF_URLS_KEY);
+  return data[HANDOFF_URLS_KEY]?.[runId] || "";
+}
+
+async function normalizeCommand(command) {
+  const url = command.url;
+  if (!url) return command;
+  if (command.op === "navigate" || command.op === "openTab" || command.op === "duplicateTab") {
+    const handoffUrl =
+      command.handoff_url || (await handoffUrlForRun(command.run_id));
+    const op = chooseNavigationOp(handoffUrl, url);
+    return { ...command, op, handoff_url: handoffUrl };
+  }
+  return command;
+}
+
+async function applyPatch(ops, runId) {
+  if (runId) {
+    const handoffPatch = ops.find((p) => p.op === "add" && p.item?.source?.url);
+    if (handoffPatch) {
+      await rememberHandoffUrl(runId, handoffPatch.item.source.url);
+    }
+  }
   const board = await loadBoard();
   await saveBoard(applyBoardPatch(board, ops));
   chrome.runtime.sendMessage({ type: "boardUpdated" }).catch(() => {});
@@ -190,6 +223,7 @@ async function screenshotTab(tabId) {
 }
 
 async function runBrowserCommand(command) {
+  command = await normalizeCommand(command);
   const started = Date.now();
   const base = {
     command_id: command.command_id,
@@ -314,8 +348,11 @@ async function handoffActiveTab(intent) {
     body: JSON.stringify(handoff),
   });
   const data = await res.json();
+  if (data.run_id) {
+    await rememberHandoffUrl(data.run_id, handoff.url);
+  }
   if (data.items) {
-    await applyPatch(data.items.map((item) => ({ op: "add", item })));
+    await applyPatch(data.items.map((item) => ({ op: "add", item })), data.run_id);
   }
   return { ok: true, ...data };
 }
