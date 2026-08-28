@@ -9,6 +9,20 @@ const HANDOFF_URLS_KEY = "virgil_desk_handoff_urls";
 
 let ws = null;
 let hostUrl = DEFAULT_HOST;
+let deskConfig = {
+  browser: {
+    scrape_text_max_chars: 8000,
+    scrape_links_max: 50,
+    scrape_excerpt_max_chars: 4000,
+    handoff_excerpt_max_chars: 2000,
+    screenshot_mode: "captureVisibleTab",
+    default_wait_ms: 500,
+  },
+};
+let wsConnected = false;
+let pendingHandoffResolve = null;
+
+const META_KEY = "virgil_desk_panel_meta";
 
 chrome.runtime.onInstalled.addListener(() => {
   chrome.sidePanel.setPanelBehavior({ openPanelOnActionClick: true });
@@ -20,7 +34,17 @@ chrome.storage.sync.get(["hostUrl"], (data) => {
 });
 
 chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
-  if (msg.type === "getBoard") {
+  if (msg.type === "getPanelMeta") {
+    chrome.storage.local.get(META_KEY).then((data) => sendResponse(data[META_KEY] || {}));
+    return true;
+  }
+  if (msg.type === "getHealth") {
+    fetch(`${hostUrl}/v1/health`)
+      .then((r) => r.json())
+      .then((health) => sendResponse({ ok: true, health, wsConnected }))
+      .catch((err) => sendResponse({ ok: false, error: String(err), wsConnected }));
+    return true;
+  }
     loadBoard().then((board) => sendResponse({ board }));
     return true;
   }
@@ -51,17 +75,66 @@ function wsUrl() {
   return hostUrl.replace(/^http/, "ws") + "/v1/extension";
 }
 
+async function fetchDeskConfig() {
+  try {
+    const res = await fetch(`${hostUrl}/v1/config`);
+    if (res.ok) {
+      const data = await res.json();
+      if (data.browser) {
+        deskConfig = { ...deskConfig, ...data };
+      }
+    }
+  } catch {
+    /* host may be down until WS connects */
+  }
+}
+
+function applyRegisteredConfig(msg) {
+  if (msg.config) {
+    deskConfig = { ...deskConfig, ...msg.config };
+  }
+}
+
+async function savePanelMeta(partial) {
+  const data = await chrome.storage.local.get(META_KEY);
+  const meta = { ...(data[META_KEY] || {}), ...partial };
+  await chrome.storage.local.set({ [META_KEY]: meta });
+  chrome.runtime.sendMessage({ type: "panelMetaUpdated", meta }).catch(() => {});
+}
+
 function connectWs() {
   try {
     ws = new WebSocket(wsUrl());
   } catch {
+    wsConnected = false;
     return;
   }
   ws.onopen = () => {
+    wsConnected = true;
+    fetchDeskConfig();
     ws.send(JSON.stringify({ type: "register", extension_version: "0.1.0" }));
   };
   ws.onmessage = async (ev) => {
     const msg = JSON.parse(ev.data);
+    if (msg.type === "registered") {
+      applyRegisteredConfig(msg);
+      chrome.runtime.sendMessage({ type: "connectionUpdated", wsConnected: true }).catch(() => {});
+    }
+    if (msg.type === "handoff_result") {
+      const { ok = true, run_id: runId, decomposition, error } = msg;
+      if (runId) {
+        await savePanelMeta({
+          lastRunId: runId,
+          lastDecomposition: decomposition || "",
+          lastHandoffError: error || "",
+        });
+      }
+      if (pendingHandoffResolve) {
+        const resolve = pendingHandoffResolve;
+        pendingHandoffResolve = null;
+        resolve({ ok, run_id: runId, decomposition, error, ...msg });
+      }
+    }
     if (msg.type === "board_patch") {
       await applyPatch(msg.ops, msg.run_id);
     }
@@ -77,7 +150,11 @@ function connectWs() {
       );
     }
   };
-  ws.onclose = () => setTimeout(connectWs, 3000);
+  ws.onclose = () => {
+    wsConnected = false;
+    chrome.runtime.sendMessage({ type: "connectionUpdated", wsConnected: false }).catch(() => {});
+    setTimeout(connectWs, 3000);
+  };
 }
 
 async function rememberHandoffUrl(runId, url) {
@@ -181,21 +258,47 @@ function policyBlock(command, tabId) {
 }
 
 async function scrapeTab(tabId) {
+  const maxText = deskConfig.browser?.scrape_text_max_chars ?? 8000;
+  const maxLinks = deskConfig.browser?.scrape_links_max ?? 50;
   const [{ result }] = await chrome.scripting.executeScript({
     target: { tabId },
-    func: () => {
+    func: (textMax, linkMax) => {
       const links = [...document.querySelectorAll("a[href]")]
         .map((a) => a.href)
         .filter((h) => h.startsWith("http"))
-        .slice(0, 50);
-      const text = (document.body?.innerText || "").slice(0, 8000);
+        .slice(0, linkMax);
+      const text = (document.body?.innerText || "").slice(0, textMax);
       return { text, links, url: location.href, title: document.title };
     },
+    args: [maxText, maxLinks],
   });
   return result;
 }
 
 async function screenshotTab(tabId) {
+  const mode = deskConfig.browser?.screenshot_mode || "captureVisibleTab";
+  if (mode !== "captureVisibleTab") {
+    return screenshotTabCanvas(tabId);
+  }
+  const tab = await chrome.tabs.get(tabId);
+  const windowId = tab.windowId;
+  const [activeTab] = await chrome.tabs.query({ active: true, windowId });
+  const priorTabId = activeTab?.id;
+  const waitMs = deskConfig.browser?.default_wait_ms ?? 500;
+  try {
+    await chrome.tabs.update(tabId, { active: true });
+    await new Promise((r) => setTimeout(r, waitMs));
+    const dataUrl = await chrome.tabs.captureVisibleTab(windowId, { format: "png" });
+    const base64 = dataUrl.split(",")[1] || "";
+    return { mime: "image/png", base64, width: 0, height: 0 };
+  } finally {
+    if (priorTabId && priorTabId !== tabId) {
+      await chrome.tabs.update(priorTabId, { active: true }).catch(() => {});
+    }
+  }
+}
+
+async function screenshotTabCanvas(tabId) {
   const [{ result }] = await chrome.scripting.executeScript({
     target: { tabId },
     func: async () => {
@@ -207,7 +310,6 @@ async function screenshotTab(tabId) {
       const ctx = canvas.getContext("2d");
       ctx.fillStyle = "#ffffff";
       ctx.fillRect(0, 0, w, h);
-      // DOM render approximation for MVP (not compositor capture)
       const text = (document.body?.innerText || "").slice(0, 500);
       ctx.fillStyle = "#111";
       ctx.font = "14px sans-serif";
@@ -292,6 +394,7 @@ async function runBrowserCommand(command) {
     }
 
     if (["click", "fill", "scroll", "scrape", "screenshot", "openTab", "duplicateTab"].includes(command.op)) {
+      const excerptMax = deskConfig.browser?.scrape_excerpt_max_chars ?? 4000;
       const snap = await scrapeTab(tabId);
       const shot = await screenshotTab(tabId);
       const out = {
@@ -299,7 +402,7 @@ async function runBrowserCommand(command) {
         tab_id: tabId,
         url: snap.url,
         title: snap.title,
-        scrape_excerpt: snap.text?.slice(0, 4000),
+        scrape_excerpt: snap.text?.slice(0, excerptMax),
         screenshot: shot,
         duration_ms: Date.now() - started,
       };
@@ -329,6 +432,7 @@ async function runBrowserCommand(command) {
 async function handoffActiveTab(intent) {
   const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
   if (!tab?.id) return { ok: false, error: "no active tab" };
+  const handoffMax = deskConfig.browser?.handoff_excerpt_max_chars ?? 2000;
   const snap = await scrapeTab(tab.id);
   const handoff = {
     url: tab.url || "",
@@ -336,11 +440,24 @@ async function handoffActiveTab(intent) {
     human_tab_id: tab.id,
     window_id: tab.windowId,
     intent: intent || "",
-    snapshot: { excerpt: snap.text?.slice(0, 2000), links: snap.links },
+    snapshot: { excerpt: snap.text?.slice(0, handoffMax), links: snap.links },
   };
   if (ws?.readyState === WebSocket.OPEN) {
+    const resultPromise = new Promise((resolve) => {
+      pendingHandoffResolve = resolve;
+      setTimeout(() => {
+        if (pendingHandoffResolve === resolve) {
+          pendingHandoffResolve = null;
+          resolve({ ok: false, error: "handoff timeout" });
+        }
+      }, 120000);
+    });
     ws.send(JSON.stringify({ type: "handoff_started", handoff }));
-    return { ok: true, pending: true };
+    const result = await resultPromise;
+    if (result.run_id) {
+      await rememberHandoffUrl(result.run_id, handoff.url);
+    }
+    return result;
   }
   const res = await fetch(`${hostUrl}/v1/handoff`, {
     method: "POST",
@@ -350,6 +467,11 @@ async function handoffActiveTab(intent) {
   const data = await res.json();
   if (data.run_id) {
     await rememberHandoffUrl(data.run_id, handoff.url);
+    await savePanelMeta({
+      lastRunId: data.run_id,
+      lastDecomposition: data.decomposition || "",
+      lastHandoffError: "",
+    });
   }
   if (data.items) {
     await applyPatch(data.items.map((item) => ({ op: "add", item })), data.run_id);
