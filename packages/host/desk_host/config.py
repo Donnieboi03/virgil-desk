@@ -50,6 +50,8 @@ class HermesConfig:
     execute_require_browser_evidence: bool
     decompose_fallback_stub: bool
     decompose_enabled: bool
+    execute_toolsets: list[str]
+    execute_accept_hooks: bool
 
 
 @dataclass

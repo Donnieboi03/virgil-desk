@@ -13,6 +13,7 @@ from ..backends import new_run_id
 from ..config import load_config
 from ..decompose_parser import DecomposeError, parse_decompose_json
 from ..observability import record
+from ..execute_validation import execute_summary_indicates_failure
 from ..prompt_render import render_prompt
 from ..screenshot_store import persist_handoff_screenshot
 
@@ -132,6 +133,8 @@ class HermesBackend:
         result = await self._hermes_run(
             prompt,
             skills=["desk-browser-bridge"],
+            toolsets=cfg.hermes.execute_toolsets,
+            accept_hooks=cfg.hermes.execute_accept_hooks,
             timeout_sec=cfg.hermes.execute_timeout_sec,
         )
         if result.exit_code != 0:
@@ -141,7 +144,10 @@ class HermesBackend:
         if not result.text:
             raise RuntimeError("hermes execute returned empty output")
         max_chars = cfg.prompts.execute_summary_max_chars
-        return {"summary": result.text[:max_chars], "exit_code": result.exit_code}
+        summary = result.text[:max_chars]
+        if execute_summary_indicates_failure(summary):
+            raise RuntimeError(summary)
+        return {"summary": summary, "exit_code": result.exit_code}
 
     def _stub_decompose(self, handoff: dict[str, Any], run_id: str) -> dict[str, Any]:
         url = handoff.get("url", "")
@@ -207,12 +213,16 @@ class HermesBackend:
         *,
         image_path: str | None = None,
         skills: list[str] | None = None,
+        toolsets: list[str] | None = None,
+        accept_hooks: bool = False,
         timeout_sec: int | None = None,
     ) -> HermesRunResult:
         cfg = load_config()
         timeout = timeout_sec or cfg.hermes.decompose_timeout_sec
         env = os.environ.copy()
         env["HERMES_HOME"] = self.home
+        if accept_hooks:
+            env["HERMES_ACCEPT_HOOKS"] = "1"
         repo_scripts = Path(__file__).resolve().parents[4] / "scripts"
         if repo_scripts.is_dir():
             env["PATH"] = f"{repo_scripts}{os.pathsep}{env.get('PATH', '')}"
@@ -227,6 +237,10 @@ class HermesBackend:
             "--source",
             "tool",
         ]
+        if toolsets:
+            cmd.extend(["-t", ",".join(toolsets)])
+        if accept_hooks:
+            cmd.append("--accept-hooks")
         if skills:
             for skill in skills:
                 cmd.extend(["-s", skill])

@@ -16,6 +16,10 @@ hermes:
   execute_require_browser_evidence: true
   decompose_fallback_stub: true
   decompose_enabled: true
+  execute_toolsets:
+    - terminal
+    - skills
+  execute_accept_hooks: true
 observability:
   persist_screenshots: false
 prompts:

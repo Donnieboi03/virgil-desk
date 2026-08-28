@@ -25,6 +25,8 @@ ENFORCED_BY: dict[str, str] = {
     "hermes.decompose_timeout_sec": "Hermes subprocess (decompose)",
     "hermes.execute_timeout_sec": "Hermes subprocess (Run agent execute)",
     "hermes.execute_require_browser_evidence": "Host rejects execute without `browser.command_result`",
+    "hermes.execute_toolsets": "Hermes `-t` toolsets for Run agent (needs terminal for desk-browser)",
+    "hermes.execute_accept_hooks": "Hermes `--accept-hooks` for non-interactive execute",
     "hermes.decompose_fallback_stub": "Host Hermes backend",
     "hermes.decompose_enabled": "Host Hermes backend",
     "observability.persist_screenshots": "Host screenshot store",
