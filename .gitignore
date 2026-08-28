@@ -12,6 +12,8 @@ runs/
 *.png
 .DS_Store
 packages/extension/dist/
+packages/e2e/playwright/.pw-user-data/
+packages/e2e/playwright/node_modules/
 *.egg-info/
 .coverage
 htmlcov/
