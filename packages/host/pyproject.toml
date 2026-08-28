@@ -1,0 +1,35 @@
+[project]
+name = "virgil-desk-host"
+version = "0.1.0"
+description = "Virgil Desk local Host — WS hub, policy, agent adapters"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+  "fastapi>=0.115.0",
+  "uvicorn[standard]>=0.32.0",
+  "websockets>=13.0",
+  "pydantic>=2.9.0",
+]
+
+[project.optional-dependencies]
+dev = [
+  "pytest>=8.3.0",
+  "pytest-asyncio>=0.24.0",
+  "httpx>=0.27.0",
+]
+
+[project.scripts]
+desk-host = "desk_host.__main__:main"
+desk-events = "desk_host.events_cli:main"
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+
+[build-system]
+requires = ["setuptools>=75.0"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["desk_host*"]

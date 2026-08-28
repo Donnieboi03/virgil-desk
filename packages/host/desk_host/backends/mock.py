@@ -1,0 +1,44 @@
+"""Mock agent backend for E2E and CI."""
+
+from __future__ import annotations
+
+from typing import Any
+
+from ..backends import new_run_id
+
+
+class MockBackend:
+    async def decompose(self, handoff: dict[str, Any]) -> dict[str, Any]:
+        run_id = handoff.get("run_id") or new_run_id()
+        url = handoff.get("url", "")
+        return {
+            "run_id": run_id,
+            "decomposition": "Agent can research this page; you decide whether to apply.",
+            "items": [
+                {
+                    "id": f"item_{run_id[:8]}_agent",
+                    "column": "agent",
+                    "title": f"Research: {handoff.get('title') or url}",
+                    "source": {"kind": "handoff", "url": url},
+                    "status": "running",
+                    "human_tab_id": handoff.get("human_tab_id"),
+                },
+                {
+                    "id": f"item_{run_id[:8]}_you",
+                    "column": "you",
+                    "title": "Review and close when ready",
+                    "source": {"kind": "handoff", "url": url},
+                    "status": "proposed",
+                    "proposals": [],
+                },
+            ],
+        }
+
+    async def execute_safe(self, item: dict[str, Any], ctx: dict[str, Any]) -> dict[str, Any]:
+        out = dict(item)
+        out["status"] = "done"
+        out["evidence"] = {
+            "summary": "Mock agent finished research.",
+            "scrape_excerpt": ctx.get("scrape_excerpt", ""),
+        }
+        return out
