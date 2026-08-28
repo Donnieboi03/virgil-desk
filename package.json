@@ -12,6 +12,8 @@
     "test": "npm run test -w @virgil-desk/protocol && npm run test -w @virgil-desk/extension",
     "test:e2e": "pip install -e ./packages/host[dev] -q && pytest packages/e2e packages/host/tests/integration/test_ws.py packages/host/tests/integration/test_hermes.py -q",
     "test:host": "pip install -e ./packages/host[dev] -q && pytest packages/host/tests -q",
+    "test:playwright": "npm run build -w @virgil-desk/extension && pip install -e ./packages/host[dev] -q && cd packages/e2e/playwright && npm install && npx playwright install chromium && (command -v xvfb-run >/dev/null && xvfb-run npm test || npm test)",
+    "test:all": "npm run test && npm run test:host && npm run test:e2e",
     "validate:schema": "node scripts/validate-schemas.mjs"
   },
   "engines": {

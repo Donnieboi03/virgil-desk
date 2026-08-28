@@ -33,7 +33,12 @@ def emit(kind: str, run_id: str, fields: dict[str, Any] | None = None) -> None:
         fh.write(json.dumps(row, ensure_ascii=False) + "\n")
 
 
-def read_events(*, run_id: str | None = None, limit: int = 500) -> list[dict[str, Any]]:
+def read_events(
+    *,
+    run_id: str | None = None,
+    kind: str | None = None,
+    limit: int = 500,
+) -> list[dict[str, Any]]:
     path = events_path()
     if not path.is_file():
         return []
@@ -48,6 +53,8 @@ def read_events(*, run_id: str | None = None, limit: int = 500) -> list[dict[str
             except json.JSONDecodeError:
                 continue
             if run_id and row.get("run_id") != run_id:
+                continue
+            if kind and row.get("kind") != kind:
                 continue
             rows.append(row)
     return rows[-limit:]
