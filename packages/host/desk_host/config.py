@@ -74,11 +74,19 @@ class ObservabilityConfig:
 
 
 @dataclass
+class MemoryConfig:
+    recent_max: int
+    notepad_max_bullets: int
+    notepad_max_chars: int
+
+
+@dataclass
 class DeskConfig:
     browser: BrowserConfig
     host: HostConfig
     hermes: HermesConfig
     observability: ObservabilityConfig
+    memory: MemoryConfig
     prompts: PromptsConfig
 
 
@@ -87,6 +95,7 @@ _CONFIG_SECTIONS: tuple[tuple[str, type], ...] = (
     ("host", HostConfig),
     ("hermes", HermesConfig),
     ("observability", ObservabilityConfig),
+    ("memory", MemoryConfig),
     ("prompts", PromptsConfig),
 )
 
@@ -116,6 +125,7 @@ def config_from_dict(data: dict[str, Any]) -> DeskConfig:
         observability=_parse_section(
             ObservabilityConfig, data.get("observability"), "observability"
         ),
+        memory=_parse_section(MemoryConfig, data.get("memory"), "memory"),
         prompts=_parse_section(PromptsConfig, data.get("prompts"), "prompts"),
     )
 
@@ -169,6 +179,11 @@ def config_for_extension(cfg: DeskConfig | None = None) -> dict[str, Any]:
         },
         "host": {
             "browser_wait_timeout_sec": c.host.browser_wait_timeout_sec,
+        },
+        "memory": {
+            "recent_max": c.memory.recent_max,
+            "notepad_max_bullets": c.memory.notepad_max_bullets,
+            "notepad_max_chars": c.memory.notepad_max_chars,
         },
     }
 

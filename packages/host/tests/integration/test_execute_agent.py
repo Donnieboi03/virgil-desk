@@ -8,6 +8,7 @@ from starlette.testclient import TestClient
 
 from desk_host.app import app, reset_state_for_tests
 from desk_host.backends.mock import MockBackend
+from desk_host.memory import apply_memory_patch
 from helpers.mock_extension import MockExtensionSession, fake_screenshot, run_browser_wait
 
 
@@ -69,26 +70,103 @@ def test_execute_agent_posts_browser_command_and_marks_done():
 
             thread = threading.Thread(target=_execute, daemon=True)
             thread.start()
+            ext.respond_memory_get()
             for expected_op in ("scrape", "observe"):
                 handled = ext.respond_next_browser_command(
                     run_id=run_id, op=expected_op
                 )
                 assert handled["command"]["op"] == expected_op
+            patch = ext.ws.receive_json()
+            assert patch["type"] == "board_patch"
+            updated = patch["ops"][0]["item"]
+            assert updated["status"] == "done"
+            assert updated.get("evidence", {}).get("summary")
+            mem = ext.receive_memory_patch()
+            assert any(op.get("op") == "append_recent" for op in mem["ops"])
+            assert ext.memory["global_recent"]
             thread.join(timeout=5)
             assert holder
             resp = holder[0]
             assert resp.status_code == 200
             body = resp.json()
             assert body["status"] == "done"
-
-            patch = ext.ws.receive_json()
-            assert patch["type"] == "board_patch"
-            updated = patch["ops"][0]["item"]
-            assert updated["status"] == "done"
-            assert updated.get("evidence", {}).get("summary")
         finally:
             ext.close()
 
+
+def test_execute_injects_recent_memory_into_ctx(monkeypatch):
+    captured: list[dict] = []
+
+    async def capture_execute(_self, item: dict[str, Any], ctx: dict[str, Any]) -> dict[str, Any]:
+        from desk_host.app import dispatch_browser_command_and_wait
+
+        captured.append(ctx)
+        await dispatch_browser_command_and_wait(
+            {
+                "run_id": ctx["run_id"],
+                "op": "scrape",
+                "human_tab_id": ctx.get("human_tab_id"),
+                "tab_id": ctx.get("agent_tab_id"),
+            }
+        )
+        return {"summary": "used memory", "exit_code": 0}
+
+    monkeypatch.setattr(MockBackend, "execute_item", capture_execute)
+    with TestClient(app) as client:
+        ext = MockExtensionSession(client)
+        try:
+            result = ext.handoff(
+                {
+                    "url": "https://example.com",
+                    "human_tab_id": 1,
+                    "agent_tab_id": 2,
+                    "window_id": 1,
+                    "intent": "triage",
+                }
+            )
+            run_id = result["run_id"]
+            assert run_id in ext.memory["by_run_id"]
+            agent = [i for i in result["items"] if i["column"] == "agent"][0]
+
+            ext.memory = apply_memory_patch(
+                ext.memory,
+                [
+                    {
+                        "op": "append_recent",
+                        "entry": {
+                            "item_id": "prior",
+                            "title": "Prior task",
+                            "outcome": "done",
+                            "summary": "already reviewed Jess folder",
+                        },
+                    }
+                ],
+            )
+
+            holder: list = []
+
+            def _execute():
+                holder.append(
+                    client.post(
+                        f"/v1/items/{agent['id']}/execute",
+                        json={"run_id": run_id},
+                    )
+                )
+
+            thread = threading.Thread(target=_execute, daemon=True)
+            thread.start()
+            ext.respond_memory_get()
+            ext.respond_next_browser_command(run_id=run_id, op="scrape")
+            ext.ws.receive_json()  # board_patch
+            ext.receive_memory_patch()
+            thread.join(timeout=5)
+            assert holder[0].status_code == 200
+            assert captured
+            assert captured[0].get("recent_executions")
+            assert captured[0]["recent_executions"][0]["summary"].startswith("already")
+            assert "run_notepad" in captured[0]
+        finally:
+            ext.close()
 
 def test_execute_requires_extension_connected():
     with TestClient(app) as client:
@@ -118,13 +196,24 @@ def test_execute_without_browser_evidence_fails(monkeypatch):
                 {"url": "https://example.com", "human_tab_id": 1, "window_id": 1}
             )
             agent = [i for i in result["items"] if i["column"] == "agent"][0]
-            resp = client.post(
-                f"/v1/items/{agent['id']}/execute",
-                json={"run_id": result["run_id"]},
-            )
-            assert resp.status_code == 422
+            holder: list = []
+
+            def _execute():
+                holder.append(
+                    client.post(
+                        f"/v1/items/{agent['id']}/execute",
+                        json={"run_id": result["run_id"]},
+                    )
+                )
+
+            thread = threading.Thread(target=_execute, daemon=True)
+            thread.start()
+            ext.respond_memory_get()
             patch = ext.ws.receive_json()
             assert patch["ops"][0]["item"]["status"] == "failed"
+            ext.receive_memory_patch()
+            thread.join(timeout=5)
+            assert holder[0].status_code == 422
         finally:
             ext.close()
 

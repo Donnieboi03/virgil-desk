@@ -1,3 +1,4 @@
+import os
 import sys
 from pathlib import Path
 
@@ -8,6 +9,11 @@ sys.path.insert(0, str(ROOT / "host"))
 sys.path.insert(0, str(ROOT / "host" / "tests"))
 
 from desk_host.app import reset_state_for_tests
+
+
+@pytest.fixture(autouse=True)
+def _force_mock_backend(monkeypatch):
+    monkeypatch.setenv("DESK_AGENT_BACKEND", "mock")
 
 
 @pytest.fixture(autouse=True)

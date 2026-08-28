@@ -14,6 +14,7 @@ from pydantic import BaseModel, Field
 from .backends import get_backend, new_run_id
 from .calendar import book_calendar_slot
 from .config import clear_config_cache, config_for_extension, load_config
+from .memory import format_for_execute
 from .navigation import normalize_browser_command
 from .observability import measure_from_snapshot, record
 from .policy import policy_denied_reason
@@ -31,6 +32,7 @@ _extension_connected = False
 _pending_commands: asyncio.Queue[dict[str, Any]] = asyncio.Queue()
 _command_results: dict[str, dict[str, Any]] = {}
 _command_waiters: dict[str, asyncio.Future[dict[str, Any]]] = {}
+_memory_waiters: dict[str, asyncio.Future[dict[str, Any]]] = {}
 _browser_result_counts: dict[str, int] = {}
 _command_evidence_flags: dict[str, bool] = {}
 
@@ -177,10 +179,22 @@ async def _handle_handoff(payload: dict[str, Any]) -> dict[str, Any]:
         flags=decompose_flags,
         backend=os.environ.get("DESK_AGENT_BACKEND", "mock"),
     )
+    decomposition = str(result.get("decomposition") or "")
+    _handoff_meta[run_id]["decomposition"] = decomposition
     patch_id = uuid.uuid4().hex
     ops: list[dict[str, Any]] = [{"op": "clear"}]
     ops.extend({"op": "add", "item": item} for item in result.get("items", []))
     await _send_board_patch(run_id, patch_id, ops)
+    await _memory_patch(
+        [
+            {
+                "op": "seed_run",
+                "run_id": run_id,
+                "decomposition": decomposition,
+                "mission": str(payload.get("intent") or ""),
+            }
+        ]
+    )
     for item in result.get("items", []):
         item["run_id"] = run_id
         meta = _handoff_meta.get(run_id, {})
@@ -192,6 +206,68 @@ async def _handle_handoff(payload: dict[str, Any]) -> dict[str, Any]:
         for prop in item.get("proposals") or []:
             _proposals[prop["id"]] = {**prop, "work_item_id": item["id"], "run_id": run_id}
     return result
+
+
+async def _memory_get(run_id: str, *, timeout: float = 5.0) -> dict[str, Any]:
+    """Ask extension for virgil_desk_memory_v1 snapshot; empty on failure."""
+    request_id = uuid.uuid4().hex
+    loop = asyncio.get_running_loop()
+    fut: asyncio.Future[dict[str, Any]] = loop.create_future()
+    _memory_waiters[request_id] = fut
+    try:
+        sent = await _send_to_extension(
+            {
+                "type": "memory_get",
+                "request_id": request_id,
+                "run_id": run_id,
+            }
+        )
+        if not sent:
+            return {"global_recent": [], "by_run_id": {}}
+        snap = await asyncio.wait_for(fut, timeout=timeout)
+        return snap.get("memory") or {"global_recent": [], "by_run_id": {}}
+    except (asyncio.TimeoutError, ExtensionNotConnectedError):
+        return {"global_recent": [], "by_run_id": {}}
+    finally:
+        _memory_waiters.pop(request_id, None)
+
+
+async def _memory_patch(ops: list[dict[str, Any]]) -> bool:
+    """Fire-and-forget memory_patch to extension (storage.local SoT)."""
+    if not ops:
+        return False
+    return await _send_to_extension({"type": "memory_patch", "ops": ops})
+
+
+async def _record_execute_memory(
+    *,
+    run_id: str,
+    item: dict[str, Any],
+    outcome: str,
+    summary: str,
+) -> None:
+    cfg = get_config()
+    title = str(item.get("title") or "")
+    bullet = f"[{outcome}] {title}: {summary}".strip()
+    await _memory_patch(
+        [
+            {
+                "op": "append_recent",
+                "entry": {
+                    "run_id": run_id,
+                    "item_id": item.get("id"),
+                    "title": title,
+                    "outcome": outcome,
+                    "summary": summary[: cfg.prompts.event_summary_snippet_max_chars],
+                },
+            },
+            {
+                "op": "append_bullet",
+                "run_id": run_id,
+                "bullet": bullet[: cfg.memory.notepad_max_chars],
+            },
+        ]
+    )
 
 
 async def _send_board_patch(
@@ -267,6 +343,10 @@ def reset_state_for_tests() -> None:
         if not fut.done():
             fut.cancel()
     _command_waiters.clear()
+    for fut in list(_memory_waiters.values()):
+        if not fut.done():
+            fut.cancel()
+    _memory_waiters.clear()
     _browser_result_counts.clear()
     _command_evidence_flags.clear()
     _extension_ws = None
@@ -388,6 +468,14 @@ async def execute_item(item_id: str, body: ExecuteBody) -> dict[str, Any]:
         "human_tab_id": item.get("human_tab_id") or meta.get("human_tab_id"),
         "handoff_url": _handoff_urls.get(body.run_id, ""),
     }
+    memory = await _memory_get(body.run_id)
+    ctx.update(
+        format_for_execute(
+            memory,
+            body.run_id,
+            decomposition=str(meta.get("decomposition") or ""),
+        )
+    )
     backend = get_backend()
     execute_fn = getattr(backend, "execute_item", None)
     if not execute_fn:
@@ -415,6 +503,12 @@ async def execute_item(item_id: str, body: ExecuteBody) -> dict[str, Any]:
             )
         except ExtensionNotConnectedError:
             pass
+        await _record_execute_memory(
+            run_id=body.run_id,
+            item=item,
+            outcome="failed",
+            summary=err,
+        )
         raise HTTPException(status_code=500, detail=err) from exc
     browser_after = _browser_results_for_run(body.run_id)
     if cfg.hermes.execute_require_browser_evidence and browser_after <= browser_before:
@@ -432,6 +526,12 @@ async def execute_item(item_id: str, body: ExecuteBody) -> dict[str, Any]:
             run_id=body.run_id,
             last_error=err,
         )
+        await _record_execute_memory(
+            run_id=body.run_id,
+            item=item,
+            outcome="failed",
+            summary=err,
+        )
         raise HTTPException(status_code=422, detail=err)
     evidence = {
         "summary": (result or {}).get("summary", ""),
@@ -442,6 +542,12 @@ async def execute_item(item_id: str, body: ExecuteBody) -> dict[str, Any]:
         status="done",
         run_id=body.run_id,
         evidence=evidence,
+    )
+    await _record_execute_memory(
+        run_id=body.run_id,
+        item=item,
+        outcome="done",
+        summary=str(evidence["summary"] or ""),
     )
     record(
         "agent.executed",
@@ -504,6 +610,11 @@ async def extension_ws(ws: WebSocket) -> None:
                 handoff = raw.get("handoff") or {}
                 result = await _handle_handoff(handoff)
                 await ws.send_json({"type": "handoff_result", **result})
+            elif msg_type == "memory_snapshot":
+                request_id = raw.get("request_id") or ""
+                waiter = _memory_waiters.pop(request_id, None)
+                if waiter and not waiter.done():
+                    waiter.set_result(raw)
             elif msg_type == "command_result":
                 result = raw.get("result") or {}
                 cid = result.get("command_id")

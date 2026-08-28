@@ -7,6 +7,8 @@ from typing import Any
 
 from starlette.testclient import TestClient
 
+from desk_host.memory import apply_memory_patch, empty_memory
+
 
 def fake_screenshot() -> dict[str, Any]:
     return {
@@ -71,6 +73,8 @@ class MockExtensionSession:
         self.ws.send_json({"type": "register", "extension_version": "test"})
         reg = self.ws.receive_json()
         assert reg.get("type") == "registered"
+        self.memory: dict[str, Any] = empty_memory()
+        self.messages: list[dict[str, Any]] = []
 
     def close(self) -> None:
         self._ws_ctx.__exit__(None, None, None)
@@ -80,9 +84,34 @@ class MockExtensionSession:
         patch = self.ws.receive_json()
         assert patch["type"] == "board_patch", patch
         assert patch["ops"][0]["op"] == "clear", patch["ops"]
+        mem_patch = self.ws.receive_json()
+        assert mem_patch["type"] == "memory_patch", mem_patch
+        self.memory = apply_memory_patch(self.memory, mem_patch.get("ops") or [])
+        self.messages.append(mem_patch)
         result = self.ws.receive_json()
         assert result["type"] == "handoff_result", result
         return result
+
+    def respond_memory_get(self) -> dict[str, Any]:
+        msg = self.ws.receive_json()
+        assert msg["type"] == "memory_get", msg
+        self.ws.send_json(
+            {
+                "type": "memory_snapshot",
+                "request_id": msg["request_id"],
+                "run_id": msg.get("run_id"),
+                "memory": self.memory,
+            }
+        )
+        self.messages.append(msg)
+        return msg
+
+    def receive_memory_patch(self) -> dict[str, Any]:
+        msg = self.ws.receive_json()
+        assert msg["type"] == "memory_patch", msg
+        self.memory = apply_memory_patch(self.memory, msg.get("ops") or [])
+        self.messages.append(msg)
+        return msg
 
     def respond_next_browser_command(
         self,

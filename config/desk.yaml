@@ -24,6 +24,10 @@ hermes:
   execute_accept_hooks: true
 observability:
   persist_screenshots: false
+memory:
+  recent_max: 3
+  notepad_max_bullets: 20
+  notepad_max_chars: 4000
 prompts:
   decompose_items_max: 10
   decompose_summary_sentences_max: 3

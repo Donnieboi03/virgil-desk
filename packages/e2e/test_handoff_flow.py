@@ -151,3 +151,68 @@ def test_calendar_accept_after_handoff():
             assert body["committed"]["status"] == "booked_stub"
         finally:
             ext.close()
+
+
+def test_handoff_seeds_notepad_and_execute_records_recent(monkeypatch):
+    """E2E: memory_patch at handoff; execute appends global_recent."""
+    import threading
+    from typing import Any
+
+    from desk_host.backends.mock import MockBackend
+
+    captured: list[dict[str, Any]] = []
+
+    async def capture_execute(_self, item: dict[str, Any], ctx: dict[str, Any]) -> dict[str, Any]:
+        from desk_host.app import dispatch_browser_command_and_wait
+
+        captured.append(ctx)
+        await dispatch_browser_command_and_wait(
+            {
+                "run_id": ctx["run_id"],
+                "op": "scrape",
+                "human_tab_id": ctx.get("human_tab_id"),
+                "tab_id": ctx.get("agent_tab_id") or 2,
+            }
+        )
+        return {"summary": f"finished {item.get('title')}", "exit_code": 0}
+
+    monkeypatch.setattr(MockBackend, "execute_item", capture_execute)
+
+    with TestClient(app) as client:
+        ext = MockExtensionSession(client)
+        try:
+            result = ext.handoff(
+                {
+                    "url": "https://mail.example.com/inbox",
+                    "human_tab_id": 1,
+                    "agent_tab_id": 2,
+                    "window_id": 1,
+                    "intent": "triage inbox",
+                }
+            )
+            run_id = result["run_id"]
+            assert ext.memory["by_run_id"][run_id]["mission"] == "triage inbox"
+            agent = [i for i in result["items"] if i["column"] == "agent"][0]
+            holder: list = []
+
+            def _ex():
+                holder.append(
+                    client.post(
+                        f"/v1/items/{agent['id']}/execute",
+                        json={"run_id": run_id},
+                    )
+                )
+
+            t = threading.Thread(target=_ex, daemon=True)
+            t.start()
+            ext.respond_memory_get()
+            ext.respond_next_browser_command(run_id=run_id, op="scrape")
+            ext.ws.receive_json()
+            ext.receive_memory_patch()
+            t.join(timeout=5)
+            assert holder[0].status_code == 200
+            assert ext.memory["global_recent"]
+            assert "finished" in ext.memory["global_recent"][0]["summary"]
+            assert captured[0].get("run_notepad") is not None
+        finally:
+            ext.close()

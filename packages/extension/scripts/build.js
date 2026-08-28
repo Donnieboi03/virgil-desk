@@ -25,6 +25,7 @@ const files = [
   "manifest.json",
   "tabPolicy.js",
   "agentTabs.js",
+  "deskMemory.js",
   "background.js",
   "targetMap.js",
   "panel.html",

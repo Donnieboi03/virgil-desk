@@ -11,6 +11,11 @@ import {
   clearTargetMap,
   clearMapsForTab,
 } from "./targetMap.js";
+import {
+  MEMORY_KEY,
+  emptyMemory,
+  applyMemoryPatch,
+} from "./deskMemory.js";
 
 const BUNDLE_FILE = "interactObserve.bundle.js";
 
@@ -30,6 +35,11 @@ let deskConfig = {
     default_wait_ms: 500,
     interact_targets_max: 80,
     observe_annotate_default: true,
+  },
+  memory: {
+    recent_max: 3,
+    notepad_max_bullets: 20,
+    notepad_max_chars: 4000,
   },
 };
 let wsConnected = false;
@@ -98,6 +108,45 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
     return true;
   }
 });
+
+async function loadDeskMemory() {
+  const data = await chrome.storage.local.get(MEMORY_KEY);
+  return data[MEMORY_KEY] || emptyMemory();
+}
+
+async function saveDeskMemory(memory) {
+  await chrome.storage.local.set({ [MEMORY_KEY]: memory });
+}
+
+function memoryLimits() {
+  const m = deskConfig.memory || {};
+  return {
+    recentMax: m.recent_max ?? 3,
+    maxBullets: m.notepad_max_bullets ?? 20,
+    maxChars: m.notepad_max_chars ?? 4000,
+  };
+}
+
+async function handleMemoryGet(msg) {
+  const memory = await loadDeskMemory();
+  if (ws?.readyState === WebSocket.OPEN) {
+    ws.send(
+      JSON.stringify({
+        type: "memory_snapshot",
+        request_id: msg.request_id,
+        run_id: msg.run_id,
+        memory,
+      }),
+    );
+  }
+}
+
+async function handleMemoryPatch(msg) {
+  const limits = memoryLimits();
+  const current = await loadDeskMemory();
+  const next = applyMemoryPatch(current, msg.ops || [], limits);
+  await saveDeskMemory(next);
+}
 
 async function loadBoard() {
   const data = await chrome.storage.local.get(BOARD_KEY);
@@ -177,6 +226,12 @@ function connectWs() {
     }
     if (msg.type === "board_patch") {
       await applyPatch(msg.ops, msg.run_id);
+    }
+    if (msg.type === "memory_get") {
+      await handleMemoryGet(msg);
+    }
+    if (msg.type === "memory_patch") {
+      await handleMemoryPatch(msg);
     }
     if (msg.type === "browser_command") {
       const command = await normalizeCommand(msg.command);
