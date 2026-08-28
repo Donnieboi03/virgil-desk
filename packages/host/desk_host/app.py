@@ -124,7 +124,11 @@ async def _handle_handoff(payload: dict[str, Any]) -> dict[str, Any]:
     emit(
         "handoff.decomposed",
         run_id,
-        {"item_count": len(result.get("items", []))},
+        {
+            "item_count": len(result.get("items", [])),
+            "live": result.get("live"),
+            "backend": os.environ.get("DESK_AGENT_BACKEND", "mock"),
+        },
     )
     patch_id = uuid.uuid4().hex
     ops = [{"op": "add", "item": item} for item in result.get("items", [])]

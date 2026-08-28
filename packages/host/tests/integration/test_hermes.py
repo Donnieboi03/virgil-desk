@@ -22,7 +22,51 @@ def hermes_backend(monkeypatch):
     return get_backend()
 
 
-def test_hermes_handoff_includes_calendar_proposal(hermes_backend):
+def test_hermes_live_decompose_mocked_run(hermes_backend, monkeypatch):
+    import json
+
+    from desk_host.backends.hermes import HermesBackend
+
+    payload = json.dumps(
+        {
+            "decomposition": "Parse the listing; you decide on apply.",
+            "items": [
+                {"column": "agent", "title": "Summarize job requirements", "status": "running"},
+                {"column": "you", "title": "Apply when satisfied", "status": "proposed"},
+            ],
+        }
+    )
+
+    async def fake_run(_self, _message: str) -> str:
+        return payload
+
+    monkeypatch.setattr(HermesBackend, "_hermes_run", fake_run)
+
+    with TestClient(app) as client:
+        ext = MockExtensionSession(client)
+        try:
+            result = ext.handoff(
+                {
+                    "url": "https://example.com/jobs/1",
+                    "title": "Engineer role",
+                    "human_tab_id": 11,
+                    "window_id": 1,
+                }
+            )
+            titles = [i["title"] for i in result["items"]]
+            assert "Summarize job requirements" in titles
+            assert result.get("live") is True
+        finally:
+            ext.close()
+
+
+def test_hermes_handoff_includes_calendar_proposal(hermes_backend, monkeypatch):
+    from desk_host.backends.hermes import HermesBackend
+
+    async def empty_run(_self, _message: str) -> str:
+        return ""
+
+    monkeypatch.setattr(HermesBackend, "_hermes_run", empty_run)
     with TestClient(app) as client:
         ext = MockExtensionSession(client)
         try:
