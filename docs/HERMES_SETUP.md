@@ -90,7 +90,7 @@ Expect `agent.execute_started`, `browser.command`, `browser.command_result`, `ag
 3. Hand off with optional intent text
 4. Confirm board titles match page content (not `Hermes: <title>` stub)
 5. `desk-events --run-id <id>` shows `handoff.decomposed` with `"live": true`
-6. `handoff.snapshot` shows `has_screenshot: true` when extension captured PNG
+6. `handoff.snapshot` shows `flags.has_screenshot: true` when extension captured PNG
 
 See also [`tests/manual/hermes_execute_checklist.md`](../tests/manual/hermes_execute_checklist.md).
 

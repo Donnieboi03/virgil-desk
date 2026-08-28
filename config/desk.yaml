@@ -18,3 +18,12 @@ hermes:
   decompose_enabled: true
 observability:
   persist_screenshots: false
+prompts:
+  decompose_items_max: 10
+  decompose_summary_sentences_max: 3
+  work_item_title_max_chars: 200
+  execute_summary_max_chars: 2000
+  event_snippet_max_chars: 500
+  event_summary_snippet_max_chars: 200
+  thin_scrape_threshold_chars: 200
+  agent_scroll_stall_loops: 2

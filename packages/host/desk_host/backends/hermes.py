@@ -12,16 +12,14 @@ from typing import Any
 from ..backends import new_run_id
 from ..config import load_config
 from ..decompose_parser import DecomposeError, parse_decompose_json
-from ..observability import emit
+from ..observability import record
+from ..prompt_render import render_prompt
 from ..screenshot_store import persist_handoff_screenshot
 
 
-def _prompt_path(name: str) -> Path:
-    return Path(__file__).resolve().parents[4] / "prompts" / name
-
-
 def build_decompose_prompt(handoff: dict[str, Any]) -> str:
-    system = _prompt_path("decompose_handoff.md").read_text(encoding="utf-8")
+    cfg = load_config()
+    system = render_prompt("decompose_handoff.md", cfg)
     snap = dict(handoff.get("snapshot") or {})
     snap.pop("screenshot", None)
     payload = {
@@ -35,7 +33,7 @@ def build_decompose_prompt(handoff: dict[str, Any]) -> str:
 
 
 def build_execute_prompt(item: dict[str, Any], ctx: dict[str, Any]) -> str:
-    system = _prompt_path("execute_agent_item.md").read_text(encoding="utf-8")
+    system = render_prompt("execute_agent_item.md")
     payload = {"item": item, **ctx}
     return f"{system}\n\n## Task\n\n```json\n{json.dumps(payload, indent=2)}\n```"
 
@@ -81,15 +79,14 @@ class HermesBackend:
             if parsed:
                 parsed["live"] = True
                 return parsed
-            emit(
+            record(
                 "handoff.decompose_failed",
                 run_id,
-                {
-                    "reason": "parse_failed" if result.text else "empty_output",
-                    "exit_code": result.exit_code,
-                    "stderr_snippet": (result.stderr or "")[:500],
-                    "stdout_snippet": (result.text or "")[:500],
-                },
+                cfg=cfg,
+                measure={"exit_code": result.exit_code},
+                reason="parse_failed" if result.text else "empty_output",
+                stderr_snippet=(result.stderr or "")[: cfg.prompts.event_snippet_max_chars],
+                stdout_snippet=(result.text or "")[: cfg.prompts.event_snippet_max_chars],
             )
 
         if cfg.hermes.decompose_fallback_stub:
@@ -113,7 +110,8 @@ class HermesBackend:
             )
         if not result.text:
             raise RuntimeError("hermes execute returned empty output")
-        return {"summary": result.text[:2000], "exit_code": result.exit_code}
+        max_chars = cfg.prompts.execute_summary_max_chars
+        return {"summary": result.text[:max_chars], "exit_code": result.exit_code}
 
     def _stub_decompose(self, handoff: dict[str, Any], run_id: str) -> dict[str, Any]:
         url = handoff.get("url", "")
@@ -185,6 +183,9 @@ class HermesBackend:
         timeout = timeout_sec or cfg.hermes.decompose_timeout_sec
         env = os.environ.copy()
         env["HERMES_HOME"] = self.home
+        repo_scripts = Path(__file__).resolve().parents[4] / "scripts"
+        if repo_scripts.is_dir():
+            env["PATH"] = f"{repo_scripts}{os.pathsep}{env.get('PATH', '')}"
         cmd = [
             "hermes",
             "-p",
@@ -226,5 +227,11 @@ class HermesBackend:
         result = dict(item)
         result["status"] = "done"
         result["evidence"] = {"summary": out.get("summary", ""), **ctx}
-        emit("run.finished", run_id, {"backend": "hermes", "item_id": item.get("id")})
+        record(
+            "run.finished",
+            run_id,
+            cfg=load_config(),
+            backend="hermes",
+            item_id=item.get("id"),
+        )
         return result

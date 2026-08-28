@@ -6,6 +6,8 @@ import json
 import re
 from typing import Any
 
+from .config import load_config
+
 VALID_COLUMNS = frozenset({"you", "agent", "waiting"})
 
 
@@ -55,6 +57,7 @@ def parse_decompose_json(
     url = str(handoff.get("url") or "")
     human_tab_id = handoff.get("human_tab_id")
     agent_tab_id = handoff.get("agent_tab_id")
+    title_max = load_config().prompts.work_item_title_max_chars
     items_out: list[dict[str, Any]] = []
     col_counts: dict[str, int] = {}
 
@@ -70,7 +73,7 @@ def parse_decompose_json(
         item: dict[str, Any] = {
             "id": item_id,
             "column": column,
-            "title": str(raw_item.get("title") or "Untitled").strip()[:200],
+            "title": str(raw_item.get("title") or "Untitled").strip()[:title_max],
             "source": {"kind": "handoff", "url": url},
             "status": raw_item.get("status") or "proposed",
             "run_id": run_id,
@@ -100,6 +103,10 @@ def parse_decompose_json(
 
     if not items_out:
         return None
+
+    max_items = load_config().prompts.decompose_items_max
+    if len(items_out) > max_items:
+        items_out = items_out[:max_items]
 
     decomposition = str(blob.get("decomposition") or "").strip()
     return {

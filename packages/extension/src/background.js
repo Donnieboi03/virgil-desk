@@ -28,6 +28,16 @@ const META_KEY = "virgil_desk_panel_meta";
 
 chrome.runtime.onInstalled.addListener(() => {
   chrome.sidePanel.setPanelBehavior({ openPanelOnActionClick: true });
+  chrome.alarms.create("desk-ws-keepalive", { periodInMinutes: 1 });
+});
+
+chrome.alarms.onAlarm.addListener((alarm) => {
+  if (alarm.name !== "desk-ws-keepalive") return;
+  if (ws?.readyState === WebSocket.OPEN) {
+    ws.send(JSON.stringify({ type: "ping" }));
+  } else {
+    connectWs();
+  }
 });
 
 chrome.storage.sync.get(["hostUrl"], (data) => {
@@ -51,8 +61,13 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
     loadBoard().then((board) => sendResponse({ board }));
     return true;
   }
+  if (msg.type === "reconnectWs") {
+    connectWs();
+    sendResponse({ ok: true, wsConnected: ws?.readyState === WebSocket.OPEN });
+    return true;
+  }
   if (msg.type === "handoffTab") {
-    handoffActiveTab(msg.intent).then(sendResponse);
+    handoffActiveTab(msg.intent, msg.tabId).then(sendResponse);
     return true;
   }
   if (msg.type === "acceptProposal") {
@@ -130,6 +145,9 @@ function connectWs() {
     if (msg.type === "registered") {
       applyRegisteredConfig(msg);
       chrome.runtime.sendMessage({ type: "connectionUpdated", wsConnected: true }).catch(() => {});
+    }
+    if (msg.type === "pong") {
+      return;
     }
     if (msg.type === "handoff_result") {
       const { ok = true, run_id: runId, decomposition, error } = msg;
@@ -224,7 +242,7 @@ async function ensureAgentGroup(tabId, windowId) {
 }
 
 async function resolveAgentTab(command) {
-  const pairs = (await chrome.storage.session.get(PAIS_KEY))[PAIRS_KEY] || {};
+  const pairs = (await chrome.storage.session.get(PAIRS_KEY))[PAIRS_KEY] || {};
   const runId = command.run_id;
   if (pairs[runId]?.agentTabId) {
     return { tabId: pairs[runId].agentTabId, tabMode: "reuse" };
@@ -274,12 +292,20 @@ async function scrapeTab(tabId) {
   const [{ result }] = await chrome.scripting.executeScript({
     target: { tabId },
     func: (textMax, linkMax) => {
-      const links = [...document.querySelectorAll("a[href]")]
+      const allLinks = [...document.querySelectorAll("a[href]")]
         .map((a) => a.href)
-        .filter((h) => h.startsWith("http"))
-        .slice(0, linkMax);
-      const text = (document.body?.innerText || "").slice(0, textMax);
-      return { text, links, url: location.href, title: document.title };
+        .filter((h) => h.startsWith("http"));
+      const fullText = document.body?.innerText || "";
+      return {
+        text: fullText.slice(0, textMax),
+        links: allLinks.slice(0, linkMax),
+        url: location.href,
+        title: document.title,
+        metrics: {
+          full_text_chars: fullText.length,
+          full_link_count: allLinks.length,
+        },
+      };
     },
     args: [maxText, maxLinks],
   });
@@ -492,7 +518,10 @@ async function scrollAgentTab(tabId, loops) {
 async function buildHandoffPayload(tab, intent) {
   const runId = mintRunId();
   const handoffMax = deskConfig.browser?.handoff_excerpt_max_chars ?? 8000;
+  const scrapeTextMax = deskConfig.browser?.scrape_text_max_chars ?? 16000;
+  const scrapeLinksMax = deskConfig.browser?.scrape_links_max ?? 200;
   const scrollLoops = deskConfig.browser?.handoff_scroll_loops ?? 0;
+  const scrollRatio = scrollViewportRatio();
   const resolved = await resolveAgentTab({
     op: "duplicateTab",
     run_id: runId,
@@ -500,11 +529,17 @@ async function buildHandoffPayload(tab, intent) {
     url: tab.url || "",
   });
   const agentTabId = resolved.tabId;
+  const scrollLoopsExecuted = scrollLoops > 0 ? scrollLoops : 0;
   if (scrollLoops > 0) {
     await scrollAgentTab(agentTabId, scrollLoops);
   }
   const snap = await scrapeTab(agentTabId);
   const shot = await screenshotTab(agentTabId);
+  const scrapeTextLen = snap.text?.length ?? 0;
+  const metrics = snap.metrics || {};
+  const fullTextChars = metrics.full_text_chars ?? scrapeTextLen;
+  const fullLinkCount = metrics.full_link_count ?? (snap.links?.length ?? 0);
+  const excerpt = snap.text?.slice(0, handoffMax) ?? "";
   return {
     run_id: runId,
     url: tab.url || "",
@@ -514,16 +549,47 @@ async function buildHandoffPayload(tab, intent) {
     window_id: tab.windowId,
     intent: intent || "",
     snapshot: {
-      excerpt: snap.text?.slice(0, handoffMax),
+      excerpt,
       links: snap.links,
       screenshot: shot,
+      capture: {
+        scroll_loops_executed: scrollLoopsExecuted,
+        scroll_loops_configured: scrollLoops,
+        scroll_viewport_ratio: scrollRatio,
+        scrape_text_max_chars: scrapeTextMax,
+        handoff_excerpt_max_chars: handoffMax,
+        scrape_links_max: scrapeLinksMax,
+        scrape_text_chars: scrapeTextLen,
+        excerpt_chars: excerpt.length,
+        link_count: snap.links?.length ?? 0,
+        full_text_chars: fullTextChars,
+        full_link_count: fullLinkCount,
+        scrape_text_capped: fullTextChars > scrapeTextMax,
+        handoff_excerpt_capped: scrapeTextLen > handoffMax,
+        links_capped: fullLinkCount > scrapeLinksMax,
+      },
     },
   };
 }
 
-async function handoffActiveTab(intent) {
-  const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
-  if (!tab?.id) return { ok: false, error: "no active tab" };
+async function handoffActiveTab(intent, explicitTabId) {
+  let tab;
+  if (explicitTabId) {
+    try {
+      tab = await chrome.tabs.get(explicitTabId);
+    } catch {
+      tab = undefined;
+    }
+  }
+  if (!tab?.id) {
+    [tab] = await chrome.tabs.query({ active: true, lastFocusedWindow: true });
+  }
+  if (!tab?.id) {
+    return { ok: false, error: "no active tab — focus the page to hand off, then try again" };
+  }
+  if (tab.url?.startsWith("chrome://") || tab.url?.startsWith("chrome-extension://")) {
+    return { ok: false, error: "cannot hand off Chrome system or extension pages" };
+  }
   if (!wsConnected || ws?.readyState !== WebSocket.OPEN) {
     return { ok: false, error: "extension not connected to host — reload panel when WS connected" };
   }
@@ -539,16 +605,41 @@ async function handoffActiveTab(intent) {
       setTimeout(() => {
         if (pendingHandoffResolve === resolve) {
           pendingHandoffResolve = null;
-          resolve({ ok: false, error: "handoff timeout" });
+          resolve({ ok: false, error: "handoff timeout (Hermes decompose >120s)" });
         }
       }, 120000);
     });
-    ws.send(JSON.stringify({ type: "handoff_started", handoff }));
+    try {
+      ws.send(JSON.stringify({ type: "handoff_started", handoff }));
+    } catch (err) {
+      pendingHandoffResolve = null;
+      return { ok: false, error: `WebSocket send failed: ${err}` };
+    }
     const result = await resultPromise;
     if (result.run_id) {
       await rememberHandoffUrl(result.run_id, handoff.url);
     }
-    return result;
+    if (result.error) {
+      await savePanelMeta({
+        lastHandoffError: result.error,
+        lastRunId: result.run_id || "",
+      });
+      return { ok: false, ...result };
+    }
+    if (result.items?.length) {
+      await applyPatch(
+        [{ op: "clear" }, ...result.items.map((item) => ({ op: "add", item }))],
+        result.run_id,
+      );
+    }
+    if (result.run_id) {
+      await savePanelMeta({
+        lastRunId: result.run_id,
+        lastDecomposition: result.decomposition || "",
+        lastHandoffError: "",
+      });
+    }
+    return { ok: result.ok !== false, ...result };
   }
   const res = await fetch(`${hostUrl}/v1/handoff`, {
     method: "POST",
@@ -603,9 +694,24 @@ async function denyProposal({ itemId, proposalId, runId, reason }) {
   return data;
 }
 
+async function ensureWsReady() {
+  if (wsConnected && ws?.readyState === WebSocket.OPEN) {
+    return null;
+  }
+  connectWs();
+  for (let i = 0; i < 24; i++) {
+    await new Promise((r) => setTimeout(r, 250));
+    if (wsConnected && ws?.readyState === WebSocket.OPEN) {
+      return null;
+    }
+  }
+  return "WS disconnected — reload extension or wait for reconnect";
+}
+
 async function runAgentItem({ itemId, runId }) {
-  if (!wsConnected) {
-    return { ok: false, error: "WS disconnected — cannot execute" };
+  const wsErr = await ensureWsReady();
+  if (wsErr) {
+    return { ok: false, error: wsErr };
   }
   const res = await fetch(`${hostUrl}/v1/items/${itemId}/execute`, {
     method: "POST",
@@ -621,8 +727,9 @@ async function runAgentItem({ itemId, runId }) {
 }
 
 async function completeItem({ itemId, runId }) {
-  if (!wsConnected) {
-    return { ok: false, error: "WS disconnected — cannot complete" };
+  const wsErr = await ensureWsReady();
+  if (wsErr) {
+    return { ok: false, error: wsErr };
   }
   const res = await fetch(`${hostUrl}/v1/items/${itemId}/complete`, {
     method: "POST",

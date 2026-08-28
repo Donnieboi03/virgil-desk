@@ -13,9 +13,9 @@ from pydantic import BaseModel, Field
 
 from .backends import get_backend, new_run_id
 from .calendar import book_calendar_slot
-from .config import config_for_extension, load_config
+from .config import clear_config_cache, config_for_extension, load_config
 from .navigation import normalize_browser_command
-from .observability import emit
+from .observability import measure_from_snapshot, record
 from .policy import policy_denied_reason
 from .screenshot_store import persist_handoff_screenshot, persist_screenshot
 
@@ -57,6 +57,7 @@ def get_config():
 def reset_config_cache() -> None:
     global _config_cache
     _config_cache = None
+    clear_config_cache()
 
 
 class HandoffBody(BaseModel):
@@ -146,31 +147,28 @@ async def _handle_handoff(payload: dict[str, Any]) -> dict[str, Any]:
     }
     snap = payload.get("snapshot") or {}
     cfg = get_config()
-    shot = snap.get("screenshot") or {}
-    emit("handoff.started", run_id, {"url": payload.get("url")})
-    emit(
+    record("handoff.started", run_id, cfg=cfg, url=payload.get("url"))
+    measure, flags = measure_from_snapshot(snap)
+    record(
         "handoff.snapshot",
         run_id,
-        {
-            "agent_tab_id": payload.get("agent_tab_id"),
-            "excerpt_bytes": len(snap.get("excerpt") or ""),
-            "excerpt_max": cfg.browser.handoff_excerpt_max_chars,
-            "link_count": len(snap.get("links") or []),
-            "handoff_scroll_loops": cfg.browser.handoff_scroll_loops,
-            "has_screenshot": bool(shot.get("base64")),
-            "screenshot_bytes": len(shot.get("base64") or ""),
-        },
+        cfg=cfg,
+        measure=measure,
+        flags=flags,
+        agent_tab_id=payload.get("agent_tab_id"),
     )
     backend = get_backend()
     result = await backend.decompose(payload)
-    emit(
+    decompose_flags: dict[str, Any] | None = None
+    if "live" in result:
+        decompose_flags = {"live": bool(result["live"])}
+    record(
         "handoff.decomposed",
         run_id,
-        {
-            "item_count": len(result.get("items", [])),
-            "live": result.get("live"),
-            "backend": os.environ.get("DESK_AGENT_BACKEND", "mock"),
-        },
+        cfg=cfg,
+        measure={"item_count": len(result.get("items", []))},
+        flags=decompose_flags,
+        backend=os.environ.get("DESK_AGENT_BACKEND", "mock"),
     )
     patch_id = uuid.uuid4().hex
     ops: list[dict[str, Any]] = [{"op": "clear"}]
@@ -205,10 +203,12 @@ async def _send_board_patch(
         }
     )
     if required and not sent:
-        emit(
+        record(
             "board.patch_dropped",
             run_id,
-            {"patch_id": patch_id, "reason": "extension_not_connected"},
+            cfg=get_config(),
+            patch_id=patch_id,
+            reason="extension_not_connected",
         )
         raise ExtensionNotConnectedError("extension not connected — board patch not delivered")
 
@@ -271,10 +271,12 @@ async def accept_item(item_id: str, body: AcceptBody) -> dict[str, Any]:
     prop = _proposals.get(body.proposal_id)
     if not prop:
         raise HTTPException(status_code=404, detail="proposal not found")
-    emit(
+    record(
         "proposal.accepted",
         body.run_id,
-        {"proposal_id": body.proposal_id, "proposal_kind": prop.get("kind")},
+        cfg=get_config(),
+        proposal_id=body.proposal_id,
+        proposal_kind=prop.get("kind"),
     )
     committed: dict[str, Any] = {"kind": prop.get("kind")}
     if prop.get("kind") == "calendar_slot":
@@ -320,10 +322,12 @@ async def browser_command(body: BrowserCommandBody) -> dict[str, Any]:
 
 @app.post("/v1/items/{item_id}/deny")
 async def deny_item(item_id: str, body: DenyBody) -> dict[str, Any]:
-    emit(
+    record(
         "proposal.denied",
         body.run_id,
-        {"proposal_id": body.proposal_id, "reason": body.reason},
+        cfg=get_config(),
+        proposal_id=body.proposal_id,
+        reason=body.reason,
     )
     try:
         _require_extension()
@@ -357,15 +361,17 @@ async def execute_item(item_id: str, body: ExecuteBody) -> dict[str, Any]:
         raise HTTPException(status_code=501, detail="backend does not support execute")
     cfg = get_config()
     browser_before = _browser_results_for_run(body.run_id)
-    emit("agent.execute_started", body.run_id, {"item_id": item_id})
+    record("agent.execute_started", body.run_id, cfg=cfg, item_id=item_id)
     try:
         result = await execute_fn(item, ctx)
     except Exception as exc:
-        err = str(exc)[:500]
-        emit(
+        err = str(exc)[: cfg.prompts.event_snippet_max_chars]
+        record(
             "agent.execute_failed",
             body.run_id,
-            {"item_id": item_id, "error": err},
+            cfg=cfg,
+            item_id=item_id,
+            error=err,
         )
         try:
             await _patch_work_item(
@@ -380,10 +386,12 @@ async def execute_item(item_id: str, body: ExecuteBody) -> dict[str, Any]:
     browser_after = _browser_results_for_run(body.run_id)
     if cfg.hermes.execute_require_browser_evidence and browser_after <= browser_before:
         err = "execute completed without browser evidence"
-        emit(
+        record(
             "agent.execute_failed",
             body.run_id,
-            {"item_id": item_id, "error": err},
+            cfg=cfg,
+            item_id=item_id,
+            error=err,
         )
         await _patch_work_item(
             item_id,
@@ -402,20 +410,23 @@ async def execute_item(item_id: str, body: ExecuteBody) -> dict[str, Any]:
         run_id=body.run_id,
         evidence=evidence,
     )
-    emit(
+    record(
         "agent.executed",
         body.run_id,
-        {
-            "item_id": item_id,
-            "exit_code": (result or {}).get("exit_code"),
-            "summary_snippet": evidence["summary"][:200],
+        cfg=cfg,
+        measure={
             "browser_ops": evidence["browser_ops"],
+            "exit_code": (result or {}).get("exit_code"),
         },
+        item_id=item_id,
+        summary_snippet=evidence["summary"][: cfg.prompts.event_summary_snippet_max_chars],
     )
-    emit(
+    record(
         "run.finished",
         body.run_id,
-        {"backend": os.environ.get("DESK_AGENT_BACKEND", "mock"), "item_id": item_id},
+        cfg=cfg,
+        backend=os.environ.get("DESK_AGENT_BACKEND", "mock"),
+        item_id=item_id,
     )
     return {"ok": True, "work_item_id": item_id, "status": "done", "result": result}
 
@@ -432,7 +443,7 @@ async def complete_item(item_id: str, body: CompleteBody) -> dict[str, Any]:
     except ExtensionNotConnectedError as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
     await _patch_work_item(item_id, status="done", run_id=body.run_id)
-    emit("item.completed", body.run_id, {"item_id": item_id, "column": "you"})
+    record("item.completed", body.run_id, cfg=get_config(), item_id=item_id, column="you")
     return {"ok": True, "work_item_id": item_id, "status": "done"}
 
 
@@ -454,6 +465,8 @@ async def extension_ws(ws: WebSocket) -> None:
                         "config": config_for_extension(get_config()),
                     }
                 )
+            elif msg_type == "ping":
+                await ws.send_json({"type": "pong"})
             elif msg_type == "handoff_started":
                 handoff = raw.get("handoff") or {}
                 result = await _handle_handoff(handoff)
@@ -466,21 +479,24 @@ async def extension_ws(ws: WebSocket) -> None:
                     waiter = _command_waiters.pop(cid, None)
                     if waiter and not waiter.done():
                         waiter.set_result(result)
-                emit(
-                    "browser.command_result",
-                    raw.get("run_id", ""),
-                    {
-                        "command_id": cid,
-                        "ok": result.get("ok"),
-                        "duration_ms": result.get("duration_ms"),
-                        "screenshot_count": 1 if result.get("screenshot") else 0,
-                        "scrape_bytes": len(result.get("scrape_excerpt") or ""),
-                        "screenshot_count_run_total": _screenshot_counts.get(
-                            raw.get("run_id", ""), 0
-                        ),
-                    },
-                )
                 run_id = raw.get("run_id", "")
+                cfg = get_config()
+                record(
+                    "browser.command_result",
+                    run_id,
+                    cfg=cfg,
+                    include_limits=False,
+                    measure={
+                        "duration_ms": result.get("duration_ms"),
+                        "scrape_bytes": len(result.get("scrape_excerpt") or ""),
+                        "screenshot_count_run_total": _screenshot_counts.get(run_id, 0),
+                    },
+                    flags={
+                        "ok": result.get("ok"),
+                        "has_screenshot": bool(result.get("screenshot")),
+                    },
+                    command_id=cid,
+                )
                 if run_id and result.get("ok"):
                     _browser_result_counts[run_id] = (
                         _browser_result_counts.get(run_id, 0) + 1
@@ -513,10 +529,13 @@ async def dispatch_browser_command(command: dict[str, Any]) -> None:
     if op in SCREENSHOT_OPS and run_id:
         count = _screenshot_counts.get(run_id, 0)
         if count >= cfg.browser.screenshot_max_per_run:
-            emit(
+            record(
                 "policy.denied",
                 run_id,
-                {"rule": "screenshot_cap", "op": op, "count": count},
+                cfg=cfg,
+                measure={"count": count},
+                rule="screenshot_cap",
+                op=op,
             )
             raise PermissionError("screenshot_cap")
         _screenshot_counts[run_id] = count + 1
@@ -527,19 +546,21 @@ async def dispatch_browser_command(command: dict[str, Any]) -> None:
         command.get("human_tab_id"),
     )
     if reason:
-        emit(
+        record(
             "policy.denied",
             command.get("run_id", ""),
-            {"rule": reason, "op": command.get("op")},
+            cfg=cfg,
+            rule=reason,
+            op=command.get("op"),
         )
         raise PermissionError(reason)
-    emit(
+    record(
         "browser.command",
         command.get("run_id", ""),
-        {
-            "command_id": command.get("command_id"),
-            "op": command.get("op"),
-        },
+        cfg=cfg,
+        include_limits=False,
+        command_id=command.get("command_id"),
+        op=command.get("op"),
     )
     sent = await _send_to_extension({"type": "browser_command", "command": command})
     if not sent:

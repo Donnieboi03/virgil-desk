@@ -32,3 +32,20 @@ def test_parse_markdown_wrapped():
 def test_parse_malformed_returns_none():
     assert parse_decompose_json("not json", "desk_x", {}) is None
     assert parse_decompose_json('{"items":[]}', "desk_x", {}) is None
+
+
+def test_parse_truncates_items_above_config_max(monkeypatch):
+    items = [{"column": "agent", "title": f"T{i}", "status": "proposed"} for i in range(8)]
+    raw = json.dumps({"decomposition": "many", "items": items})
+
+    class FakePrompts:
+        decompose_items_max = 5
+        work_item_title_max_chars = 200
+
+    class FakeCfg:
+        prompts = FakePrompts()
+
+    monkeypatch.setattr("desk_host.decompose_parser.load_config", lambda: FakeCfg())
+    out = parse_decompose_json(raw, "desk_cap", {"url": "https://example.com"})
+    assert out is not None
+    assert len(out["items"]) == 5

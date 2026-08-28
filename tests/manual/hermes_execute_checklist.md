@@ -25,7 +25,7 @@ desk-events --run-id <run_id> --summary
 
 | Event | When |
 |-------|------|
-| `handoff.snapshot` | After handoff — `has_screenshot: true` |
+| `handoff.snapshot` | After handoff — `flags.has_screenshot: true` |
 | `handoff.decomposed` | Board populated — `live: true` |
 | `agent.execute_started` | Run agent clicked |
 | `browser.command` | Hermes called `desk-browser` |

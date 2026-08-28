@@ -9,23 +9,51 @@ from typing import Any
 from .observability import read_events
 
 
+def _field(row: dict[str, Any], *keys: str, default: Any = None) -> Any:
+    """Read from measure/flags first, then legacy top-level."""
+    for key in keys:
+        for section in ("measure", "flags"):
+            block = row.get(section)
+            if isinstance(block, dict) and key in block:
+                return block[key]
+        if key in row:
+            return row[key]
+    return default
+
+
 def _summarize_run(rows: list[dict[str, Any]]) -> dict[str, Any]:
     screenshot_count = 0
     live: bool | None = None
+    item_count: int | None = None
     kinds: dict[str, int] = {}
+    limits: dict[str, Any] | None = None
     for row in rows:
         k = str(row.get("kind") or "")
         kinds[k] = kinds.get(k, 0) + 1
         if k == "browser.command_result":
-            screenshot_count += int(row.get("screenshot_count") or 0)
-        if k == "handoff.decomposed" and row.get("live") is not None:
-            live = bool(row.get("live"))
-    return {
+            if _field(row, "has_screenshot"):
+                screenshot_count += 1
+            else:
+                screenshot_count += int(row.get("screenshot_count") or 0)
+        if k == "handoff.decomposed":
+            if _field(row, "live") is not None:
+                live = bool(_field(row, "live"))
+            ic = _field(row, "item_count")
+            if ic is not None:
+                item_count = int(ic)
+        if limits is None and isinstance(row.get("limits"), dict):
+            limits = row["limits"]
+    out: dict[str, Any] = {
         "event_count": len(rows),
         "kinds": kinds,
         "screenshot_count": screenshot_count,
         "live_decompose": live,
     }
+    if item_count is not None:
+        out["item_count"] = item_count
+    if limits is not None:
+        out["limits"] = limits
+    return out
 
 
 def main() -> None:

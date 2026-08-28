@@ -1,17 +1,57 @@
-from desk_host.config import BrowserConfig, load_config
+"""Config loads exclusively from config/desk.yaml — no duplicated defaults elsewhere."""
+
+from __future__ import annotations
+
+import copy
+
+import pytest
+import yaml
+from dataclasses import fields
+
+from desk_host.config import (
+    config_from_dict,
+    config_schema_sections,
+    load_config,
+    repo_config_path,
+)
 
 
-def test_load_config_defaults():
+def test_load_config_matches_desk_yaml():
+    raw = yaml.safe_load(repo_config_path().read_text(encoding="utf-8"))
     cfg = load_config()
-    assert cfg.browser.scrape_text_max_chars == 16000
-    assert cfg.browser.handoff_excerpt_max_chars == 8000
-    assert cfg.browser.handoff_scroll_loops == 2
-    assert cfg.browser.handoff_scroll_viewport_ratio == 0.85
-    assert cfg.browser.screenshot_max_per_run == 20
-    assert cfg.hermes.execute_timeout_sec == 180
-    assert cfg.hermes.execute_require_browser_evidence is True
+    for section, cls in config_schema_sections():
+        expected = raw[section]
+        actual = getattr(cfg, section)
+        for f in fields(actual):
+            assert getattr(actual, f.name) == expected[f.name], f"{section}.{f.name}"
 
 
-def test_browser_config_fields():
-    b = BrowserConfig()
-    assert b.screenshot_mode == "captureVisibleTab"
+def test_desk_yaml_covers_schema():
+    raw = yaml.safe_load(repo_config_path().read_text(encoding="utf-8"))
+    for section, cls in config_schema_sections():
+        assert section in raw, f"desk.yaml missing section {section}"
+        yaml_keys = set(raw[section].keys())
+        schema_keys = {f.name for f in fields(cls)}
+        assert yaml_keys == schema_keys, f"{section}: yaml/schema key mismatch"
+
+
+def test_config_from_dict_roundtrip():
+    raw = yaml.safe_load(repo_config_path().read_text(encoding="utf-8"))
+    cfg = config_from_dict(raw)
+    assert cfg.prompts.decompose_items_max == raw["prompts"]["decompose_items_max"]
+
+
+def test_unknown_yaml_key_rejected(tmp_path):
+    raw = yaml.safe_load(repo_config_path().read_text(encoding="utf-8"))
+    bad = copy.deepcopy(raw)
+    bad["prompts"]["not_a_real_key"] = 99
+    with pytest.raises(ValueError, match="unknown keys"):
+        config_from_dict(bad)
+
+
+def test_missing_yaml_key_rejected(tmp_path):
+    raw = yaml.safe_load(repo_config_path().read_text(encoding="utf-8"))
+    bad = copy.deepcopy(raw)
+    del bad["browser"]["scrape_text_max_chars"]
+    with pytest.raises(ValueError, match="missing keys"):
+        config_from_dict(bad)

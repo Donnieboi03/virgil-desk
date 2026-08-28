@@ -6,6 +6,12 @@ import pytest
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 
+@pytest.fixture(autouse=True)
+def _force_mock_backend(monkeypatch):
+    """CI and local dev may have DESK_AGENT_BACKEND=hermes in .env; tests use mock."""
+    monkeypatch.setenv("DESK_AGENT_BACKEND", "mock")
+
+
 @pytest.fixture
 def fake_extension_connected(monkeypatch):
     """Simulate extension WS without a live socket (unit/integration helpers)."""

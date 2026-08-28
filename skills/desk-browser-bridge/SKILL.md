@@ -54,8 +54,8 @@ Do not mark WorkItem done without post-action screenshot + scrape in evidence.
 1. `screenshot` (baseline — one per agent tab open)
 2. Loop: `scroll` → `scrape`
 3. Add `screenshot` when ANY:
-   - scrape excerpt < 200 chars or no target link found
-   - 2 scroll loops without progress
+   - scrape excerpt below `prompts.thin_scrape_threshold_chars` (default 200) or no target link found
+   - `prompts.agent_scroll_stall_loops` scroll loops without progress (default 2)
    - layout-heavy UI (forms, wizards, modals)
    - preparing You-column handoff
 
@@ -79,4 +79,4 @@ Desk agents receive `command_result.screenshot` (PNG base64) plus capped scrape 
 
 ## Budget
 
-Prefer screenshots over extra replanning turns. Cap ~20 screenshot ops per `run_id` via Host policy (handoff snapshot PNG at user gesture is exempt — taken client-side before decompose).
+Prefer screenshots over extra replanning turns. Cap `browser.screenshot_max_per_run` (default 20) screenshot ops per `run_id` via Host policy; handoff snapshot PNG at user gesture is exempt.

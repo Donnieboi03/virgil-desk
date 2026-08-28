@@ -10,6 +10,13 @@ function truncateUrl(url) {
 }
 
 let panelWsConnected = false;
+let handoffTargetTabId = null;
+
+async function resolveHandoffTabId() {
+  const [tab] = await chrome.tabs.query({ active: true, lastFocusedWindow: true });
+  handoffTargetTabId = tab?.id && !tab.url?.startsWith("chrome-extension://") ? tab.id : null;
+  return handoffTargetTabId;
+}
 
 function appendItemError(li, message) {
   const errEl = li.querySelector(".item-error");
@@ -33,6 +40,7 @@ function appendEvidence(li, item) {
 
 async function runAgentAction(item, li, runBtn) {
   runBtn.disabled = true;
+  runBtn.textContent = "Running…";
   appendItemError(li, "");
   try {
     const result = await chrome.runtime.sendMessage({
@@ -40,14 +48,16 @@ async function runAgentAction(item, li, runBtn) {
       itemId: item.id,
       runId: item.run_id || "",
     });
-    if (result.error || result.detail) {
+    if (result?.error || result?.detail) {
       appendItemError(li, result.error || result.detail);
     }
   } catch (err) {
     appendItemError(li, String(err));
   } finally {
+    runBtn.textContent = item.status === "failed" ? "Retry agent" : "Run agent";
     runBtn.disabled = !panelWsConnected;
-    refresh();
+    await refreshStatus();
+    await refreshBoard();
   }
 }
 
@@ -229,6 +239,9 @@ async function refreshStatus() {
   const wsEl = document.getElementById("ws-status");
   const backendEl = document.getElementById("backend-status");
   panelWsConnected = Boolean(health.wsConnected);
+  if (health.ok && !health.wsConnected) {
+    chrome.runtime.sendMessage({ type: "reconnectWs" }).catch(() => {});
+  }
   if (health.ok) {
     hostEl.textContent = "Host OK";
     hostEl.className = "ok";
@@ -250,7 +263,7 @@ async function refreshMeta() {
   showHandoffError(meta.lastHandoffError);
 }
 
-async function refresh() {
+async function refreshBoard() {
   const { board } = await chrome.runtime.sendMessage({ type: "getBoard" });
   renderColumn(document.getElementById("col-you"), board.you || [], "you");
   renderColumn(document.getElementById("col-agent"), board.agent || [], "agent");
@@ -259,6 +272,10 @@ async function refresh() {
     board.waiting || [],
     "waiting",
   );
+}
+
+async function refresh() {
+  await refreshBoard();
   await refreshStatus();
   await refreshMeta();
 }
@@ -270,23 +287,32 @@ handoffBtn.addEventListener("click", async () => {
     return;
   }
   handoffBtn.disabled = true;
+  handoffBtn.textContent = "Handing off…";
   showHandoffError("");
   try {
-    const result = await chrome.runtime.sendMessage({ type: "handoffTab" });
-    if (result.error) {
-      showHandoffError(result.error);
+    const tabId = handoffTargetTabId || (await resolveHandoffTabId());
+    const result = await chrome.runtime.sendMessage({ type: "handoffTab", tabId });
+    if (!result) {
+      showHandoffError("Handoff failed — background did not respond (reload extension)");
+    } else if (result.error || result.ok === false) {
+      showHandoffError(result.error || "Handoff failed");
     }
-    if (result.decomposition) {
+    if (result?.decomposition) {
       showDecomposition(result.decomposition);
     }
-    if (result.run_id) {
+    if (result?.run_id) {
       showRunId(result.run_id);
+    }
+    if (result?.run_id || result?.items?.length) {
+      await refreshBoard();
+      await refreshMeta();
     }
   } catch (err) {
     showHandoffError(String(err));
   } finally {
+    handoffBtn.textContent = "Hand off this tab";
     handoffBtn.disabled = !panelWsConnected;
-    await refresh();
+    await refreshStatus();
   }
 });
 
@@ -299,11 +325,18 @@ document.getElementById("copy-run-id")?.addEventListener("click", async () => {
 
 chrome.runtime.onMessage.addListener((msg) => {
   if (msg.type === "boardUpdated" || msg.type === "panelMetaUpdated") {
-    refresh();
+    refreshBoard().then(() => refreshMeta());
   }
   if (msg.type === "connectionUpdated") {
     panelWsConnected = msg.wsConnected;
-    refreshStatus().then(() => refresh());
+    refreshStatus().then(() => refreshBoard()).then(() => refreshMeta());
+  }
+});
+
+resolveHandoffTabId();
+document.addEventListener("visibilitychange", () => {
+  if (document.visibilityState === "visible") {
+    resolveHandoffTabId();
   }
 });
 

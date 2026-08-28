@@ -1,0 +1,70 @@
+"""General observability record envelope tests."""
+
+from dataclasses import replace
+
+from desk_host.config import load_config
+from desk_host.observability import limits_from_config, measure_from_snapshot, record, read_events
+
+
+def test_measure_from_snapshot_extracts_capture_facts():
+    cfg = load_config()
+    excerpt_len = min(8000, cfg.browser.handoff_excerpt_max_chars)
+    snap = {
+        "excerpt": "x" * excerpt_len,
+        "links": ["https://a.com"] * 50,
+        "capture": {
+            "scroll_loops_executed": cfg.browser.handoff_scroll_loops,
+            "scroll_loops_configured": cfg.browser.handoff_scroll_loops,
+            "scrape_text_chars": 12000,
+            "excerpt_chars": excerpt_len,
+            "full_text_chars": 25000,
+            "full_link_count": 300,
+            "link_count": 50,
+            "scrape_text_capped": True,
+            "handoff_excerpt_capped": True,
+            "links_capped": True,
+        },
+    }
+    measure, flags = measure_from_snapshot(snap)
+    assert measure["full_text_chars"] == 25000
+    assert measure["scroll_loops_executed"] == cfg.browser.handoff_scroll_loops
+    assert flags["scrape_text_capped"] is True
+    assert flags["handoff_excerpt_capped"] is True
+    assert flags["links_capped"] is True
+
+
+def test_limits_from_config_includes_prompts():
+    cfg = load_config()
+    limits = limits_from_config(cfg)
+    assert limits["prompts"]["decompose_items_max"] == cfg.prompts.decompose_items_max
+    assert "browser" in limits
+    assert "hermes" in limits
+
+
+def test_record_emits_envelope(tmp_path, monkeypatch):
+    log_dir = tmp_path / "logs"
+    monkeypatch.setenv("DESK_LOG_DIR", str(log_dir))
+    cfg = load_config()
+    record(
+        "handoff.decomposed",
+        "desk_test",
+        cfg=cfg,
+        measure={"item_count": 3},
+        flags={"live": True},
+        backend="mock",
+    )
+    rows = read_events(run_id="desk_test")
+    assert len(rows) == 1
+    row = rows[0]
+    assert row["kind"] == "handoff.decomposed"
+    assert row["measure"]["item_count"] == 3
+    assert row["flags"]["live"] is True
+    assert row["limits"]["prompts"]["decompose_items_max"] == cfg.prompts.decompose_items_max
+    assert row["backend"] == "mock"
+
+
+def test_limits_reflect_cfg_override():
+    cfg = load_config()
+    cfg = replace(cfg, prompts=replace(cfg.prompts, decompose_items_max=7))
+    limits = limits_from_config(cfg)
+    assert limits["prompts"]["decompose_items_max"] == 7

@@ -1,9 +1,10 @@
-"""Load desk.yaml + env overrides."""
+"""Load config/desk.yaml (single source of truth) + env overrides."""
 
 from __future__ import annotations
 
 import os
-from dataclasses import dataclass, field
+from dataclasses import dataclass, fields
+from functools import lru_cache
 from pathlib import Path
 from typing import Any
 
@@ -13,76 +14,129 @@ except ImportError:  # pragma: no cover
     yaml = None  # type: ignore
 
 
-def _repo_config_path() -> Path:
+def repo_config_path() -> Path:
     env = os.environ.get("DESK_CONFIG", "").strip()
     if env:
         return Path(env).expanduser()
-    # packages/host/desk_host/config.py -> repo root
     return Path(__file__).resolve().parents[3] / "config" / "desk.yaml"
+
+
+# Back-compat alias for internal imports
+_repo_config_path = repo_config_path
 
 
 @dataclass
 class BrowserConfig:
-    scrape_text_max_chars: int = 16000
-    scrape_links_max: int = 200
-    scrape_excerpt_max_chars: int = 8000
-    handoff_excerpt_max_chars: int = 8000
-    handoff_scroll_loops: int = 2
-    handoff_scroll_viewport_ratio: float = 0.85
-    screenshot_mode: str = "captureVisibleTab"
-    screenshot_max_per_run: int = 20
-    default_wait_ms: int = 500
+    scrape_text_max_chars: int
+    scrape_links_max: int
+    scrape_excerpt_max_chars: int
+    handoff_excerpt_max_chars: int
+    handoff_scroll_loops: int
+    handoff_scroll_viewport_ratio: float
+    screenshot_mode: str
+    screenshot_max_per_run: int
+    default_wait_ms: int
 
 
 @dataclass
 class HostConfig:
-    browser_wait_timeout_sec: float = 30.0
+    browser_wait_timeout_sec: float
 
 
 @dataclass
 class HermesConfig:
-    decompose_timeout_sec: int = 120
-    execute_timeout_sec: int = 180
-    execute_require_browser_evidence: bool = True
-    decompose_fallback_stub: bool = True
-    decompose_enabled: bool = True
+    decompose_timeout_sec: int
+    execute_timeout_sec: int
+    execute_require_browser_evidence: bool
+    decompose_fallback_stub: bool
+    decompose_enabled: bool
+
+
+@dataclass
+class PromptsConfig:
+    decompose_items_max: int
+    decompose_summary_sentences_max: int
+    work_item_title_max_chars: int
+    execute_summary_max_chars: int
+    event_snippet_max_chars: int
+    event_summary_snippet_max_chars: int
+    thin_scrape_threshold_chars: int
+    agent_scroll_stall_loops: int
 
 
 @dataclass
 class ObservabilityConfig:
-    persist_screenshots: bool = False
+    persist_screenshots: bool
 
 
 @dataclass
 class DeskConfig:
-    browser: BrowserConfig = field(default_factory=BrowserConfig)
-    host: HostConfig = field(default_factory=HostConfig)
-    hermes: HermesConfig = field(default_factory=HermesConfig)
-    observability: ObservabilityConfig = field(default_factory=ObservabilityConfig)
+    browser: BrowserConfig
+    host: HostConfig
+    hermes: HermesConfig
+    observability: ObservabilityConfig
+    prompts: PromptsConfig
 
 
-def _merge_section(cls: type, raw: dict[str, Any] | None) -> Any:
-    if not raw:
-        return cls()
-    fields = {f.name for f in cls.__dataclass_fields__.values()}  # type: ignore[attr-defined]
-    return cls(**{k: v for k, v in raw.items() if k in fields})
+_CONFIG_SECTIONS: tuple[tuple[str, type], ...] = (
+    ("browser", BrowserConfig),
+    ("host", HostConfig),
+    ("hermes", HermesConfig),
+    ("observability", ObservabilityConfig),
+    ("prompts", PromptsConfig),
+)
+
+
+def _parse_section(cls: type, raw: Any, section: str) -> Any:
+    if not isinstance(raw, dict):
+        raise ValueError(f"desk.yaml: missing or invalid section '{section}'")
+    names = {f.name for f in fields(cls)}  # type: ignore[arg-type]
+    missing = names - set(raw)
+    if missing:
+        raise ValueError(
+            f"desk.yaml [{section}] missing keys: {', '.join(sorted(missing))}"
+        )
+    unknown = set(raw) - names
+    if unknown:
+        raise ValueError(
+            f"desk.yaml [{section}] unknown keys: {', '.join(sorted(unknown))}"
+        )
+    return cls(**{k: raw[k] for k in names})
+
+
+def config_from_dict(data: dict[str, Any]) -> DeskConfig:
+    return DeskConfig(
+        browser=_parse_section(BrowserConfig, data.get("browser"), "browser"),
+        host=_parse_section(HostConfig, data.get("host"), "host"),
+        hermes=_parse_section(HermesConfig, data.get("hermes"), "hermes"),
+        observability=_parse_section(
+            ObservabilityConfig, data.get("observability"), "observability"
+        ),
+        prompts=_parse_section(PromptsConfig, data.get("prompts"), "prompts"),
+    )
+
+
+@lru_cache(maxsize=8)
+def _read_yaml_document(path: str) -> dict[str, Any]:
+    if yaml is None:
+        raise RuntimeError("PyYAML required to load desk.yaml")
+    p = Path(path)
+    if not p.is_file():
+        raise FileNotFoundError(f"desk config not found: {p}")
+    with p.open(encoding="utf-8") as fh:
+        loaded = yaml.safe_load(fh) or {}
+    if not isinstance(loaded, dict):
+        raise ValueError(f"desk.yaml must be a mapping: {p}")
+    return loaded
+
+
+def clear_config_cache() -> None:
+    _read_yaml_document.cache_clear()
 
 
 def load_config() -> DeskConfig:
-    path = _repo_config_path()
-    data: dict[str, Any] = {}
-    if yaml and path.is_file():
-        with path.open(encoding="utf-8") as fh:
-            loaded = yaml.safe_load(fh) or {}
-            if isinstance(loaded, dict):
-                data = loaded
-
-    cfg = DeskConfig(
-        browser=_merge_section(BrowserConfig, data.get("browser")),
-        host=_merge_section(HostConfig, data.get("host")),
-        hermes=_merge_section(HermesConfig, data.get("hermes")),
-        observability=_merge_section(ObservabilityConfig, data.get("observability")),
-    )
+    data = dict(_read_yaml_document(str(repo_config_path())))
+    cfg = config_from_dict(data)
 
     if os.environ.get("DESK_SCREENSHOT_MAX_PER_RUN"):
         cfg.browser.screenshot_max_per_run = int(os.environ["DESK_SCREENSHOT_MAX_PER_RUN"])
@@ -111,3 +165,8 @@ def config_for_extension(cfg: DeskConfig | None = None) -> dict[str, Any]:
             "browser_wait_timeout_sec": c.host.browser_wait_timeout_sec,
         },
     }
+
+
+def config_schema_sections() -> tuple[tuple[str, type], ...]:
+    """Section name + dataclass pairs (for tests and doc generation)."""
+    return _CONFIG_SECTIONS
