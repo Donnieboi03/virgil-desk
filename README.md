@@ -38,6 +38,7 @@ Set agent backend: `DESK_AGENT_BACKEND=mock|hermes|openclaw`
 - [docs/BROWSER_LAYER.md](docs/BROWSER_LAYER.md)
 - [docs/AGENT_BACKENDS.md](docs/AGENT_BACKENDS.md)
 - [docs/HERMES_SETUP.md](docs/HERMES_SETUP.md) — Hermes profile, decompose, browser tools
+- [docs/NEXTSTEPS.md](docs/NEXTSTEPS.md) — Desk follow-up queue (auto-execute, calendar, etc.)
 
 ## License
 

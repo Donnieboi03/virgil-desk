@@ -15,7 +15,9 @@ npm install && npm run build -w @virgil-desk/extension
 
 Chrome → `chrome://extensions` → **Load unpacked** → `packages/extension/dist`.
 
-Open any page → Virgil Desk side panel → **Hand off this tab**. Board columns **You / Agent / Waiting** should populate.
+Open any page → Virgil Desk side panel → **Hand off this tab**. Board columns **You / Agent / Waiting** should populate. Hand off duplicates the page into **Virgil · Agent**, scrolls (config), scrapes, and captures a screenshot for Hermes decompose.
+
+**Run agent** (Agent column) triggers Hermes execute via Host. **Mark done** closes You items. **Accept/Deny** on Waiting proposals.
 
 Events: `~/.virgil-desk/logs/desk_events.jsonl`
 
@@ -27,12 +29,14 @@ desk-events --run-id <run_id>
 
 Run once with a real tab ([`packages/e2e/README.md`](../packages/e2e/README.md)):
 
-1. Handoff = snapshot only — no agent tab until the agent needs the page
+1. Handoff duplicates agent tab first — snapshot (excerpt + screenshot) from agent tab, not human tab only
 2. Different URL → `openTab` in **Virgil · Agent** group
 3. Same page work → `duplicateTab`; human tab untouched
 4. Post-click `command_result` includes scrape + screenshot
-5. **Accept** on a Waiting calendar proposal
-6. Reload Chrome — board persists (`storage.local`)
+5. **Run agent** on Agent column → `browser.command` events in log
+6. **Accept** on a Waiting calendar proposal
+7. **Mark done** on a You item
+8. Reload Chrome — board persists (`storage.local`)
 
 ## 3. Wire Hermes (real agent)
 

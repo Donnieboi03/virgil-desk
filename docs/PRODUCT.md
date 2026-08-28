@@ -18,9 +18,11 @@ Virgil Desk is a **browser allocation desk**: you hand off the active tab, an ag
 
 ## Primary flows
 
-1. **Hand off** — snapshot active tab → backend decomposes → board patch
-2. **Agent browser ops** — `POST /v1/browser` → extension executes on agent tab → scrape + screenshot evidence
-3. **Waiting proposals** — calendar slots (etc.) → Accept or Deny in the panel
+1. **Hand off** — duplicate agent tab, snapshot (excerpt + screenshot) → backend decomposes → board patch
+2. **Agent browser ops** — `desk-browser` / `POST /v1/browser` → extension executes on agent tab → scrape + screenshot evidence
+3. **Agent execution** — manual **Run agent** button on Agent column (auto-run planned — see [`NEXTSTEPS.md`](NEXTSTEPS.md))
+4. **Waiting proposals** — calendar slots (etc.) → Accept or Deny in the panel
+5. **You column** — **Mark done** when human closes the loop
 
 ## Configuration
 

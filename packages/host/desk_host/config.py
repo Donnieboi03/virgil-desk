@@ -23,10 +23,11 @@ def _repo_config_path() -> Path:
 
 @dataclass
 class BrowserConfig:
-    scrape_text_max_chars: int = 8000
-    scrape_links_max: int = 50
-    scrape_excerpt_max_chars: int = 4000
-    handoff_excerpt_max_chars: int = 2000
+    scrape_text_max_chars: int = 16000
+    scrape_links_max: int = 200
+    scrape_excerpt_max_chars: int = 8000
+    handoff_excerpt_max_chars: int = 8000
+    handoff_scroll_loops: int = 2
     screenshot_mode: str = "captureVisibleTab"
     screenshot_max_per_run: int = 20
     default_wait_ms: int = 500
@@ -98,6 +99,7 @@ def config_for_extension(cfg: DeskConfig | None = None) -> dict[str, Any]:
             "scrape_links_max": c.browser.scrape_links_max,
             "scrape_excerpt_max_chars": c.browser.scrape_excerpt_max_chars,
             "handoff_excerpt_max_chars": c.browser.handoff_excerpt_max_chars,
+            "handoff_scroll_loops": c.browser.handoff_scroll_loops,
             "screenshot_mode": c.browser.screenshot_mode,
             "default_wait_ms": c.browser.default_wait_ms,
         },

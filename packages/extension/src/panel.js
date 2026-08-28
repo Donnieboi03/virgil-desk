@@ -13,6 +13,7 @@ function renderColumn(el, items, column) {
   el.innerHTML = "";
   for (const item of items) {
     const li = document.createElement("li");
+    li.dataset.itemId = item.id || "";
     const badge = document.createElement("span");
     badge.className = `badge ${item.status || "proposed"}`;
     badge.textContent = item.status || "proposed";
@@ -30,7 +31,67 @@ function renderColumn(el, items, column) {
       li.appendChild(meta);
     }
     const proposals = item.proposals || [];
-    if (column === "waiting" && (proposals.length || item.status === "proposed")) {
+    if (
+      column === "agent" &&
+      (item.status === "running" || item.status === "proposed")
+    ) {
+      const actions = document.createElement("div");
+      actions.className = "item-actions";
+      const runBtn = document.createElement("button");
+      runBtn.textContent = "Run agent";
+      runBtn.onclick = async () => {
+        runBtn.disabled = true;
+        const errEl = li.querySelector(".item-error");
+        if (errEl) errEl.remove();
+        try {
+          const result = await chrome.runtime.sendMessage({
+            type: "runAgentItem",
+            itemId: item.id,
+            runId: item.run_id || "",
+          });
+          if (result.error || result.detail) {
+            const err = document.createElement("div");
+            err.className = "item-error";
+            err.textContent = result.error || result.detail;
+            li.appendChild(err);
+          }
+        } catch (err) {
+          const errLine = document.createElement("div");
+          errLine.className = "item-error";
+          errLine.textContent = String(err);
+          li.appendChild(errLine);
+        } finally {
+          runBtn.disabled = false;
+          refresh();
+        }
+      };
+      actions.appendChild(runBtn);
+      li.appendChild(actions);
+    } else if (
+      column === "you" &&
+      item.status !== "done" &&
+      item.status !== "denied"
+    ) {
+      const actions = document.createElement("div");
+      actions.className = "item-actions";
+      const doneBtn = document.createElement("button");
+      doneBtn.textContent = "Mark done";
+      doneBtn.onclick = async () => {
+        doneBtn.disabled = true;
+        try {
+          await chrome.runtime.sendMessage({
+            type: "completeItem",
+            itemId: item.id,
+            runId: item.run_id || "",
+          });
+        } finally {
+          doneBtn.disabled = false;
+          refresh();
+        }
+      };
+      actions.appendChild(doneBtn);
+      li.appendChild(actions);
+    } else if (column === "waiting" && (proposals.length || item.status === "proposed")) {
       const actions = document.createElement("div");
       actions.className = "item-actions";
       if (item.status !== "done" && item.status !== "denied") {

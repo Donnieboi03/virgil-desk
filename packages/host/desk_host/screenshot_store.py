@@ -13,6 +13,15 @@ def runs_dir(run_id: str) -> Path:
     return root
 
 
+def persist_handoff_screenshot(run_id: str, screenshot: dict) -> str | None:
+    b64 = screenshot.get("base64")
+    if not b64:
+        return None
+    path = runs_dir(run_id) / "handoff.png"
+    path.write_bytes(base64.b64decode(b64))
+    return str(path)
+
+
 def persist_screenshot(run_id: str, command_id: str, screenshot: dict) -> str | None:
     b64 = screenshot.get("base64")
     if not b64:

@@ -13,21 +13,31 @@ from ..backends import new_run_id
 from ..config import load_config
 from ..decompose_parser import DecomposeError, parse_decompose_json
 from ..observability import emit
+from ..screenshot_store import persist_handoff_screenshot
 
 
-def _prompt_path() -> Path:
-    return Path(__file__).resolve().parents[4] / "prompts" / "decompose_handoff.md"
+def _prompt_path(name: str) -> Path:
+    return Path(__file__).resolve().parents[4] / "prompts" / name
 
 
 def build_decompose_prompt(handoff: dict[str, Any]) -> str:
-    system = _prompt_path().read_text(encoding="utf-8")
+    system = _prompt_path("decompose_handoff.md").read_text(encoding="utf-8")
+    snap = dict(handoff.get("snapshot") or {})
+    snap.pop("screenshot", None)
     payload = {
         "url": handoff.get("url"),
         "title": handoff.get("title"),
         "intent": handoff.get("intent"),
-        "snapshot": handoff.get("snapshot") or {},
+        "agent_tab_id": handoff.get("agent_tab_id"),
+        "snapshot": snap,
     }
     return f"{system}\n\n## Handoff\n\n```json\n{json.dumps(payload, indent=2)}\n```"
+
+
+def build_execute_prompt(item: dict[str, Any], ctx: dict[str, Any]) -> str:
+    system = _prompt_path("execute_agent_item.md").read_text(encoding="utf-8")
+    payload = {"item": item, **ctx}
+    return f"{system}\n\n## Task\n\n```json\n{json.dumps(payload, indent=2)}\n```"
 
 
 @dataclass
@@ -54,11 +64,18 @@ class HermesBackend:
     async def decompose(self, handoff: dict[str, Any]) -> dict[str, Any]:
         run_id = handoff.get("run_id") or new_run_id()
         cfg = load_config()
-        url = handoff.get("url", "")
 
         if cfg.hermes.decompose_enabled:
             prompt = build_decompose_prompt(handoff)
-            result = await self._hermes_run(prompt)
+            image_path: str | None = None
+            shot = (handoff.get("snapshot") or {}).get("screenshot")
+            if shot and shot.get("base64"):
+                image_path = persist_handoff_screenshot(run_id, shot)
+            result = await self._hermes_run(
+                prompt,
+                image_path=image_path,
+                skills=["desk-browser-bridge"],
+            )
             parsed = parse_decompose_json(result.text, run_id, handoff)
             if parsed:
                 parsed["live"] = True
@@ -81,10 +98,19 @@ class HermesBackend:
 
         raise DecomposeError("Hermes decompose failed and fallback disabled")
 
+    async def execute_item(self, item: dict[str, Any], ctx: dict[str, Any]) -> dict[str, Any]:
+        prompt = build_execute_prompt(item, ctx)
+        result = await self._hermes_run(prompt, skills=["desk-browser-bridge"])
+        if result.exit_code != 0 and not result.text:
+            raise RuntimeError(result.stderr or "hermes execute failed")
+        return {"summary": result.text[:2000], "exit_code": result.exit_code}
+
     def _stub_decompose(self, handoff: dict[str, Any], run_id: str) -> dict[str, Any]:
         url = handoff.get("url", "")
         title = handoff.get("title") or url
         short = run_id.replace("desk_", "")[:8]
+        agent_tab = handoff.get("agent_tab_id")
+        human_tab = handoff.get("human_tab_id")
         return {
             "run_id": run_id,
             "decomposition": handoff.get("intent")
@@ -96,7 +122,8 @@ class HermesBackend:
                     "title": f"Hermes: {title}",
                     "source": {"kind": "handoff", "url": url},
                     "status": "running",
-                    "human_tab_id": handoff.get("human_tab_id"),
+                    "human_tab_id": human_tab,
+                    "agent_tab_id": agent_tab,
                     "run_id": run_id,
                 },
                 {
@@ -132,28 +159,39 @@ class HermesBackend:
         }
 
     async def desk_browser(self, command: dict[str, Any]) -> dict[str, Any]:
-        """Host-internal desk_browser — waits for extension command_result."""
         from ..app import dispatch_browser_command_and_wait
 
         return await dispatch_browser_command_and_wait(command)
 
-    async def _hermes_run(self, message: str) -> HermesRunResult:
+    async def _hermes_run(
+        self,
+        message: str,
+        *,
+        image_path: str | None = None,
+        skills: list[str] | None = None,
+    ) -> HermesRunResult:
         cfg = load_config()
         env = os.environ.copy()
         env["HERMES_HOME"] = self.home
+        cmd = [
+            "hermes",
+            "-p",
+            self.profile,
+            "chat",
+            "-Q",
+            "-q",
+            message,
+            "--source",
+            "tool",
+        ]
+        if skills:
+            for skill in skills:
+                cmd.extend(["-s", skill])
+        if image_path and Path(image_path).is_file():
+            cmd.extend(["--image", image_path])
         try:
             proc = subprocess.run(
-                [
-                    "hermes",
-                    "-p",
-                    self.profile,
-                    "chat",
-                    "-Q",
-                    "-q",
-                    message,
-                    "--source",
-                    "tool",
-                ],
+                cmd,
                 capture_output=True,
                 text=True,
                 timeout=cfg.hermes.decompose_timeout_sec,
@@ -172,10 +210,9 @@ class HermesBackend:
 
     async def execute_safe(self, item: dict[str, Any], ctx: dict[str, Any]) -> dict[str, Any]:
         run_id = ctx.get("run_id", "")
-        body = json.dumps({"item": item, "ctx": ctx})[:4000]
-        _ = await self._hermes_run(f"desk_browser execute_safe: {body}")
-        out = dict(item)
-        out["status"] = "done"
-        out["evidence"] = {"summary": "Hermes execution complete.", **ctx}
+        out = await self.execute_item(item, ctx)
+        result = dict(item)
+        result["status"] = "done"
+        result["evidence"] = {"summary": out.get("summary", ""), **ctx}
         emit("run.finished", run_id, {"backend": "hermes", "item_id": item.get("id")})
-        return out
+        return result

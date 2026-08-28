@@ -17,12 +17,13 @@ from .config import config_for_extension, load_config
 from .navigation import normalize_browser_command
 from .observability import emit
 from .policy import policy_denied_reason
-from .screenshot_store import persist_screenshot
+from .screenshot_store import persist_handoff_screenshot, persist_screenshot
 
 # In-memory proposal + extension connection state
 _proposals: dict[str, dict[str, Any]] = {}
 _work_items: dict[str, dict[str, Any]] = {}
 _handoff_urls: dict[str, str] = {}
+_handoff_meta: dict[str, dict[str, Any]] = {}
 _screenshot_counts: dict[str, int] = {}
 _config_cache = None
 _extension_ws: WebSocket | None = None
@@ -54,9 +55,18 @@ class HandoffBody(BaseModel):
     title: str | None = None
     selection: str | None = None
     human_tab_id: int
+    agent_tab_id: int | None = None
     window_id: int
     intent: str | None = None
     snapshot: dict[str, Any] | None = None
+
+
+class ExecuteBody(BaseModel):
+    run_id: str
+
+
+class CompleteBody(BaseModel):
+    run_id: str
 
 
 class AcceptBody(BaseModel):
@@ -119,7 +129,23 @@ async def _handle_handoff(payload: dict[str, Any]) -> dict[str, Any]:
     run_id = payload.get("run_id") or new_run_id()
     payload["run_id"] = run_id
     _handoff_urls[run_id] = str(payload.get("url") or "")
+    _handoff_meta[run_id] = {
+        "human_tab_id": payload.get("human_tab_id"),
+        "agent_tab_id": payload.get("agent_tab_id"),
+        "url": payload.get("url"),
+    }
+    snap = payload.get("snapshot") or {}
     emit("handoff.started", run_id, {"url": payload.get("url")})
+    emit(
+        "handoff.snapshot",
+        run_id,
+        {
+            "agent_tab_id": payload.get("agent_tab_id"),
+            "excerpt_bytes": len(snap.get("excerpt") or ""),
+            "link_count": len(snap.get("links") or []),
+            "has_screenshot": bool((snap.get("screenshot") or {}).get("base64")),
+        },
+    )
     backend = get_backend()
     result = await backend.decompose(payload)
     emit(
@@ -137,6 +163,11 @@ async def _handle_handoff(payload: dict[str, Any]) -> dict[str, Any]:
     await _send_board_patch(run_id, patch_id, ops)
     for item in result.get("items", []):
         item["run_id"] = run_id
+        meta = _handoff_meta.get(run_id, {})
+        if meta.get("agent_tab_id") is not None:
+            item["agent_tab_id"] = meta["agent_tab_id"]
+        if meta.get("human_tab_id") is not None and item.get("human_tab_id") is None:
+            item["human_tab_id"] = meta["human_tab_id"]
         _work_items[item["id"]] = item
         for prop in item.get("proposals") or []:
             _proposals[prop["id"]] = {**prop, "work_item_id": item["id"], "run_id": run_id}
@@ -185,6 +216,7 @@ def reset_state_for_tests() -> None:
     _proposals.clear()
     _work_items.clear()
     _handoff_urls.clear()
+    _handoff_meta.clear()
     _screenshot_counts.clear()
     _command_results.clear()
     for fut in list(_command_waiters.values()):
@@ -247,6 +279,51 @@ async def deny_item(item_id: str, body: DenyBody) -> dict[str, Any]:
     )
     await _patch_work_item(item_id, status="denied", run_id=body.run_id)
     return {"ok": True, "work_item_id": item_id, "status": "denied"}
+
+
+@app.post("/v1/items/{item_id}/execute")
+async def execute_item(item_id: str, body: ExecuteBody) -> dict[str, Any]:
+    item = _work_items.get(item_id)
+    if not item:
+        raise HTTPException(status_code=404, detail="work item not found")
+    if item.get("column") != "agent":
+        raise HTTPException(status_code=400, detail="execute only for agent column")
+    meta = _handoff_meta.get(body.run_id, {})
+    ctx = {
+        "run_id": body.run_id,
+        "agent_tab_id": item.get("agent_tab_id") or meta.get("agent_tab_id"),
+        "human_tab_id": item.get("human_tab_id") or meta.get("human_tab_id"),
+        "handoff_url": _handoff_urls.get(body.run_id, ""),
+    }
+    backend = get_backend()
+    execute_fn = getattr(backend, "execute_item", None)
+    if not execute_fn:
+        raise HTTPException(status_code=501, detail="backend does not support execute")
+    emit("agent.execute_started", body.run_id, {"item_id": item_id})
+    try:
+        result = await execute_fn(item, ctx)
+    except Exception as exc:
+        emit(
+            "agent.execute_failed",
+            body.run_id,
+            {"item_id": item_id, "error": str(exc)[:500]},
+        )
+        await _patch_work_item(item_id, status="failed", run_id=body.run_id)
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+    await _patch_work_item(item_id, status="done", run_id=body.run_id)
+    emit("agent.executed", body.run_id, {"item_id": item_id})
+    return {"ok": True, "work_item_id": item_id, "status": "done", "result": result}
+
+
+@app.post("/v1/items/{item_id}/complete")
+async def complete_item(item_id: str, body: CompleteBody) -> dict[str, Any]:
+    item = _work_items.get(item_id)
+    if not item:
+        raise HTTPException(status_code=404, detail="work item not found")
+    if item.get("column") != "you":
+        raise HTTPException(status_code=400, detail="complete only for you column")
+    await _patch_work_item(item_id, status="done", run_id=body.run_id)
+    return {"ok": True, "work_item_id": item_id, "status": "done"}
 
 
 @app.websocket("/v1/extension")

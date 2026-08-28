@@ -5,7 +5,11 @@ See `packages/protocol/src/index.ts` for TypeScript types.
 ## REST
 
 - `GET /v1/health`
-- `POST /v1/handoff` — bounded intake (`url` required)
+- `GET /v1/config`
+- `POST /v1/handoff` — bounded intake (`url` required); accepts client `run_id`, `agent_tab_id`, `snapshot.screenshot`
+- `POST /v1/browser` — browser op (optional `wait: true`)
+- `POST /v1/items/{id}/execute` — run Agent column item (`body: { run_id }`)
+- `POST /v1/items/{id}/complete` — mark You column item done
 - `POST /v1/items/{id}/accept` — commit proposal
 - `POST /v1/items/{id}/deny` — reject proposal
 

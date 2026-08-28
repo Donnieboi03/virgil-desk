@@ -37,7 +37,7 @@ def test_hermes_live_decompose_mocked_run(hermes_backend, monkeypatch):
         }
     )
 
-    async def fake_run(_self, _message: str) -> HermesRunResult:
+    async def fake_run(_self, _message: str, **kwargs) -> HermesRunResult:
         return HermesRunResult(stdout=payload, stderr="", exit_code=0)
 
     monkeypatch.setattr(HermesBackend, "_hermes_run", fake_run)
@@ -63,7 +63,7 @@ def test_hermes_live_decompose_mocked_run(hermes_backend, monkeypatch):
 def test_hermes_handoff_includes_calendar_proposal(hermes_backend, monkeypatch):
     from desk_host.backends.hermes import HermesBackend, HermesRunResult
 
-    async def empty_run(_self, _message: str) -> HermesRunResult:
+    async def empty_run(_self, _message: str, **kwargs) -> HermesRunResult:
         return HermesRunResult(stdout="", stderr="", exit_code=0)
 
     monkeypatch.setattr(HermesBackend, "_hermes_run", empty_run)

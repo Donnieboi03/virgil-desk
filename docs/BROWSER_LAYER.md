@@ -19,6 +19,13 @@ Screenshot flow (brief tab flicker accepted):
 
 Limits are loaded at WebSocket `register` and via `GET /v1/config`. Host enforces `screenshot_max_per_run` per `run_id`.
 
+## Hand off
+
+1. Extension mints `run_id`, **duplicateTab** into **Virgil · Agent** group
+2. Optional scroll loops (`handoff_scroll_loops`) on agent tab
+3. Scrape + `captureVisibleTab` on agent tab
+4. Host receives rich snapshot → Hermes decompose (text + `--image` when PNG present)
+
 ## Agent tab policy
 
 - Agent work runs on `agent_tab_id` in the collapsed **Virgil · Agent** tab group

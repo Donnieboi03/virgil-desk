@@ -18,10 +18,22 @@ def _clean_state():
 
 def test_ws_handoff_board_patch_and_click_verify():
     handoff_payload = {
+        "run_id": "desk_e2e001",
         "url": "https://example.com/job/1",
         "title": "Job posting",
         "human_tab_id": 101,
+        "agent_tab_id": 202,
         "window_id": 1,
+        "snapshot": {
+            "excerpt": "Apply now — full page text for decompose.",
+            "links": ["https://example.com/job/1/apply"],
+            "screenshot": {
+                "mime": "image/png",
+                "base64": "iVBORw0KGgo=",
+                "width": 800,
+                "height": 600,
+            },
+        },
     }
     with TestClient(app) as client:
         ext = MockExtensionSession(client)

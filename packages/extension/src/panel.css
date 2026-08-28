@@ -104,6 +104,14 @@ li {
 .badge.denied {
   background: #fee2e2;
 }
+.badge.failed {
+  background: #fecaca;
+}
+.item-error {
+  color: #c33;
+  font-size: 11px;
+  margin-top: 4px;
+}
 .item-actions {
   margin-top: 4px;
   display: flex;

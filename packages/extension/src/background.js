@@ -11,10 +11,11 @@ let ws = null;
 let hostUrl = DEFAULT_HOST;
 let deskConfig = {
   browser: {
-    scrape_text_max_chars: 8000,
-    scrape_links_max: 50,
-    scrape_excerpt_max_chars: 4000,
-    handoff_excerpt_max_chars: 2000,
+    scrape_text_max_chars: 16000,
+    scrape_links_max: 200,
+    scrape_excerpt_max_chars: 8000,
+    handoff_excerpt_max_chars: 8000,
+    handoff_scroll_loops: 2,
     screenshot_mode: "captureVisibleTab",
     default_wait_ms: 500,
   },
@@ -59,6 +60,14 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
   }
   if (msg.type === "denyProposal") {
     denyProposal(msg).then(sendResponse);
+    return true;
+  }
+  if (msg.type === "runAgentItem") {
+    runAgentItem(msg).then(sendResponse);
+    return true;
+  }
+  if (msg.type === "completeItem") {
+    completeItem(msg).then(sendResponse);
     return true;
   }
 });
@@ -430,19 +439,62 @@ async function runBrowserCommand(command) {
   }
 }
 
-async function handoffActiveTab(intent) {
-  const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
-  if (!tab?.id) return { ok: false, error: "no active tab" };
-  const handoffMax = deskConfig.browser?.handoff_excerpt_max_chars ?? 2000;
-  const snap = await scrapeTab(tab.id);
-  const handoff = {
+function mintRunId() {
+  return `desk_${crypto.randomUUID().replace(/-/g, "").slice(0, 16)}`;
+}
+
+async function scrollAgentTab(tabId, loops) {
+  const waitMs = deskConfig.browser?.default_wait_ms ?? 500;
+  for (let i = 0; i < loops; i++) {
+    await chrome.scripting.executeScript({
+      target: { tabId },
+      func: () => window.scrollBy(0, window.innerHeight * 0.85),
+    });
+    await new Promise((r) => setTimeout(r, waitMs));
+  }
+}
+
+async function buildHandoffPayload(tab, intent) {
+  const runId = mintRunId();
+  const handoffMax = deskConfig.browser?.handoff_excerpt_max_chars ?? 8000;
+  const scrollLoops = deskConfig.browser?.handoff_scroll_loops ?? 0;
+  const resolved = await resolveAgentTab({
+    op: "duplicateTab",
+    run_id: runId,
+    human_tab_id: tab.id,
+    url: tab.url || "",
+  });
+  const agentTabId = resolved.tabId;
+  if (scrollLoops > 0) {
+    await scrollAgentTab(agentTabId, scrollLoops);
+  }
+  const snap = await scrapeTab(agentTabId);
+  const shot = await screenshotTab(agentTabId);
+  return {
+    run_id: runId,
     url: tab.url || "",
     title: tab.title || "",
     human_tab_id: tab.id,
+    agent_tab_id: agentTabId,
     window_id: tab.windowId,
     intent: intent || "",
-    snapshot: { excerpt: snap.text?.slice(0, handoffMax), links: snap.links },
+    snapshot: {
+      excerpt: snap.text?.slice(0, handoffMax),
+      links: snap.links,
+      screenshot: shot,
+    },
   };
+}
+
+async function handoffActiveTab(intent) {
+  const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+  if (!tab?.id) return { ok: false, error: "no active tab" };
+  let handoff;
+  try {
+    handoff = await buildHandoffPayload(tab, intent);
+  } catch (err) {
+    return { ok: false, error: String(err) };
+  }
   if (ws?.readyState === WebSocket.OPEN) {
     const resultPromise = new Promise((resolve) => {
       pendingHandoffResolve = resolve;
@@ -507,6 +559,31 @@ async function denyProposal({ itemId, proposalId, runId, reason }) {
       proposal_id: proposalId,
       reason,
     }),
+  });
+  const data = await res.json();
+  chrome.runtime.sendMessage({ type: "boardUpdated" }).catch(() => {});
+  return data;
+}
+
+async function runAgentItem({ itemId, runId }) {
+  const res = await fetch(`${hostUrl}/v1/items/${itemId}/execute`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ run_id: runId }),
+  });
+  const data = await res.json();
+  if (!res.ok) {
+    return { ok: false, error: data.detail || res.statusText, ...data };
+  }
+  chrome.runtime.sendMessage({ type: "boardUpdated" }).catch(() => {});
+  return data;
+}
+
+async function completeItem({ itemId, runId }) {
+  const res = await fetch(`${hostUrl}/v1/items/${itemId}/complete`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ run_id: runId }),
   });
   const data = await res.json();
   chrome.runtime.sendMessage({ type: "boardUpdated" }).catch(() => {});

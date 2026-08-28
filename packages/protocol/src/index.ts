@@ -87,15 +87,22 @@ export interface CommandResult {
   tab_id?: number;
 }
 
+export interface HandoffSnapshot {
+  excerpt: string;
+  links: string[];
+  screenshot?: ScreenshotPayload;
+}
+
 export interface HandoffRequest {
   run_id?: string;
   url: string;
   title?: string;
   selection?: string;
   human_tab_id: number;
+  agent_tab_id?: number;
   window_id: number;
   intent?: string;
-  snapshot?: { excerpt: string; links: string[] };
+  snapshot?: HandoffSnapshot;
 }
 
 export interface HandoffResponse {

@@ -1,8 +1,9 @@
 browser:
-  scrape_text_max_chars: 8000
-  scrape_links_max: 50
-  scrape_excerpt_max_chars: 4000
-  handoff_excerpt_max_chars: 2000
+  scrape_text_max_chars: 16000
+  scrape_links_max: 200
+  scrape_excerpt_max_chars: 8000
+  handoff_excerpt_max_chars: 8000
+  handoff_scroll_loops: 2
   screenshot_mode: captureVisibleTab
   screenshot_max_per_run: 20
   default_wait_ms: 500
