@@ -15,11 +15,18 @@ See `packages/protocol/src/index.ts` for TypeScript types.
 
 ## WebSocket `WS /v1/extension`
 
-Extension → Host: `register`, `handoff_started`, `command_result`, `item_ack`
+Extension → Host: `register`, `handoff_started`, `command_result`, `item_ack`, `memory_snapshot`, `browser_popup_closed`, `execute_cleanup_done`
 
-Host → Extension: `registered` (includes `config`), `handoff_result`, `board_patch`, `browser_command`
+Host → Extension: `registered` (includes `config`), `handoff_result`, `board_patch`, `browser_command`, `memory_get`, `memory_patch`, `execute_session`, `execute_cleanup`
 
 Board mutations from execute/complete/accept/deny require an active WebSocket; otherwise Host returns **503**.
+
+### Memory + tab lifecycle
+
+- **`memory_get` / `memory_snapshot`**: host loads `virgil_desk_memory_v1` (recent executions + per-run notepad) before Hermes execute.
+- **`memory_patch`**: seed notepad at handoff; append recent/bullets after execute.
+- **`execute_session`**: marks the active item/tab so off-origin popups from the agent tab can be quarantined.
+- **`execute_cleanup`**: closes that item’s agent tab + tracked spawn tabs (never the human tab).
 
 ## BrowserOp
 

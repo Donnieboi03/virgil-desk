@@ -10,6 +10,7 @@ browser:
   default_wait_ms: 500
   interact_targets_max: 80
   observe_annotate_default: true
+  act_stall_max: 3
 host:
   browser_wait_timeout_sec: 30
 hermes:

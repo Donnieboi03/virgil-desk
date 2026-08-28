@@ -96,3 +96,5 @@ Operator clicks **Run agent** on Agent column items. Hermes uses `desk-browser` 
 ## Budget
 
 First `observe` may be large (~100k text); avoid re-observing full pages every scroll unless URL or DOM changed. Host caps `browser.screenshot_max_per_run` (default 20) per `run_id`; handoff snapshot at user gesture is exempt.
+
+On **`stall_detected`**: re-observe once, then stop with a one-line partial summary — do not keep clicking stale targets. Prefer `target_id` over coordinates. Do not follow off-origin links during inbox triage (extension auto-closes those tabs).

@@ -38,6 +38,7 @@ class BrowserConfig:
     default_wait_ms: int
     interact_targets_max: int
     observe_annotate_default: bool
+    act_stall_max: int
 
 
 @dataclass
@@ -176,6 +177,7 @@ def config_for_extension(cfg: DeskConfig | None = None) -> dict[str, Any]:
             "default_wait_ms": c.browser.default_wait_ms,
             "interact_targets_max": c.browser.interact_targets_max,
             "observe_annotate_default": c.browser.observe_annotate_default,
+            "act_stall_max": c.browser.act_stall_max,
         },
         "host": {
             "browser_wait_timeout_sec": c.host.browser_wait_timeout_sec,

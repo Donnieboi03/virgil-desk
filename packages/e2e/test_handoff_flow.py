@@ -208,10 +208,10 @@ def test_handoff_seeds_notepad_and_execute_records_recent(monkeypatch):
 
             t = threading.Thread(target=_ex, daemon=True)
             t.start()
-            ext.respond_memory_get()
+            ext.begin_execute()
             ext.respond_next_browser_command(run_id=run_id, op="scrape")
-            ext.ws.receive_json()
-            ext.receive_memory_patch()
+            finished = ext.finish_execute_messages()
+            assert finished["cleanup"]["type"] == "execute_cleanup"
             t.join(timeout=5)
             assert holder[0].status_code == 200
             assert ext.memory["global_recent"]

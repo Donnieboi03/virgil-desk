@@ -70,19 +70,17 @@ def test_execute_agent_posts_browser_command_and_marks_done():
 
             thread = threading.Thread(target=_execute, daemon=True)
             thread.start()
-            ext.respond_memory_get()
+            ext.begin_execute()
             for expected_op in ("scrape", "observe"):
                 handled = ext.respond_next_browser_command(
                     run_id=run_id, op=expected_op
                 )
                 assert handled["command"]["op"] == expected_op
-            patch = ext.ws.receive_json()
-            assert patch["type"] == "board_patch"
-            updated = patch["ops"][0]["item"]
+            finished = ext.finish_execute_messages()
+            updated = finished["board_patch"]["ops"][0]["item"]
             assert updated["status"] == "done"
             assert updated.get("evidence", {}).get("summary")
-            mem = ext.receive_memory_patch()
-            assert any(op.get("op") == "append_recent" for op in mem["ops"])
+            assert finished["cleanup"]["type"] == "execute_cleanup"
             assert ext.memory["global_recent"]
             thread.join(timeout=5)
             assert holder
@@ -155,10 +153,10 @@ def test_execute_injects_recent_memory_into_ctx(monkeypatch):
 
             thread = threading.Thread(target=_execute, daemon=True)
             thread.start()
-            ext.respond_memory_get()
+            ext.begin_execute()
             ext.respond_next_browser_command(run_id=run_id, op="scrape")
-            ext.ws.receive_json()  # board_patch
-            ext.receive_memory_patch()
+            finished = ext.finish_execute_messages()
+            assert finished["cleanup"]["item_id"] == agent["id"]
             thread.join(timeout=5)
             assert holder[0].status_code == 200
             assert captured
@@ -208,10 +206,9 @@ def test_execute_without_browser_evidence_fails(monkeypatch):
 
             thread = threading.Thread(target=_execute, daemon=True)
             thread.start()
-            ext.respond_memory_get()
-            patch = ext.ws.receive_json()
-            assert patch["ops"][0]["item"]["status"] == "failed"
-            ext.receive_memory_patch()
+            ext.begin_execute()
+            finished = ext.finish_execute_messages()
+            assert finished["board_patch"]["ops"][0]["item"]["status"] == "failed"
             thread.join(timeout=5)
             assert holder[0].status_code == 422
         finally:

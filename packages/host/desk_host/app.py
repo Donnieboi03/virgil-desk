@@ -239,6 +239,45 @@ async def _memory_patch(ops: list[dict[str, Any]]) -> bool:
     return await _send_to_extension({"type": "memory_patch", "ops": ops})
 
 
+async def _execute_cleanup(
+    *,
+    run_id: str,
+    item_id: str,
+    agent_tab_id: Any,
+    human_tab_id: Any,
+) -> None:
+    await _send_to_extension(
+        {
+            "type": "execute_cleanup",
+            "run_id": run_id,
+            "item_id": item_id,
+            "agent_tab_id": agent_tab_id,
+            "human_tab_id": human_tab_id,
+        }
+    )
+
+
+async def _execute_session_start(
+    *,
+    run_id: str,
+    item_id: str,
+    agent_tab_id: Any,
+    human_tab_id: Any,
+    handoff_url: str,
+) -> None:
+    await _send_to_extension(
+        {
+            "type": "execute_session",
+            "active": True,
+            "run_id": run_id,
+            "item_id": item_id,
+            "agent_tab_id": agent_tab_id,
+            "human_tab_id": human_tab_id,
+            "handoff_url": handoff_url,
+        }
+    )
+
+
 async def _record_execute_memory(
     *,
     run_id: str,
@@ -482,92 +521,111 @@ async def execute_item(item_id: str, body: ExecuteBody) -> dict[str, Any]:
         raise HTTPException(status_code=501, detail="backend does not support execute")
     cfg = get_config()
     browser_before = _browser_results_for_run(body.run_id)
+    await _execute_session_start(
+        run_id=body.run_id,
+        item_id=item_id,
+        agent_tab_id=ctx.get("agent_tab_id"),
+        human_tab_id=ctx.get("human_tab_id"),
+        handoff_url=str(ctx.get("handoff_url") or ""),
+    )
     record("agent.execute_started", body.run_id, cfg=cfg, item_id=item_id)
+    http_exc: HTTPException | None = None
     try:
-        result = await execute_fn(item, ctx)
-    except Exception as exc:
-        err = str(exc)[: cfg.prompts.event_snippet_max_chars]
-        record(
-            "agent.execute_failed",
-            body.run_id,
-            cfg=cfg,
-            item_id=item_id,
-            error=err,
-        )
         try:
+            result = await execute_fn(item, ctx)
+        except Exception as exc:
+            err = str(exc)[: cfg.prompts.event_snippet_max_chars]
+            record(
+                "agent.execute_failed",
+                body.run_id,
+                cfg=cfg,
+                item_id=item_id,
+                error=err,
+            )
+            try:
+                await _patch_work_item(
+                    item_id,
+                    status="failed",
+                    run_id=body.run_id,
+                    last_error=err,
+                )
+            except ExtensionNotConnectedError:
+                pass
+            await _record_execute_memory(
+                run_id=body.run_id,
+                item=item,
+                outcome="failed",
+                summary=err,
+            )
+            http_exc = HTTPException(status_code=500, detail=err)
+            raise http_exc from exc
+        browser_after = _browser_results_for_run(body.run_id)
+        if cfg.hermes.execute_require_browser_evidence and browser_after <= browser_before:
+            err = "execute completed without browser evidence"
+            record(
+                "agent.execute_failed",
+                body.run_id,
+                cfg=cfg,
+                item_id=item_id,
+                error=err,
+            )
             await _patch_work_item(
                 item_id,
                 status="failed",
                 run_id=body.run_id,
                 last_error=err,
             )
-        except ExtensionNotConnectedError:
-            pass
-        await _record_execute_memory(
-            run_id=body.run_id,
-            item=item,
-            outcome="failed",
-            summary=err,
-        )
-        raise HTTPException(status_code=500, detail=err) from exc
-    browser_after = _browser_results_for_run(body.run_id)
-    if cfg.hermes.execute_require_browser_evidence and browser_after <= browser_before:
-        err = "execute completed without browser evidence"
-        record(
-            "agent.execute_failed",
-            body.run_id,
-            cfg=cfg,
-            item_id=item_id,
-            error=err,
-        )
+            await _record_execute_memory(
+                run_id=body.run_id,
+                item=item,
+                outcome="failed",
+                summary=err,
+            )
+            http_exc = HTTPException(status_code=422, detail=err)
+            raise http_exc
+        evidence = {
+            "summary": (result or {}).get("summary", ""),
+            "browser_ops": browser_after - browser_before,
+        }
         await _patch_work_item(
             item_id,
-            status="failed",
+            status="done",
             run_id=body.run_id,
-            last_error=err,
+            evidence=evidence,
         )
         await _record_execute_memory(
             run_id=body.run_id,
             item=item,
-            outcome="failed",
-            summary=err,
+            outcome="done",
+            summary=str(evidence["summary"] or ""),
         )
-        raise HTTPException(status_code=422, detail=err)
-    evidence = {
-        "summary": (result or {}).get("summary", ""),
-        "browser_ops": browser_after - browser_before,
-    }
-    await _patch_work_item(
-        item_id,
-        status="done",
-        run_id=body.run_id,
-        evidence=evidence,
-    )
-    await _record_execute_memory(
-        run_id=body.run_id,
-        item=item,
-        outcome="done",
-        summary=str(evidence["summary"] or ""),
-    )
-    record(
-        "agent.executed",
-        body.run_id,
-        cfg=cfg,
-        measure={
-            "browser_ops": evidence["browser_ops"],
-            "exit_code": (result or {}).get("exit_code"),
-        },
-        item_id=item_id,
-        summary_snippet=evidence["summary"][: cfg.prompts.event_summary_snippet_max_chars],
-    )
-    record(
-        "run.finished",
-        body.run_id,
-        cfg=cfg,
-        backend=os.environ.get("DESK_AGENT_BACKEND", "mock"),
-        item_id=item_id,
-    )
-    return {"ok": True, "work_item_id": item_id, "status": "done", "result": result}
+        record(
+            "agent.executed",
+            body.run_id,
+            cfg=cfg,
+            measure={
+                "browser_ops": evidence["browser_ops"],
+                "exit_code": (result or {}).get("exit_code"),
+            },
+            item_id=item_id,
+            summary_snippet=evidence["summary"][: cfg.prompts.event_summary_snippet_max_chars],
+        )
+        record(
+            "run.finished",
+            body.run_id,
+            cfg=cfg,
+            backend=os.environ.get("DESK_AGENT_BACKEND", "mock"),
+            item_id=item_id,
+        )
+        return {"ok": True, "work_item_id": item_id, "status": "done", "result": result}
+    finally:
+        await _execute_cleanup(
+            run_id=body.run_id,
+            item_id=item_id,
+            agent_tab_id=ctx.get("agent_tab_id"),
+            human_tab_id=ctx.get("human_tab_id"),
+        )
+
 
 
 @app.post("/v1/items/{item_id}/complete")
@@ -615,6 +673,17 @@ async def extension_ws(ws: WebSocket) -> None:
                 waiter = _memory_waiters.pop(request_id, None)
                 if waiter and not waiter.done():
                     waiter.set_result(raw)
+            elif msg_type == "browser_popup_closed":
+                record(
+                    "browser.popup_closed",
+                    raw.get("run_id", ""),
+                    cfg=get_config(),
+                    item_id=raw.get("item_id"),
+                    tab_id=raw.get("tab_id"),
+                    url=raw.get("url"),
+                )
+            elif msg_type == "execute_cleanup_done":
+                pass
             elif msg_type == "command_result":
                 result = raw.get("result") or {}
                 cid = result.get("command_id")

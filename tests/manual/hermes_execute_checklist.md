@@ -37,7 +37,12 @@ desk-events --run-id <run_id> --summary
 | `agent.execute_started` | Run agent clicked |
 | `browser.command` | Hermes called `desk-browser` |
 | `browser.command_result` | Extension returned scrape/screenshot |
+| `browser.popup_closed` | Off-origin tab spawned from agent tab was auto-closed |
 | `agent.executed` | Item marked done |
+
+## Tab cleanup
+
+After Run agent finishes (done or failed), the item’s agent duplicate tab should close automatically. Human Gmail tab stays open. Off-origin popups (e.g. LinkedIn from a digest link) should close during the run if spawned from the agent tab.
 
 ## Failure signals
 

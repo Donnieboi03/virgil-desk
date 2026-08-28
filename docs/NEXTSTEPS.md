@@ -37,6 +37,10 @@ Optional multi-page Gmail scroll beyond `handoff_scroll_loops` (config-driven).
 - **`desk-browser`** CLI for Hermes terminal
 - **Mark done** for You column items
 - **Agent tab provisioning:** one tab per agent item — first item reuses handoff snapshot tab; deduped lock prevents double-provision from `board_patch` + `handoff_result` race
+- **Shared desk memory:** `virgil_desk_memory_v1` notepad + last-3 execute summaries injected into execute
+- **Decompose hints** + agent status coerced to `proposed` (no fake done)
+- **Tab cleanup** on execute end + **off-origin popup quarantine** during execute
+- **Act stall detection** (`browser.act_stall_max`) to stop click spirals
 
 ## Links
 

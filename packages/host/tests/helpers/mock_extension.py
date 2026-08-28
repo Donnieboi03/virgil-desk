@@ -106,13 +106,37 @@ class MockExtensionSession:
         self.messages.append(msg)
         return msg
 
+    def begin_execute(self) -> None:
+        """memory_get reply + execute_session drain."""
+        self.respond_memory_get()
+        self.receive_execute_session()
+
+    def finish_execute_messages(self) -> dict[str, Any]:
+        """Drain board_patch → memory_patch → execute_cleanup (success or fail)."""
+        patch = self.ws.receive_json()
+        assert patch["type"] == "board_patch", patch
+        self.receive_memory_patch()
+        cleanup = self.receive_execute_cleanup()
+        return {"board_patch": patch, "cleanup": cleanup}
+
+    def receive_execute_session(self) -> dict[str, Any]:
+        msg = self.ws.receive_json()
+        assert msg["type"] == "execute_session", msg
+        self.messages.append(msg)
+        return msg
+
+    def receive_execute_cleanup(self) -> dict[str, Any]:
+        msg = self.ws.receive_json()
+        assert msg["type"] == "execute_cleanup", msg
+        self.messages.append(msg)
+        return msg
+
     def receive_memory_patch(self) -> dict[str, Any]:
         msg = self.ws.receive_json()
         assert msg["type"] == "memory_patch", msg
         self.memory = apply_memory_patch(self.memory, msg.get("ops") or [])
         self.messages.append(msg)
         return msg
-
     def respond_next_browser_command(
         self,
         *,

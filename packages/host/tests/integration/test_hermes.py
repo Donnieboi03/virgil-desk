@@ -218,10 +218,9 @@ def test_hermes_execute_invokes_browser_command(hermes_backend, monkeypatch):
 
             thread = threading.Thread(target=_execute, daemon=True)
             thread.start()
-            ext.respond_memory_get()
+            ext.begin_execute()
             ext.respond_next_browser_command(run_id="desk_exec_test", op="scrape")
-            ext.ws.receive_json()  # board_patch
-            ext.receive_memory_patch()
+            ext.finish_execute_messages()
             thread.join(timeout=5)
             assert holder[0].status_code == 200
         finally:
@@ -266,12 +265,11 @@ def test_hermes_execute_pre_scrape_alone_fails_evidence(hermes_backend, monkeypa
 
             thread = threading.Thread(target=_execute, daemon=True)
             thread.start()
-            ext.respond_memory_get()
+            ext.begin_execute()
             handled = ext.respond_next_browser_command(run_id=run_id, op="scrape")
             assert handled["command"].get("count_evidence") is False
-            patch = ext.ws.receive_json()
-            assert patch["ops"][0]["item"]["status"] == "failed"
-            ext.receive_memory_patch()
+            finished = ext.finish_execute_messages()
+            assert finished["board_patch"]["ops"][0]["item"]["status"] == "failed"
             thread.join(timeout=5)
             assert holder
             assert holder[0].status_code == 422
@@ -329,7 +327,7 @@ def test_execute_hermes_subprocess_does_not_block_browser(hermes_backend, monkey
 
             thread = threading.Thread(target=_execute, daemon=True)
             thread.start()
-            ext.respond_memory_get()
+            ext.begin_execute()
             ext.respond_next_browser_command(run_id=run_id, op="scrape")
             assert subprocess_started.wait(timeout=5), "Hermes subprocess should start"
 
@@ -349,8 +347,7 @@ def test_execute_hermes_subprocess_does_not_block_browser(hermes_backend, monkey
             assert pending["holder"][0]["status"] == 200
 
             allow_finish.set()
-            ext.ws.receive_json()  # board_patch
-            ext.receive_memory_patch()
+            ext.finish_execute_messages()
             thread.join(timeout=5)
             assert holder
             assert holder[0].status_code == 200

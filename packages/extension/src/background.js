@@ -16,6 +16,9 @@ import {
   emptyMemory,
   applyMemoryPatch,
 } from "./deskMemory.js";
+import { tabsToCloseForItem } from "./tabCleanup.js";
+import { shouldCloseSpawnedTab } from "./popupPolicy.js";
+import { updateActStall } from "./actStall.js";
 
 const BUNDLE_FILE = "interactObserve.bundle.js";
 
@@ -35,6 +38,7 @@ let deskConfig = {
     default_wait_ms: 500,
     interact_targets_max: 80,
     observe_annotate_default: true,
+    act_stall_max: 3,
   },
   memory: {
     recent_max: 3,
@@ -44,6 +48,12 @@ let deskConfig = {
 };
 let wsConnected = false;
 let pendingHandoffResolve = null;
+/** @type {{ runId: string, itemId: string, agentTabId: number, humanTabId: number, handoffUrl: string } | null} */
+let activeExecute = null;
+/** @type {Map<string, number>} */
+let actStallMap = new Map();
+/** Pending spawn tabs awaiting URL (tabId → itemId) */
+const pendingSpawnTabs = new Map();
 
 const META_KEY = "virgil_desk_panel_meta";
 
@@ -148,6 +158,119 @@ async function handleMemoryPatch(msg) {
   await saveDeskMemory(next);
 }
 
+async function handleExecuteSession(msg) {
+  if (msg.active === false) {
+    activeExecute = null;
+    return;
+  }
+  activeExecute = {
+    runId: msg.run_id,
+    itemId: msg.item_id,
+    agentTabId: Number(msg.agent_tab_id),
+    humanTabId: Number(msg.human_tab_id),
+    handoffUrl: msg.handoff_url || (await handoffUrlForRun(msg.run_id)) || "",
+  };
+  actStallMap = new Map();
+}
+
+async function trackSpawnedTab(runId, itemId, tabId) {
+  const data = await chrome.storage.session.get(PAIRS_KEY);
+  const pairs = data[PAIRS_KEY] || {};
+  if (!pairs[runId]) pairs[runId] = { items: {}, spawnedByItem: {} };
+  if (!pairs[runId].spawnedByItem) pairs[runId].spawnedByItem = {};
+  const list = pairs[runId].spawnedByItem[itemId] || [];
+  if (!list.includes(tabId)) list.push(tabId);
+  pairs[runId].spawnedByItem[itemId] = list;
+  await chrome.storage.session.set({ [PAIRS_KEY]: pairs });
+}
+
+async function maybeQuarantineSpawn(tabId, url) {
+  if (!activeExecute) return;
+  const openerPending = pendingSpawnTabs.get(tabId);
+  if (openerPending == null && !pendingSpawnTabs.has(tabId)) {
+    // Only tabs we marked as spawned from agent
+    return;
+  }
+  if (!shouldCloseSpawnedTab(activeExecute.handoffUrl, url)) return;
+  try {
+    await chrome.tabs.remove(tabId);
+  } catch {
+    /* already closed */
+  }
+  pendingSpawnTabs.delete(tabId);
+  if (ws?.readyState === WebSocket.OPEN) {
+    ws.send(
+      JSON.stringify({
+        type: "browser_popup_closed",
+        run_id: activeExecute.runId,
+        item_id: activeExecute.itemId,
+        tab_id: tabId,
+        url,
+      }),
+    );
+  }
+}
+
+chrome.tabs.onCreated.addListener((tab) => {
+  if (!activeExecute || !tab?.id) return;
+  const opener = tab.openerTabId;
+  if (opener != null && opener === activeExecute.agentTabId) {
+    pendingSpawnTabs.set(tab.id, activeExecute.itemId);
+    trackSpawnedTab(activeExecute.runId, activeExecute.itemId, tab.id);
+    if (tab.url) maybeQuarantineSpawn(tab.id, tab.url);
+  }
+});
+
+chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
+  if (!activeExecute) return;
+  if (!pendingSpawnTabs.has(tabId)) return;
+  const url = changeInfo.url || tab?.url;
+  if (url) maybeQuarantineSpawn(tabId, url);
+});
+
+async function handleExecuteCleanup(msg) {
+  const runId = msg.run_id;
+  const itemId = msg.item_id;
+  const humanTabId = msg.human_tab_id ?? activeExecute?.humanTabId;
+  const agentTabId = msg.agent_tab_id;
+  const data = await chrome.storage.session.get(PAIRS_KEY);
+  const pairs = data[PAIRS_KEY] || {};
+  const runPair = pairs[runId] || {};
+  const toClose = tabsToCloseForItem(runPair, itemId, humanTabId, agentTabId);
+  for (const tabId of toClose) {
+    try {
+      await chrome.tabs.remove(tabId);
+    } catch {
+      /* tab may already be gone */
+    }
+    clearMapsForTab(tabId);
+  }
+  if (pairs[runId]?.items) {
+    delete pairs[runId].items[itemId];
+  }
+  if (pairs[runId]?.spawnedByItem) {
+    delete pairs[runId].spawnedByItem[itemId];
+  }
+  await chrome.storage.session.set({ [PAIRS_KEY]: pairs });
+  for (const [tid, iid] of [...pendingSpawnTabs.entries()]) {
+    if (iid === itemId) pendingSpawnTabs.delete(tid);
+  }
+  if (activeExecute?.itemId === itemId) {
+    activeExecute = null;
+  }
+  actStallMap = new Map();
+  if (ws?.readyState === WebSocket.OPEN) {
+    ws.send(
+      JSON.stringify({
+        type: "execute_cleanup_done",
+        run_id: runId,
+        item_id: itemId,
+        closed_tab_ids: toClose,
+      }),
+    );
+  }
+}
+
 async function loadBoard() {
   const data = await chrome.storage.local.get(BOARD_KEY);
   return data[BOARD_KEY] || { you: [], agent: [], waiting: [] };
@@ -233,9 +356,60 @@ function connectWs() {
     if (msg.type === "memory_patch") {
       await handleMemoryPatch(msg);
     }
+    if (msg.type === "execute_session") {
+      await handleExecuteSession(msg);
+    }
+    if (msg.type === "execute_cleanup") {
+      await handleExecuteCleanup(msg);
+    }
     if (msg.type === "browser_command") {
       const command = await normalizeCommand(msg.command);
-      const result = await runBrowserCommand(command);
+      const actOps = new Set(["click", "fill", "key", "scroll"]);
+      const maxStall = deskConfig.browser?.act_stall_max ?? 3;
+      const tabForStall = command.tab_id;
+      if (actOps.has(command.op) && tabForStall != null) {
+        const prior = actStallMap.get(`${command.run_id}:${tabForStall}`) || 0;
+        if (maxStall > 0 && prior >= maxStall) {
+          ws.send(
+            JSON.stringify({
+              type: "command_result",
+              run_id: command.run_id,
+              result: {
+                command_id: command.command_id,
+                ok: false,
+                error: "stall_detected: re-observe or stop",
+                duration_ms: 0,
+              },
+            }),
+          );
+          return;
+        }
+      }
+      let result = await runBrowserCommand(command);
+      if (actOps.has(command.op) && (result.tab_id != null || tabForStall != null)) {
+        const tid = result.tab_id ?? tabForStall;
+        const updated = updateActStall(
+          actStallMap,
+          command.run_id,
+          tid,
+          result,
+          maxStall,
+        );
+        actStallMap = updated.next;
+        if (updated.stalled) {
+          result = {
+            ...result,
+            ok: false,
+            error: "stall_detected: re-observe or stop",
+          };
+        }
+      }
+      if (command.op === "observe" && result.ok !== false) {
+        const tid = result.tab_id ?? command.tab_id;
+        if (tid != null) {
+          actStallMap.set(`${command.run_id}:${tid}`, 0);
+        }
+      }
       ws.send(
         JSON.stringify({
           type: "command_result",
