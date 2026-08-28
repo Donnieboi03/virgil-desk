@@ -56,6 +56,52 @@ def test_hermes_live_decompose_mocked_run(hermes_backend, monkeypatch):
             titles = [i["title"] for i in result["items"]]
             assert "Summarize job requirements" in titles
             assert result.get("live") is True
+            agent = [i for i in result["items"] if i["column"] == "agent"][0]
+            assert agent["status"] == "proposed"
+        finally:
+            ext.close()
+
+
+def test_hermes_decompose_keeps_hints(hermes_backend, monkeypatch):
+    import json
+
+    from desk_host.backends.hermes import HermesBackend, HermesRunResult
+
+    payload = json.dumps(
+        {
+            "decomposition": "One agent email task.",
+            "items": [
+                {
+                    "column": "agent",
+                    "title": "Process GitHub permissions",
+                    "status": "done",
+                    "hints": {
+                        "search_query": "from:github permissions",
+                        "sender": "GitHub",
+                    },
+                },
+            ],
+        }
+    )
+
+    async def fake_run(_self, _message: str, **kwargs) -> HermesRunResult:
+        return HermesRunResult(stdout=payload, stderr="", exit_code=0)
+
+    monkeypatch.setattr(HermesBackend, "_hermes_run", fake_run)
+
+    with TestClient(app) as client:
+        ext = MockExtensionSession(client)
+        try:
+            result = ext.handoff(
+                {
+                    "url": "https://mail.google.com/inbox",
+                    "human_tab_id": 11,
+                    "window_id": 1,
+                }
+            )
+            agent = [i for i in result["items"] if i["column"] == "agent"][0]
+            assert agent["status"] == "proposed"
+            assert agent["hints"]["search_query"] == "from:github permissions"
         finally:
             ext.close()
 

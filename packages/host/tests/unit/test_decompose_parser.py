@@ -20,6 +20,35 @@ def test_parse_clean_json():
     assert len(out["items"]) == 2
     assert out["items"][0]["id"] == "desk_abc_agent_0"
     assert out["items"][0]["run_id"] == "desk_abc"
+    assert out["items"][0]["status"] == "proposed"
+
+
+def test_agent_done_coerced_to_proposed_and_hints_kept():
+    raw = json.dumps(
+        {
+            "decomposition": "Triage inbox.",
+            "items": [
+                {
+                    "column": "agent",
+                    "title": "Review GitHub permissions",
+                    "status": "done",
+                    "hints": {
+                        "search_query": "GitHub Cursor permissions",
+                        "sender": "GitHub",
+                        "subject_contains": "updated permissions",
+                    },
+                }
+            ],
+        }
+    )
+    out = parse_decompose_json(
+        raw, "desk_hint", {"url": "https://mail.google.com", "human_tab_id": 1}
+    )
+    assert out is not None
+    agent = out["items"][0]
+    assert agent["status"] == "proposed"
+    assert agent["hints"]["search_query"] == "GitHub Cursor permissions"
+    assert agent["hints"]["sender"] == "GitHub"
 
 
 def test_parse_markdown_wrapped():

@@ -41,6 +41,9 @@ def test_ws_handoff_board_patch_and_click_verify():
             result = ext.handoff(handoff_payload)
             run_id = result["run_id"]
             assert len(result.get("items", [])) >= 1
+            agents = [i for i in result["items"] if i.get("column") == "agent"]
+            assert agents
+            assert agents[0]["status"] in ("proposed", "running")
 
             pending = run_browser_wait(
                 client,

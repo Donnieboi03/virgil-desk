@@ -24,6 +24,12 @@ export interface WorkItemEvidence {
   screenshot_ref?: string;
 }
 
+export interface WorkItemHints {
+  search_query?: string;
+  sender?: string;
+  subject_contains?: string;
+}
+
 export interface WorkItem {
   id: string;
   column: Column;
@@ -36,6 +42,7 @@ export interface WorkItem {
   status: WorkItemStatus;
   evidence?: WorkItemEvidence;
   proposals?: Proposal[];
+  hints?: WorkItemHints;
   agent_tab_id?: number;
   human_tab_id?: number;
   run_id?: string;

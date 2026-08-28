@@ -78,6 +78,18 @@ def parse_decompose_json(
             "status": raw_item.get("status") or "proposed",
             "run_id": run_id,
         }
+        if column == "agent":
+            # Execute owns completion — never trust model "done" at decompose.
+            item["status"] = "proposed"
+        hints = raw_item.get("hints")
+        if isinstance(hints, dict) and hints:
+            cleaned: dict[str, str] = {}
+            for key in ("search_query", "sender", "subject_contains"):
+                val = hints.get(key)
+                if val is not None and str(val).strip():
+                    cleaned[key] = str(val).strip()
+            if cleaned:
+                item["hints"] = cleaned
         if human_tab_id is not None:
             item["human_tab_id"] = human_tab_id
         if column != "agent" and agent_tab_id is not None:

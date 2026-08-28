@@ -11,7 +11,12 @@ Output **only** valid JSON matching this shape (no markdown, no prose outside JS
     {
       "column": "you|agent|waiting",
       "title": "short imperative title",
-      "status": "proposed|running|done",
+      "status": "proposed|running",
+      "hints": {
+        "search_query": "optional Gmail/search query",
+        "sender": "optional sender name or email",
+        "subject_contains": "optional subject fragment"
+      },
       "proposals": []
     }
   ]
@@ -26,7 +31,8 @@ Output **only** valid JSON matching this shape (no markdown, no prose outside JS
 - Use the page URL, title, intent, excerpt, links, and screenshot to infer real titles — not generic placeholders.
 - Up to **{{decompose_items_max}} items** total across columns; triage the most actionable threads visible. For dense inboxes (Gmail), prefer one item per clearly distinct visible thread when under the cap.
 - Keep titles under {{work_item_title_max_chars}} characters.
-- Agent column items may use `"status": "running"` when work should start on operator **Run agent** (manual — not auto).
+- **Agent items must not use `"status": "done"`** — only `proposed` or `running` until the operator runs **Run agent**. Host coerces agent status to `proposed`.
+- For **agent** inbox/email items, include **`hints`** when inferable from the snapshot (`search_query`, `sender`, `subject_contains`) so execute can find the right thread.
 
 ## Input
 

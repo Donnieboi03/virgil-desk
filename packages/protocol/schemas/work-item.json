@@ -16,6 +16,14 @@
         "url": { "type": "string" },
         "ref": { "type": "string" }
       }
+    },
+    "hints": {
+      "type": "object",
+      "properties": {
+        "search_query": { "type": "string" },
+        "sender": { "type": "string" },
+        "subject_contains": { "type": "string" }
+      }
     }
   }
 }

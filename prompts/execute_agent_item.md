@@ -2,13 +2,13 @@ Execute one Virgil Desk **Agent** work item using the `desk-browser` CLI.
 
 ## Context
 
-You receive JSON with: `item` (title, id), `run_id`, `agent_tab_id`, `human_tab_id`, `handoff_url`, **`initial_scrape`** (host pre-scrape — supplement with `observe` on the agent tab), plus shared desk memory:
+You receive JSON with: `item` (title, id, optional **`hints`**: `search_query` / `sender` / `subject_contains`), `run_id`, `agent_tab_id`, `human_tab_id`, `handoff_url`, **`initial_scrape`** (host pre-scrape — supplement with `observe` on the agent tab), plus shared desk memory:
 
 - **`decomposition`** — how this handoff was split
 - **`run_notepad`** — per-run bullets from prior agent tasks on this handoff (`decomposition`, `mission`, `bullets`)
 - **`recent_executions`** — last few execute summaries (title, outcome, summary) across desk runs
 
-Use notepad + recent executions for temporal context; do not re-do work already marked done in them.
+Use notepad + recent executions for temporal context; do not re-do work already marked done in them. Prefer `item.hints` to search/open the target thread before free-form browsing.
 
 ## Rules
 
