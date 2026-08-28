@@ -24,6 +24,7 @@ await esbuild.build({
 const files = [
   "manifest.json",
   "tabPolicy.js",
+  "agentTabs.js",
   "background.js",
   "targetMap.js",
   "panel.html",
