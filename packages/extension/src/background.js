@@ -227,9 +227,63 @@ async function applyPatch(ops, runId) {
       await rememberHandoffUrl(runId, handoffPatch.item.source.url);
     }
   }
+  ops = await provisionAgentItemTabs(runId, ops);
   const board = await loadBoard();
   await saveBoard(applyBoardPatch(board, ops));
   chrome.runtime.sendMessage({ type: "boardUpdated" }).catch(() => {});
+}
+
+async function duplicateAgentTabForItem(humanTabId, runId, itemId) {
+  const dup = await chrome.tabs.duplicate(humanTabId);
+  await chrome.tabs.update(dup.id, { active: false });
+  const tab = await chrome.tabs.get(dup.id);
+  await ensureAgentGroup(dup.id, tab.windowId);
+  const data = await chrome.storage.session.get(PAIRS_KEY);
+  const pairs = data[PAIRS_KEY] || {};
+  if (!pairs[runId]) {
+    pairs[runId] = { humanTabId, items: {} };
+  }
+  if (!pairs[runId].items) pairs[runId].items = {};
+  pairs[runId].items[itemId] = dup.id;
+  await chrome.storage.session.set({ [PAIRS_KEY]: pairs });
+  return dup.id;
+}
+
+async function syncItemAgentTab(itemId, runId, agentTabId) {
+  try {
+    await fetch(`${hostUrl}/v1/items/${itemId}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ run_id: runId, agent_tab_id: agentTabId }),
+    });
+  } catch {
+    /* host may be unreachable; board still updated locally */
+  }
+}
+
+async function provisionAgentItemTabs(runId, ops) {
+  if (!runId) return ops;
+  const data = await chrome.storage.session.get(PAIRS_KEY);
+  const pairs = data[PAIRS_KEY] || {};
+  const runPair = pairs[runId];
+  const humanTabId = runPair?.humanTabId;
+  if (!humanTabId) return ops;
+
+  const agentAdds = ops.filter((p) => p.op === "add" && p.item?.column === "agent");
+  if (!agentAdds.length) return ops;
+
+  for (const patch of agentAdds) {
+    const item = patch.item;
+    const existing = runPair.items?.[item.id];
+    let tabId = existing;
+    if (!tabId) {
+      tabId = await duplicateAgentTabForItem(humanTabId, runId, item.id);
+    }
+    item.agent_tab_id = tabId;
+    item.human_tab_id = item.human_tab_id || humanTabId;
+    await syncItemAgentTab(item.id, runId, tabId);
+  }
+  return ops;
 }
 
 async function ensureAgentGroup(tabId, windowId) {
@@ -265,7 +319,7 @@ async function resolveAgentTab(command) {
     pairs[runId] = {
       humanTabId: command.human_tab_id,
       agentTabId: dup.id,
-      groupId,
+      items: pairs[runId]?.items || {},
     };
     await chrome.storage.session.set({ [PAIRS_KEY]: pairs });
     return { tabId: dup.id, tabMode: "duplicate" };
@@ -284,7 +338,7 @@ async function resolveAgentTab(command) {
     pairs[runId] = {
       humanTabId: command.human_tab_id,
       agentTabId: tab.id,
-      groupId,
+      items: pairs[runId]?.items || {},
     };
     await chrome.storage.session.set({ [PAIRS_KEY]: pairs });
     return { tabId: tab.id, tabMode: "create" };
@@ -510,7 +564,7 @@ async function runBrowserCommand(command) {
       const excerptMax = deskConfig.browser?.scrape_excerpt_max_chars ?? 8000;
       const snap = await scrapeTab(tabId);
       const pageObserve = await runPageObserve(tabId, { maxTargets, annotate });
-      const shot = await screenshotTab(tabId);
+      const shot = command.skip_screenshot ? null : await screenshotTab(tabId);
       await runPageUnmark(tabId);
       const interact_targets = (pageObserve?.interact_targets || []).map(
         ({ mark_label, ...rest }) => rest,
@@ -787,12 +841,31 @@ async function runBrowserCommand(command) {
         };
       }
     } else if (command.op === "key") {
+      const params = command.params || {};
+      const stored = getTargetMap(command.run_id, tabId);
+      const targets = stored?.interact_targets || [];
+      if (params.target_id != null || params.ref) {
+        const fresh = await ensureTargetMapFresh(
+          stored,
+          command.run_id,
+          tabId,
+          urlBeforeAct,
+        );
+        if (!fresh.ok) {
+          return {
+            ...base,
+            ok: false,
+            error: fresh.error,
+            duration_ms: Date.now() - started,
+          };
+        }
+      }
       const act = await runPageAct(
         tabId,
         "key",
-        command.params || {},
-        getTargetMap(command.run_id, tabId)?.interact_targets || [],
-        urlBeforeAct,
+        params,
+        targets,
+        urlBeforeAct || stored?.url,
       );
       if (!act?.ok) {
         return {
@@ -811,7 +884,10 @@ async function runBrowserCommand(command) {
     if (["click", "fill", "scroll", "key", "scrape", "screenshot", "openTab", "duplicateTab"].includes(command.op)) {
       const excerptMax = deskConfig.browser?.scrape_excerpt_max_chars ?? 4000;
       const snap = await scrapeTab(tabId);
-      const shot = await screenshotTab(tabId);
+      let shot = null;
+      if (!command.skip_screenshot) {
+        shot = await screenshotTab(tabId);
+      }
       const out = {
         ...base,
         tab_id: tabId,

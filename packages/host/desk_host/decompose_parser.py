@@ -80,7 +80,7 @@ def parse_decompose_json(
         }
         if human_tab_id is not None:
             item["human_tab_id"] = human_tab_id
-        if agent_tab_id is not None:
+        if column != "agent" and agent_tab_id is not None:
             item["agent_tab_id"] = agent_tab_id
         proposals = raw_item.get("proposals")
         if isinstance(proposals, list) and proposals:

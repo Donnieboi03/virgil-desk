@@ -77,6 +77,11 @@ class ExecuteBody(BaseModel):
     run_id: str
 
 
+class ItemMetaBody(BaseModel):
+    run_id: str
+    agent_tab_id: int
+
+
 class CompleteBody(BaseModel):
     run_id: str
 
@@ -179,10 +184,10 @@ async def _handle_handoff(payload: dict[str, Any]) -> dict[str, Any]:
     for item in result.get("items", []):
         item["run_id"] = run_id
         meta = _handoff_meta.get(run_id, {})
-        if meta.get("agent_tab_id") is not None:
-            item["agent_tab_id"] = meta["agent_tab_id"]
         if meta.get("human_tab_id") is not None and item.get("human_tab_id") is None:
             item["human_tab_id"] = meta["human_tab_id"]
+        if item.get("column") != "agent" and meta.get("agent_tab_id") is not None:
+            item["agent_tab_id"] = meta["agent_tab_id"]
         _work_items[item["id"]] = item
         for prop in item.get("proposals") or []:
             _proposals[prop["id"]] = {**prop, "work_item_id": item["id"], "run_id": run_id}
@@ -338,6 +343,30 @@ async def deny_item(item_id: str, body: DenyBody) -> dict[str, Any]:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
     await _patch_work_item(item_id, status="denied", run_id=body.run_id)
     return {"ok": True, "work_item_id": item_id, "status": "denied"}
+
+
+@app.patch("/v1/items/{item_id}")
+async def patch_item_meta(item_id: str, body: ItemMetaBody) -> dict[str, Any]:
+    """Extension sets per-item agent_tab_id after provisioning duplicate tabs."""
+    item = _work_items.get(item_id)
+    if not item:
+        raise HTTPException(status_code=404, detail="work item not found")
+    updated = {**item, "agent_tab_id": body.agent_tab_id, "run_id": body.run_id}
+    _work_items[item_id] = updated
+    patch_id = uuid.uuid4().hex
+    await _send_board_patch(
+        body.run_id,
+        patch_id,
+        [{"op": "update", "item": updated}],
+    )
+    record(
+        "item.agent_tab_assigned",
+        body.run_id,
+        cfg=get_config(),
+        item_id=item_id,
+        agent_tab_id=body.agent_tab_id,
+    )
+    return {"ok": True, "item": updated}
 
 
 @app.post("/v1/items/{item_id}/execute")
@@ -540,16 +569,17 @@ async def dispatch_browser_command(command: dict[str, Any]) -> None:
     if op in SCREENSHOT_OPS and run_id:
         count = _screenshot_counts.get(run_id, 0)
         if count >= cfg.browser.screenshot_max_per_run:
+            command["skip_screenshot"] = True
             record(
-                "policy.denied",
+                "policy.screenshot_skipped",
                 run_id,
                 cfg=cfg,
                 measure={"count": count},
                 rule="screenshot_cap",
                 op=op,
             )
-            raise PermissionError("screenshot_cap")
-        _screenshot_counts[run_id] = count + 1
+        else:
+            _screenshot_counts[run_id] = count + 1
 
     reason = policy_denied_reason(
         command.get("op", ""),

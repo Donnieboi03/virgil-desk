@@ -26,10 +26,12 @@ desk-browser --run-id desk_abc --op click --human-tab-id 1 --tab-id 2 \
   --params '{"target_id": 7}' --wait
 desk-browser --run-id desk_abc --op fill --human-tab-id 1 --tab-id 2 \
   --params '{"target_id": 3, "value": "hello@example.com"}' --wait
+desk-browser --run-id desk_abc --op fill --human-tab-id 1 --tab-id 2 \
+  --params '{"target_id": 16, "value": "search terms", "press_key": "Enter"}' --wait
 desk-browser --run-id desk_abc --op scroll --human-tab-id 1 --tab-id 2 \
   --params '{"direction":"down"}' --wait
 desk-browser --run-id desk_abc --op key --human-tab-id 1 --tab-id 2 \
-  --params '{"key":"Enter"}' --wait
+  --params '{"target_id": 16, "key":"Enter"}' --wait
 ```
 
 - **`--tab-id`** = agent tab from handoff (`agent_tab_id`) — never automate `human_tab_id`.
@@ -74,8 +76,10 @@ If you see `stale_observe: run observe first`, call `observe` again after naviga
 
 ## Forbidden
 
-- send, submit, pay on agent path without human Accept
+- send email, submit payment, or post public content on agent path without human Accept
 - any browser op on `human_tab_id` (except snapshot at user gesture)
+
+**Search / navigation Enter is allowed** — use `press_key: "Enter"` on fill or `key` with `target_id`.
 
 ## Proposals
 

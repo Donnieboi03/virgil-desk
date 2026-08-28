@@ -303,7 +303,29 @@ function dispatchClick(el) {
   if (typeof el.click === "function") el.click();
 }
 
-function reactFill(el, value) {
+function dispatchKey(el, key) {
+  const target = el || document.activeElement || document.body;
+  if (target?.focus) target.focus();
+  const isEnter = key === "Enter";
+  const opts = {
+    key,
+    code: isEnter ? "Enter" : key,
+    keyCode: isEnter ? 13 : 0,
+    which: isEnter ? 13 : 0,
+    bubbles: true,
+    cancelable: true,
+  };
+  target.dispatchEvent(new KeyboardEvent("keydown", opts));
+  if (isEnter) {
+    target.dispatchEvent(new KeyboardEvent("keypress", opts));
+  }
+  target.dispatchEvent(new KeyboardEvent("keyup", opts));
+  if (isEnter && target.form?.requestSubmit) {
+    target.form.requestSubmit();
+  }
+}
+
+function reactFill(el, value, { pressKey } = {}) {
   el.focus();
   const tag = el.tagName.toLowerCase();
   if (tag === "input" || tag === "textarea") {
@@ -322,18 +344,49 @@ function reactFill(el, value) {
       }),
     );
     el.dispatchEvent(new Event("change", { bubbles: true }));
-    el.dispatchEvent(new Event("blur", { bubbles: true }));
+    if (pressKey) {
+      dispatchKey(el, pressKey);
+    } else {
+      el.dispatchEvent(new Event("blur", { bubbles: true }));
+    }
     return true;
   }
   if (el.isContentEditable) {
     el.textContent = value;
     el.dispatchEvent(new InputEvent("input", { bubbles: true }));
+    if (pressKey) dispatchKey(el, pressKey);
     return true;
   }
   return false;
 }
 
 export function deskAct(op, params, targets, urlBefore) {
+  if (op === "key") {
+    let el = null;
+    const targetId = normalizeTargetId(params.target_id);
+    if (targetId != null) {
+      const t = targets.find((x) => x.id === targetId);
+      if (t) el = elementFromTarget(t);
+    }
+    if (!el && params.ref) {
+      const t = targets.find((x) => x.ref === params.ref);
+      if (t) el = elementFromTarget(t);
+    }
+    const key = params.key || "Enter";
+    dispatchKey(el, key);
+    const target = el || document.activeElement || document.body;
+    return {
+      ok: true,
+      act_resolved: {
+        op,
+        requested: params,
+        used: el ? "target_id" : "active_element",
+        hit: { tag: target.tagName?.toLowerCase() },
+        url_before: urlBefore,
+        url_after: location.href,
+      },
+    };
+  }
   const resolved = resolveTarget(targets, params);
   if (resolved.error) {
     return { ok: false, error: resolved.error, act_resolved: { op, requested: params, used: "none" } };
@@ -363,27 +416,6 @@ export function deskAct(op, params, targets, urlBefore) {
         },
       };
     }
-    if (op === "key") {
-      const key = params.key || "Enter";
-      const target = document.activeElement || document.body;
-      target.dispatchEvent(
-        new KeyboardEvent("keydown", { key, bubbles: true, cancelable: true }),
-      );
-      target.dispatchEvent(
-        new KeyboardEvent("keyup", { key, bubbles: true, cancelable: true }),
-      );
-      return {
-        ok: true,
-        act_resolved: {
-          op,
-          requested: params,
-          used: "key",
-          hit: { tag: target.tagName?.toLowerCase() },
-          url_before: urlBefore,
-          url_after: location.href,
-        },
-      };
-    }
     let el = resolved.element;
     if (!el && resolved.target) el = elementFromTarget(resolved.target);
     if (!el && resolved.point) el = document.elementFromPoint(resolved.point.x, resolved.point.y);
@@ -402,7 +434,7 @@ export function deskAct(op, params, targets, urlBefore) {
     if (op === "click") {
       dispatchClick(el);
     } else if (op === "fill") {
-      if (!reactFill(el, params.value ?? "")) {
+      if (!reactFill(el, params.value ?? "", { pressKey: params.press_key })) {
         return { ok: false, error: "fill not supported on element", act_resolved: { op, requested: params, used: resolved.used } };
       }
     } else {
