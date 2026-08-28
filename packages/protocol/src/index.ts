@@ -51,10 +51,84 @@ export type BrowserOp =
   | "scroll"
   | "scrape"
   | "screenshot"
+  | "observe"
   | "click"
   | "fill"
+  | "key"
   | "wait"
   | "focusTab";
+
+export type InteractTargetKind =
+  | "clickable"
+  | "input"
+  | "select"
+  | "toggle"
+  | "scroll_container";
+
+export interface ViewportInfo {
+  w: number;
+  h: number;
+}
+
+export interface RectInfo {
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+}
+
+export interface PointInfo {
+  x: number;
+  y: number;
+}
+
+export interface InteractTarget {
+  id: number;
+  ref: string;
+  kind: InteractTargetKind;
+  label: string;
+  text?: string;
+  role?: string;
+  tag?: string;
+  rect: RectInfo;
+  center: PointInfo;
+  selector_hint?: string;
+  selector_stable?: boolean;
+}
+
+export interface ScrollContainer {
+  id: number;
+  ref: string;
+  label: string;
+  rect: RectInfo;
+  scrollHeight: number;
+  clientHeight: number;
+}
+
+export interface ObservePayload {
+  url: string;
+  title: string;
+  viewport: ViewportInfo;
+  device_pixel_ratio: number;
+  text_excerpt: string;
+  interact_targets: InteractTarget[];
+  scroll_containers: ScrollContainer[];
+}
+
+export interface ActResolvedHit {
+  ref?: string;
+  tag?: string;
+  center?: PointInfo;
+}
+
+export interface ActResolved {
+  op: string;
+  requested: Record<string, unknown>;
+  used: string;
+  hit?: ActResolvedHit;
+  url_before?: string;
+  url_after?: string;
+}
 
 export type TabMode = "snapshot" | "create" | "duplicate" | "reuse";
 
@@ -86,6 +160,12 @@ export interface CommandResult {
   title?: string;
   scrape_excerpt?: string;
   screenshot?: ScreenshotPayload;
+  observe?: ObservePayload;
+  interact_targets?: InteractTarget[];
+  scroll_containers?: ScrollContainer[];
+  viewport?: ViewportInfo;
+  device_pixel_ratio?: number;
+  act_resolved?: ActResolved;
   error?: string;
   duration_ms: number;
   tab_id?: number;

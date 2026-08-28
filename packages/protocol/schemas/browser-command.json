@@ -15,8 +15,10 @@
         "scroll",
         "scrape",
         "screenshot",
+        "observe",
         "click",
         "fill",
+        "key",
         "wait",
         "focusTab"
       ]
@@ -24,6 +26,8 @@
     "human_tab_id": { "type": "integer" },
     "tab_id": { "type": "integer" },
     "url": { "type": "string" },
-    "verify_level": { "enum": ["read", "action", "handoff"] }
+    "handoff_url": { "type": "string" },
+    "verify_level": { "enum": ["read", "action", "handoff"] },
+    "params": { "type": "object" }
   }
 }
