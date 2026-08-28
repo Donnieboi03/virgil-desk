@@ -46,6 +46,13 @@ Board mutations from execute/complete/accept/deny require an active WebSocket; o
 
 Required: `command_id`, `ok`, `duration_ms`. **`observe`** adds `interact_targets`, `viewport`, `device_pixel_ratio`. Mutating ops add `act_resolved` and auto-chain `scrape_excerpt` + `screenshot`.
 
+Same-URL follow-up `observe` / post-act scrapes may set `text_omitted: true` with an empty `scrape_excerpt` while keeping targets; URL changes get a capped follow-up excerpt (`browser.observe_followup_excerpt_max_chars`).
+
+## Hermes models + hooks
+
+- Decompose: `hermes.decompose_model` (default `google/gemini-3.1-flash-lite`); no `--accept-hooks`.
+- Execute: `hermes.execute_model` (default `google/gemini-3.7-flash`); `hermes.execute_accept_hooks: false` (single-agent `terminal` + `skills` + desk-browser — no compound-topology hooks).
+
 ## WorkItem fields (runtime)
 
-Items carry `run_id`, optional `agent_tab_id` / `human_tab_id`, optional **`hints`** (`search_query`, `sender`, `subject_contains`), `evidence` after execute, and `last_error` on failure. Decompose coerces agent status to `proposed` (execute owns `done`).
+Items carry `run_id`, optional `agent_tab_id` / `human_tab_id`, optional **`hints`** (`search_query`, `sender`, `subject_contains`), `evidence` after execute, and `last_error` on failure (Hermes failures prefer stderr / API snippets over a bare `session_id` line). Decompose coerces agent status to `proposed` (execute owns `done`).

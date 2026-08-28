@@ -30,6 +30,14 @@ Replace `booked_stub` with Hermes `gws` calendar create (or equivalent L1 path).
 
 Optional multi-page Gmail scroll beyond `handoff_scroll_loops` (config-driven).
 
+### Hermes fallback hygiene for Desk
+
+OpenRouter in-flight **402** (budget) and native Gemini fallback **404** currently leave a weak board `last_error` / useless `session_id`-only stdout. Desk now surfaces stderr snippets when present; still need provider/fallback config hygiene so execute does not silently fall through broken fallbacks.
+
+- [ ] Audit `virgil-executor` fallback_providers for Desk `-m` models
+- [ ] Avoid OpenRouter 402 mid-run without a working Gemini native path
+- [ ] Confirm board `last_error` shows the real API failure after fallbacks
+
 ## Done (reference)
 
 - Rich handoff: duplicate agent tab + excerpt + screenshot for decompose
@@ -41,6 +49,9 @@ Optional multi-page Gmail scroll beyond `handoff_scroll_loops` (config-driven).
 - **Decompose hints** + agent status coerced to `proposed` (no fake done)
 - **Tab cleanup** on execute end + **off-origin popup quarantine** during execute
 - **Act stall detection** (`browser.act_stall_max`) to stop click spirals
+- **Model cast:** decompose `gemini-3.1-flash-lite` / execute `gemini-3.7-flash`; execute hooks off
+- **Slim observe:** same-URL omit full excerpt; URL-change capped follow-up
+- **Clearer execute `last_error`** from Hermes stderr / API snippets
 
 ## Links
 
