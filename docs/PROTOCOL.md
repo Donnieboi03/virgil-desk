@@ -48,4 +48,4 @@ Required: `command_id`, `ok`, `duration_ms`. **`observe`** adds `interact_target
 
 ## WorkItem fields (runtime)
 
-Items carry `run_id`, optional `agent_tab_id` / `human_tab_id`, `evidence` after execute, and `last_error` on failure.
+Items carry `run_id`, optional `agent_tab_id` / `human_tab_id`, optional **`hints`** (`search_query`, `sender`, `subject_contains`), `evidence` after execute, and `last_error` on failure. Decompose coerces agent status to `proposed` (execute owns `done`).
