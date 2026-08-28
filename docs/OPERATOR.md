@@ -1,6 +1,6 @@
-# Operator guide — first dogfood
+# Operator guide — first live check
 
-## 1. Local dogfood (~30 min)
+## 1. Local smoke test (~30 min)
 
 ```bash
 # Terminal 1 — Host

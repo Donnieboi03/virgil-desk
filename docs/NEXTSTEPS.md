@@ -57,4 +57,4 @@ OpenRouter in-flight **402** (budget) and native Gemini fallback **404** current
 
 - [`PRODUCT.md`](PRODUCT.md) — primary flows
 - [`HERMES_SETUP.md`](HERMES_SETUP.md) — live Hermes wiring
-- [`OPERATOR.md`](OPERATOR.md) — dogfood checklist
+- [`OPERATOR.md`](OPERATOR.md) — live operator checklist

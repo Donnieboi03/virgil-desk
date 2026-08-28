@@ -32,7 +32,7 @@ Set agent backend: `DESK_AGENT_BACKEND=mock|hermes|openclaw`
 ## Docs
 
 - [docs/PRODUCT.md](docs/PRODUCT.md) — product scope and boundaries
-- [docs/OPERATOR.md](docs/OPERATOR.md) — first dogfood + Hermes wiring
+- [docs/OPERATOR.md](docs/OPERATOR.md) — first live check + Hermes wiring
 - [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)
 - [docs/PROTOCOL.md](docs/PROTOCOL.md)
 - [docs/BROWSER_LAYER.md](docs/BROWSER_LAYER.md)
