@@ -54,6 +54,7 @@ def parse_decompose_json(
 
     url = str(handoff.get("url") or "")
     human_tab_id = handoff.get("human_tab_id")
+    agent_tab_id = handoff.get("agent_tab_id")
     items_out: list[dict[str, Any]] = []
     col_counts: dict[str, int] = {}
 
@@ -76,6 +77,8 @@ def parse_decompose_json(
         }
         if human_tab_id is not None:
             item["human_tab_id"] = human_tab_id
+        if agent_tab_id is not None:
+            item["agent_tab_id"] = agent_tab_id
         proposals = raw_item.get("proposals")
         if isinstance(proposals, list) and proposals:
             norm_props = []
@@ -85,7 +88,7 @@ def parse_decompose_json(
                 norm_props.append(
                     {
                         "id": prop.get("id") or f"{item_id}_prop_{pi}",
-                        "kind": prop.get("kind") or "generic",
+                        "kind": prop.get("kind") or "other",
                         "payload": prop.get("payload") or {},
                         "requires": prop.get("requires") or "accept",
                     }

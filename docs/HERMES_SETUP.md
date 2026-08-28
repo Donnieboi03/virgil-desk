@@ -102,5 +102,5 @@ See also [`tests/manual/hermes_execute_checklist.md`](../tests/manual/hermes_exe
 | `WS disconnected` | Host not running or wrong URL in extension options |
 | `screenshot_cap` | >20 browser ops this run — see [`LIMITS.md`](LIMITS.md) |
 | Browser 403 | Extension not connected; command blocked by tab policy |
-| Run agent 501 | Backend lacks `execute_item` — use `hermes` or `mock`, not openclaw-only stub |
+| Run agent 501 | Backend lacks `execute_item` — use a backend that implements it (`hermes`, `mock`; OpenClaw stub delegates to mock) |
 | `desk-browser` not found | Add repo `scripts/` to PATH or use absolute path |

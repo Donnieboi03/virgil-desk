@@ -1,11 +1,13 @@
 """Execute agent item → browser_command integration."""
 
 import threading
+from typing import Any
 
 import pytest
 from starlette.testclient import TestClient
 
 from desk_host.app import app, reset_state_for_tests
+from desk_host.backends.mock import MockBackend
 from helpers.mock_extension import MockExtensionSession, fake_screenshot, run_browser_wait
 
 
@@ -78,9 +80,65 @@ def test_execute_agent_posts_browser_command_and_marks_done():
 
             patch = ext.ws.receive_json()
             assert patch["type"] == "board_patch"
-            assert patch["ops"][0]["item"]["status"] == "done"
+            updated = patch["ops"][0]["item"]
+            assert updated["status"] == "done"
+            assert updated.get("evidence", {}).get("summary")
         finally:
             ext.close()
+
+
+def test_execute_requires_extension_connected():
+    with TestClient(app) as client:
+        handoff = {
+            "url": "https://example.com/job",
+            "human_tab_id": 1,
+            "window_id": 1,
+        }
+        result = client.post("/v1/handoff", json=handoff).json()
+        agent = [i for i in result["items"] if i["column"] == "agent"][0]
+        resp = client.post(
+            f"/v1/items/{agent['id']}/execute",
+            json={"run_id": result["run_id"]},
+        )
+        assert resp.status_code == 503
+
+
+def test_execute_without_browser_evidence_fails(monkeypatch):
+    async def noop_execute(_self, _item: dict[str, Any], _ctx: dict[str, Any]) -> dict[str, Any]:
+        return {"summary": "skipped browser", "exit_code": 0}
+
+    monkeypatch.setattr(MockBackend, "execute_item", noop_execute)
+    with TestClient(app) as client:
+        ext = MockExtensionSession(client)
+        try:
+            result = ext.handoff(
+                {"url": "https://example.com", "human_tab_id": 1, "window_id": 1}
+            )
+            agent = [i for i in result["items"] if i["column"] == "agent"][0]
+            resp = client.post(
+                f"/v1/items/{agent['id']}/execute",
+                json={"run_id": result["run_id"]},
+            )
+            assert resp.status_code == 422
+            patch = ext.ws.receive_json()
+            assert patch["ops"][0]["item"]["status"] == "failed"
+        finally:
+            ext.close()
+
+
+def test_browser_post_without_extension_returns_503():
+    with TestClient(app) as client:
+        resp = client.post(
+            "/v1/browser",
+            json={
+                "run_id": "desk_x",
+                "op": "scrape",
+                "human_tab_id": 1,
+                "tab_id": 2,
+                "wait": False,
+            },
+        )
+        assert resp.status_code == 503
 
 
 def test_complete_you_item():

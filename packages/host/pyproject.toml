@@ -23,6 +23,7 @@ dev = [
 [project.scripts]
 desk-host = "desk_host.__main__:main"
 desk-events = "desk_host.events_cli:main"
+desk-browser = "desk_host.desk_browser_cli:main"
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"

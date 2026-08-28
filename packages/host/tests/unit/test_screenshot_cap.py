@@ -12,7 +12,7 @@ def _clean():
 
 
 @pytest.mark.asyncio
-async def test_screenshot_cap_denied(monkeypatch):
+async def test_screenshot_cap_denied(monkeypatch, fake_extension_connected):
     cfg = load_config()
     cfg.browser.screenshot_max_per_run = 2
     monkeypatch.setattr("desk_host.app.get_config", lambda: cfg)

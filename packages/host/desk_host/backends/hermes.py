@@ -75,6 +75,7 @@ class HermesBackend:
                 prompt,
                 image_path=image_path,
                 skills=["desk-browser-bridge"],
+                timeout_sec=cfg.hermes.decompose_timeout_sec,
             )
             parsed = parse_decompose_json(result.text, run_id, handoff)
             if parsed:
@@ -100,9 +101,18 @@ class HermesBackend:
 
     async def execute_item(self, item: dict[str, Any], ctx: dict[str, Any]) -> dict[str, Any]:
         prompt = build_execute_prompt(item, ctx)
-        result = await self._hermes_run(prompt, skills=["desk-browser-bridge"])
-        if result.exit_code != 0 and not result.text:
-            raise RuntimeError(result.stderr or "hermes execute failed")
+        cfg = load_config()
+        result = await self._hermes_run(
+            prompt,
+            skills=["desk-browser-bridge"],
+            timeout_sec=cfg.hermes.execute_timeout_sec,
+        )
+        if result.exit_code != 0:
+            raise RuntimeError(
+                result.stderr or result.text or f"hermes exit {result.exit_code}"
+            )
+        if not result.text:
+            raise RuntimeError("hermes execute returned empty output")
         return {"summary": result.text[:2000], "exit_code": result.exit_code}
 
     def _stub_decompose(self, handoff: dict[str, Any], run_id: str) -> dict[str, Any]:
@@ -169,8 +179,10 @@ class HermesBackend:
         *,
         image_path: str | None = None,
         skills: list[str] | None = None,
+        timeout_sec: int | None = None,
     ) -> HermesRunResult:
         cfg = load_config()
+        timeout = timeout_sec or cfg.hermes.decompose_timeout_sec
         env = os.environ.copy()
         env["HERMES_HOME"] = self.home
         cmd = [
@@ -194,7 +206,7 @@ class HermesBackend:
                 cmd,
                 capture_output=True,
                 text=True,
-                timeout=cfg.hermes.decompose_timeout_sec,
+                timeout=timeout,
                 env=env,
                 check=False,
             )

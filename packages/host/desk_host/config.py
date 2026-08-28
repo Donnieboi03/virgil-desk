@@ -28,6 +28,7 @@ class BrowserConfig:
     scrape_excerpt_max_chars: int = 8000
     handoff_excerpt_max_chars: int = 8000
     handoff_scroll_loops: int = 2
+    handoff_scroll_viewport_ratio: float = 0.85
     screenshot_mode: str = "captureVisibleTab"
     screenshot_max_per_run: int = 20
     default_wait_ms: int = 500
@@ -41,6 +42,8 @@ class HostConfig:
 @dataclass
 class HermesConfig:
     decompose_timeout_sec: int = 120
+    execute_timeout_sec: int = 180
+    execute_require_browser_evidence: bool = True
     decompose_fallback_stub: bool = True
     decompose_enabled: bool = True
 
@@ -100,6 +103,7 @@ def config_for_extension(cfg: DeskConfig | None = None) -> dict[str, Any]:
             "scrape_excerpt_max_chars": c.browser.scrape_excerpt_max_chars,
             "handoff_excerpt_max_chars": c.browser.handoff_excerpt_max_chars,
             "handoff_scroll_loops": c.browser.handoff_scroll_loops,
+            "handoff_scroll_viewport_ratio": c.browser.handoff_scroll_viewport_ratio,
             "screenshot_mode": c.browser.screenshot_mode,
             "default_wait_ms": c.browser.default_wait_ms,
         },

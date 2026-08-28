@@ -112,3 +112,53 @@ def test_hermes_path_browser_click_returns_screenshot(hermes_backend):
             assert pending["holder"][0]["json"]["result"]["screenshot"]["base64"]
         finally:
             ext.close()
+
+
+def test_hermes_execute_invokes_browser_command(hermes_backend, monkeypatch):
+    import threading
+    from typing import Any
+
+    from desk_host.backends.hermes import HermesBackend
+
+    async def fake_execute(_self, item: dict[str, Any], ctx: dict[str, Any]) -> dict[str, Any]:
+        from desk_host.app import dispatch_browser_command_and_wait
+
+        await dispatch_browser_command_and_wait(
+            {
+                "run_id": ctx["run_id"],
+                "op": "scrape",
+                "human_tab_id": ctx.get("human_tab_id"),
+                "tab_id": ctx.get("agent_tab_id"),
+            }
+        )
+        return {"summary": "observed page", "exit_code": 0}
+
+    monkeypatch.setattr(HermesBackend, "execute_item", fake_execute)
+    handoff = {
+        "run_id": "desk_exec_test",
+        "url": "https://example.com/app",
+        "human_tab_id": 1,
+        "agent_tab_id": 2,
+        "window_id": 1,
+    }
+    with TestClient(app) as client:
+        ext = MockExtensionSession(client)
+        try:
+            result = ext.handoff(handoff)
+            agent = [i for i in result["items"] if i["column"] == "agent"][0]
+            holder: list = []
+
+            def _execute():
+                r = client.post(
+                    f"/v1/items/{agent['id']}/execute",
+                    json={"run_id": "desk_exec_test"},
+                )
+                holder.append(r)
+
+            thread = threading.Thread(target=_execute, daemon=True)
+            thread.start()
+            ext.respond_next_browser_command(run_id="desk_exec_test", op="scrape")
+            thread.join(timeout=5)
+            assert holder[0].status_code == 200
+        finally:
+            ext.close()

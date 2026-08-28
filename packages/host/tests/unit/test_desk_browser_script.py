@@ -4,17 +4,12 @@ from __future__ import annotations
 
 import json
 import sys
-from pathlib import Path
 from unittest.mock import MagicMock, patch
 
-REPO_ROOT = Path(__file__).resolve().parents[4]
-SCRIPT = REPO_ROOT / "scripts" / "desk-browser"
+from desk_host.desk_browser_cli import main
 
 
 def test_desk_browser_builds_scrape_post():
-    ns: dict = {}
-    exec(compile(SCRIPT.read_text(encoding="utf-8"), str(SCRIPT), "exec"), ns)
-
     with patch("urllib.request.urlopen") as urlopen:
         resp = MagicMock()
         resp.read.return_value = json.dumps({"ok": True}).encode()
@@ -33,10 +28,12 @@ def test_desk_browser_builds_scrape_post():
             "10",
             "--tab-id",
             "20",
+            "--handoff-url",
+            "https://example.com/page",
             "--wait",
         ]
         try:
-            assert ns["main"]() == 0
+            assert main() == 0
         finally:
             sys.argv = old_argv
 
@@ -45,6 +42,5 @@ def test_desk_browser_builds_scrape_post():
         body = json.loads(req.data.decode())
         assert body["run_id"] == "desk_test123"
         assert body["op"] == "scrape"
-        assert body["human_tab_id"] == 10
-        assert body["tab_id"] == 20
+        assert body["handoff_url"] == "https://example.com/page"
         assert body["wait"] is True

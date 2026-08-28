@@ -38,10 +38,13 @@ export interface WorkItem {
   proposals?: Proposal[];
   agent_tab_id?: number;
   human_tab_id?: number;
+  run_id?: string;
+  last_error?: string;
 }
 
 export type BrowserOp =
   | "captureHandoffSnapshot"
+  | "navigate"
   | "openTab"
   | "duplicateTab"
   | "closeTab"
@@ -64,6 +67,7 @@ export interface BrowserCommand {
   human_tab_id?: number;
   tab_id?: number;
   url?: string;
+  handoff_url?: string;
   verify_level?: VerifyLevel;
   params?: Record<string, unknown>;
 }
@@ -119,10 +123,10 @@ export type WsExtensionMessage =
   | { type: "board_snapshot"; board: { you: WorkItem[]; agent: WorkItem[]; waiting: WorkItem[] } };
 
 export type WsHostMessage =
+  | { type: "registered"; ok: boolean; config?: Record<string, unknown> }
+  | { type: "handoff_result"; run_id: string; decomposition?: string; items?: WorkItem[] }
   | { type: "board_patch"; run_id: string; patch_id: string; ops: BoardPatchOp[] }
-  | { type: "browser_command"; command: BrowserCommand }
-  | { type: "run_finished"; run_id: string; status: string; summary?: string }
-  | { type: "error"; run_id?: string; code: string; message: string };
+  | { type: "browser_command"; command: BrowserCommand };
 
 export type BoardPatchOp =
   | { op: "clear" }

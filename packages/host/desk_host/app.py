@@ -31,6 +31,16 @@ _extension_connected = False
 _pending_commands: asyncio.Queue[dict[str, Any]] = asyncio.Queue()
 _command_results: dict[str, dict[str, Any]] = {}
 _command_waiters: dict[str, asyncio.Future[dict[str, Any]]] = {}
+_browser_result_counts: dict[str, int] = {}
+
+
+class ExtensionNotConnectedError(Exception):
+    """Raised when the Chrome extension WebSocket is not connected."""
+
+
+def _require_extension() -> None:
+    if not _extension_connected or _extension_ws is None:
+        raise ExtensionNotConnectedError("extension not connected")
 
 SCREENSHOT_OPS = frozenset(
     {"click", "fill", "scroll", "scrape", "screenshot", "openTab", "duplicateTab"}
@@ -135,6 +145,8 @@ async def _handle_handoff(payload: dict[str, Any]) -> dict[str, Any]:
         "url": payload.get("url"),
     }
     snap = payload.get("snapshot") or {}
+    cfg = get_config()
+    shot = snap.get("screenshot") or {}
     emit("handoff.started", run_id, {"url": payload.get("url")})
     emit(
         "handoff.snapshot",
@@ -142,8 +154,11 @@ async def _handle_handoff(payload: dict[str, Any]) -> dict[str, Any]:
         {
             "agent_tab_id": payload.get("agent_tab_id"),
             "excerpt_bytes": len(snap.get("excerpt") or ""),
+            "excerpt_max": cfg.browser.handoff_excerpt_max_chars,
             "link_count": len(snap.get("links") or []),
-            "has_screenshot": bool((snap.get("screenshot") or {}).get("base64")),
+            "handoff_scroll_loops": cfg.browser.handoff_scroll_loops,
+            "has_screenshot": bool(shot.get("base64")),
+            "screenshot_bytes": len(shot.get("base64") or ""),
         },
     )
     backend = get_backend()
@@ -175,9 +190,13 @@ async def _handle_handoff(payload: dict[str, Any]) -> dict[str, Any]:
 
 
 async def _send_board_patch(
-    run_id: str, patch_id: str, ops: list[dict[str, Any]]
+    run_id: str,
+    patch_id: str,
+    ops: list[dict[str, Any]],
+    *,
+    required: bool = False,
 ) -> None:
-    await _send_to_extension(
+    sent = await _send_to_extension(
         {
             "type": "board_patch",
             "run_id": run_id,
@@ -185,29 +204,47 @@ async def _send_board_patch(
             "ops": ops,
         }
     )
+    if required and not sent:
+        emit(
+            "board.patch_dropped",
+            run_id,
+            {"patch_id": patch_id, "reason": "extension_not_connected"},
+        )
+        raise ExtensionNotConnectedError("extension not connected — board patch not delivered")
 
 
 async def _patch_work_item(
-    item_id: str, *, status: str, run_id: str
+    item_id: str,
+    *,
+    status: str,
+    run_id: str,
+    evidence: dict[str, Any] | None = None,
+    last_error: str | None = None,
 ) -> dict[str, Any] | None:
     item = _work_items.get(item_id)
     if not item:
         return None
     updated = {**item, "status": status, "run_id": run_id}
+    if evidence:
+        updated["evidence"] = {**(item.get("evidence") or {}), **evidence}
+    if last_error is not None:
+        updated["last_error"] = last_error
     _work_items[item_id] = updated
     patch_id = uuid.uuid4().hex
     await _send_board_patch(
         run_id,
         patch_id,
         [{"op": "update", "item": updated}],
+        required=True,
     )
     return updated
 
 
-async def _send_to_extension(message: dict[str, Any]) -> None:
+async def _send_to_extension(message: dict[str, Any]) -> bool:
     if _extension_ws is None:
-        return
+        return False
     await _extension_ws.send_json(message)
+    return True
 
 
 def reset_state_for_tests() -> None:
@@ -223,6 +260,7 @@ def reset_state_for_tests() -> None:
         if not fut.done():
             fut.cancel()
     _command_waiters.clear()
+    _browser_result_counts.clear()
     _extension_ws = None
     _extension_connected = False
     reset_config_cache()
@@ -241,8 +279,16 @@ async def accept_item(item_id: str, body: AcceptBody) -> dict[str, Any]:
     committed: dict[str, Any] = {"kind": prop.get("kind")}
     if prop.get("kind") == "calendar_slot":
         committed.update(book_calendar_slot(prop.get("payload") or {}))
+    try:
+        _require_extension()
+    except ExtensionNotConnectedError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
     await _patch_work_item(item_id, status="done", run_id=body.run_id)
     return {"ok": True, "work_item_id": item_id, "status": "done", "committed": committed}
+
+
+def _browser_results_for_run(run_id: str) -> int:
+    return _browser_result_counts.get(run_id, 0)
 
 
 @app.post("/v1/browser")
@@ -256,13 +302,15 @@ async def browser_command(body: BrowserCommandBody) -> dict[str, Any]:
         cmd["command_id"] = uuid.uuid4().hex
     try:
         if body.wait:
-            if not _extension_connected:
-                raise HTTPException(status_code=503, detail="extension not connected")
+            _require_extension()
             result = await dispatch_browser_command_and_wait(
                 cmd, timeout=body.wait_timeout_sec
             )
             return {"ok": True, "command_id": cmd["command_id"], "result": result}
+        _require_extension()
         await dispatch_browser_command(cmd)
+    except ExtensionNotConnectedError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
     except PermissionError as exc:
         raise HTTPException(status_code=403, detail=str(exc)) from exc
     except asyncio.TimeoutError as exc:
@@ -277,6 +325,10 @@ async def deny_item(item_id: str, body: DenyBody) -> dict[str, Any]:
         body.run_id,
         {"proposal_id": body.proposal_id, "reason": body.reason},
     )
+    try:
+        _require_extension()
+    except ExtensionNotConnectedError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
     await _patch_work_item(item_id, status="denied", run_id=body.run_id)
     return {"ok": True, "work_item_id": item_id, "status": "denied"}
 
@@ -288,6 +340,10 @@ async def execute_item(item_id: str, body: ExecuteBody) -> dict[str, Any]:
         raise HTTPException(status_code=404, detail="work item not found")
     if item.get("column") != "agent":
         raise HTTPException(status_code=400, detail="execute only for agent column")
+    try:
+        _require_extension()
+    except ExtensionNotConnectedError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
     meta = _handoff_meta.get(body.run_id, {})
     ctx = {
         "run_id": body.run_id,
@@ -299,19 +355,68 @@ async def execute_item(item_id: str, body: ExecuteBody) -> dict[str, Any]:
     execute_fn = getattr(backend, "execute_item", None)
     if not execute_fn:
         raise HTTPException(status_code=501, detail="backend does not support execute")
+    cfg = get_config()
+    browser_before = _browser_results_for_run(body.run_id)
     emit("agent.execute_started", body.run_id, {"item_id": item_id})
     try:
         result = await execute_fn(item, ctx)
     except Exception as exc:
+        err = str(exc)[:500]
         emit(
             "agent.execute_failed",
             body.run_id,
-            {"item_id": item_id, "error": str(exc)[:500]},
+            {"item_id": item_id, "error": err},
         )
-        await _patch_work_item(item_id, status="failed", run_id=body.run_id)
-        raise HTTPException(status_code=500, detail=str(exc)) from exc
-    await _patch_work_item(item_id, status="done", run_id=body.run_id)
-    emit("agent.executed", body.run_id, {"item_id": item_id})
+        try:
+            await _patch_work_item(
+                item_id,
+                status="failed",
+                run_id=body.run_id,
+                last_error=err,
+            )
+        except ExtensionNotConnectedError:
+            pass
+        raise HTTPException(status_code=500, detail=err) from exc
+    browser_after = _browser_results_for_run(body.run_id)
+    if cfg.hermes.execute_require_browser_evidence and browser_after <= browser_before:
+        err = "execute completed without browser evidence"
+        emit(
+            "agent.execute_failed",
+            body.run_id,
+            {"item_id": item_id, "error": err},
+        )
+        await _patch_work_item(
+            item_id,
+            status="failed",
+            run_id=body.run_id,
+            last_error=err,
+        )
+        raise HTTPException(status_code=422, detail=err)
+    evidence = {
+        "summary": (result or {}).get("summary", ""),
+        "browser_ops": browser_after - browser_before,
+    }
+    await _patch_work_item(
+        item_id,
+        status="done",
+        run_id=body.run_id,
+        evidence=evidence,
+    )
+    emit(
+        "agent.executed",
+        body.run_id,
+        {
+            "item_id": item_id,
+            "exit_code": (result or {}).get("exit_code"),
+            "summary_snippet": evidence["summary"][:200],
+            "browser_ops": evidence["browser_ops"],
+        },
+    )
+    emit(
+        "run.finished",
+        body.run_id,
+        {"backend": os.environ.get("DESK_AGENT_BACKEND", "mock"), "item_id": item_id},
+    )
     return {"ok": True, "work_item_id": item_id, "status": "done", "result": result}
 
 
@@ -322,7 +427,12 @@ async def complete_item(item_id: str, body: CompleteBody) -> dict[str, Any]:
         raise HTTPException(status_code=404, detail="work item not found")
     if item.get("column") != "you":
         raise HTTPException(status_code=400, detail="complete only for you column")
+    try:
+        _require_extension()
+    except ExtensionNotConnectedError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
     await _patch_work_item(item_id, status="done", run_id=body.run_id)
+    emit("item.completed", body.run_id, {"item_id": item_id, "column": "you"})
     return {"ok": True, "work_item_id": item_id, "status": "done"}
 
 
@@ -365,8 +475,16 @@ async def extension_ws(ws: WebSocket) -> None:
                         "duration_ms": result.get("duration_ms"),
                         "screenshot_count": 1 if result.get("screenshot") else 0,
                         "scrape_bytes": len(result.get("scrape_excerpt") or ""),
+                        "screenshot_count_run_total": _screenshot_counts.get(
+                            raw.get("run_id", ""), 0
+                        ),
                     },
                 )
+                run_id = raw.get("run_id", "")
+                if run_id and result.get("ok"):
+                    _browser_result_counts[run_id] = (
+                        _browser_result_counts.get(run_id, 0) + 1
+                    )
                 cfg = get_config()
                 if cfg.observability.persist_screenshots and result.get("screenshot"):
                     path = persist_screenshot(
@@ -423,7 +541,9 @@ async def dispatch_browser_command(command: dict[str, Any]) -> None:
             "op": command.get("op"),
         },
     )
-    await _send_to_extension({"type": "browser_command", "command": command})
+    sent = await _send_to_extension({"type": "browser_command", "command": command})
+    if not sent:
+        raise ExtensionNotConnectedError("extension not connected")
 
 
 async def dispatch_browser_command_and_wait(

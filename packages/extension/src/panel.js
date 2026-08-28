@@ -9,6 +9,48 @@ function truncateUrl(url) {
   }
 }
 
+let panelWsConnected = false;
+
+function appendItemError(li, message) {
+  const errEl = li.querySelector(".item-error");
+  if (errEl) errEl.remove();
+  if (!message) return;
+  const err = document.createElement("div");
+  err.className = "item-error";
+  err.textContent = message;
+  li.appendChild(err);
+}
+
+function appendEvidence(li, item) {
+  const summary = item.evidence?.summary;
+  if (!summary) return;
+  const el = document.createElement("div");
+  el.className = "item-evidence";
+  el.textContent = summary.length > 120 ? `${summary.slice(0, 120)}…` : summary;
+  el.title = summary;
+  li.appendChild(el);
+}
+
+async function runAgentAction(item, li, runBtn) {
+  runBtn.disabled = true;
+  appendItemError(li, "");
+  try {
+    const result = await chrome.runtime.sendMessage({
+      type: "runAgentItem",
+      itemId: item.id,
+      runId: item.run_id || "",
+    });
+    if (result.error || result.detail) {
+      appendItemError(li, result.error || result.detail);
+    }
+  } catch (err) {
+    appendItemError(li, String(err));
+  } finally {
+    runBtn.disabled = !panelWsConnected;
+    refresh();
+  }
+}
+
 function renderColumn(el, items, column) {
   el.innerHTML = "";
   for (const item of items) {
@@ -30,43 +72,27 @@ function renderColumn(el, items, column) {
       meta.title = url;
       li.appendChild(meta);
     }
+    appendEvidence(li, item);
+    if (item.last_error) {
+      appendItemError(li, item.last_error);
+    }
     const proposals = item.proposals || [];
-    if (
-      column === "agent" &&
-      (item.status === "running" || item.status === "proposed")
-    ) {
-      const actions = document.createElement("div");
-      actions.className = "item-actions";
-      const runBtn = document.createElement("button");
-      runBtn.textContent = "Run agent";
-      runBtn.onclick = async () => {
-        runBtn.disabled = true;
-        const errEl = li.querySelector(".item-error");
-        if (errEl) errEl.remove();
-        try {
-          const result = await chrome.runtime.sendMessage({
-            type: "runAgentItem",
-            itemId: item.id,
-            runId: item.run_id || "",
-          });
-          if (result.error || result.detail) {
-            const err = document.createElement("div");
-            err.className = "item-error";
-            err.textContent = result.error || result.detail;
-            li.appendChild(err);
-          }
-        } catch (err) {
-          const errLine = document.createElement("div");
-          errLine.className = "item-error";
-          errLine.textContent = String(err);
-          li.appendChild(errLine);
-        } finally {
-          runBtn.disabled = false;
-          refresh();
-        }
-      };
-      actions.appendChild(runBtn);
-      li.appendChild(actions);
+    if (column === "agent") {
+      const canRun =
+        item.status === "running" ||
+        item.status === "proposed" ||
+        item.status === "failed";
+      if (canRun) {
+        const actions = document.createElement("div");
+        actions.className = "item-actions";
+        const runBtn = document.createElement("button");
+        runBtn.textContent = item.status === "failed" ? "Retry agent" : "Run agent";
+        runBtn.disabled = !panelWsConnected;
+        runBtn.title = panelWsConnected ? "" : "Connect extension WS first";
+        runBtn.onclick = () => runAgentAction(item, li, runBtn);
+        actions.appendChild(runBtn);
+        li.appendChild(actions);
+      }
     } else if (
       column === "you" &&
       item.status !== "done" &&
@@ -76,16 +102,24 @@ function renderColumn(el, items, column) {
       actions.className = "item-actions";
       const doneBtn = document.createElement("button");
       doneBtn.textContent = "Mark done";
+      doneBtn.disabled = !panelWsConnected;
+      doneBtn.title = panelWsConnected ? "" : "Connect extension WS first";
       doneBtn.onclick = async () => {
         doneBtn.disabled = true;
+        appendItemError(li, "");
         try {
-          await chrome.runtime.sendMessage({
+          const result = await chrome.runtime.sendMessage({
             type: "completeItem",
             itemId: item.id,
             runId: item.run_id || "",
           });
+          if (result.error || result.detail) {
+            appendItemError(li, result.error || result.detail);
+          }
+        } catch (err) {
+          appendItemError(li, String(err));
         } finally {
-          doneBtn.disabled = false;
+          doneBtn.disabled = !panelWsConnected;
           refresh();
         }
       };
@@ -97,6 +131,7 @@ function renderColumn(el, items, column) {
       if (item.status !== "done" && item.status !== "denied") {
         const accept = document.createElement("button");
         accept.textContent = "Accept";
+        accept.disabled = !panelWsConnected;
         accept.onclick = async () => {
           await chrome.runtime.sendMessage({
             type: "acceptProposal",
@@ -108,6 +143,7 @@ function renderColumn(el, items, column) {
         };
         const deny = document.createElement("button");
         deny.textContent = "Deny";
+        deny.disabled = !panelWsConnected;
         deny.onclick = async () => {
           await chrome.runtime.sendMessage({
             type: "denyProposal",
@@ -126,6 +162,7 @@ function renderColumn(el, items, column) {
       for (const p of proposals) {
         const accept = document.createElement("button");
         accept.textContent = "Accept";
+        accept.disabled = !panelWsConnected;
         accept.onclick = () =>
           chrome.runtime.sendMessage({
             type: "acceptProposal",
@@ -178,11 +215,20 @@ function showHandoffError(msg) {
   el.classList.remove("hidden");
 }
 
+function updateActionButtons() {
+  const handoffBtn = document.getElementById("handoff");
+  if (handoffBtn) {
+    handoffBtn.disabled = !panelWsConnected;
+    handoffBtn.title = panelWsConnected ? "" : "WS disconnected — wait for connection";
+  }
+}
+
 async function refreshStatus() {
   const health = await chrome.runtime.sendMessage({ type: "getHealth" });
   const hostEl = document.getElementById("host-status");
   const wsEl = document.getElementById("ws-status");
   const backendEl = document.getElementById("backend-status");
+  panelWsConnected = Boolean(health.wsConnected);
   if (health.ok) {
     hostEl.textContent = "Host OK";
     hostEl.className = "ok";
@@ -194,6 +240,7 @@ async function refreshStatus() {
   }
   wsEl.textContent = health.wsConnected ? "WS connected" : "WS disconnected";
   wsEl.className = health.wsConnected ? "ok" : "bad";
+  updateActionButtons();
 }
 
 async function refreshMeta() {
@@ -218,6 +265,10 @@ async function refresh() {
 
 const handoffBtn = document.getElementById("handoff");
 handoffBtn.addEventListener("click", async () => {
+  if (!panelWsConnected) {
+    showHandoffError("WS disconnected — cannot hand off");
+    return;
+  }
   handoffBtn.disabled = true;
   showHandoffError("");
   try {
@@ -234,7 +285,7 @@ handoffBtn.addEventListener("click", async () => {
   } catch (err) {
     showHandoffError(String(err));
   } finally {
-    handoffBtn.disabled = false;
+    handoffBtn.disabled = !panelWsConnected;
     await refresh();
   }
 });
@@ -251,7 +302,8 @@ chrome.runtime.onMessage.addListener((msg) => {
     refresh();
   }
   if (msg.type === "connectionUpdated") {
-    refreshStatus();
+    panelWsConnected = msg.wsConnected;
+    refreshStatus().then(() => refresh());
   }
 });
 

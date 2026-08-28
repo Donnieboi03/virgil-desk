@@ -16,6 +16,7 @@ let deskConfig = {
     scrape_excerpt_max_chars: 8000,
     handoff_excerpt_max_chars: 8000,
     handoff_scroll_loops: 2,
+    handoff_scroll_viewport_ratio: 0.85,
     screenshot_mode: "captureVisibleTab",
     default_wait_ms: 500,
   },
@@ -334,6 +335,10 @@ async function screenshotTabCanvas(tabId) {
   return result;
 }
 
+function scrollViewportRatio() {
+  return deskConfig.browser?.handoff_scroll_viewport_ratio ?? 0.85;
+}
+
 async function runBrowserCommand(command) {
   command = await normalizeCommand(command);
   const started = Date.now();
@@ -344,12 +349,13 @@ async function runBrowserCommand(command) {
   };
   try {
     if (command.op === "captureHandoffSnapshot") {
+      const handoffMax = deskConfig.browser?.handoff_excerpt_max_chars ?? 8000;
       const snap = await scrapeTab(command.human_tab_id);
       return {
         ...base,
         url: snap.url,
         title: snap.title,
-        scrape_excerpt: snap.text?.slice(0, 2000),
+        scrape_excerpt: snap.text?.slice(0, handoffMax),
         duration_ms: Date.now() - started,
       };
     }
@@ -370,35 +376,57 @@ async function runBrowserCommand(command) {
 
     if (command.op === "scroll") {
       const dir = command.params?.direction === "up" ? -1 : 1;
+      const ratio = scrollViewportRatio();
       await chrome.scripting.executeScript({
         target: { tabId },
-        func: (d) => window.scrollBy(0, d * window.innerHeight * 0.85),
-        args: [dir],
+        func: (d, r) => window.scrollBy(0, d * window.innerHeight * r),
+        args: [dir, ratio],
       });
+    } else if (command.op === "focusTab") {
+      await chrome.tabs.update(tabId, { active: true });
+      return { ...base, tab_id: tabId, duration_ms: Date.now() - started };
     } else if (command.op === "click") {
       const sel = command.params?.selector;
-      await chrome.scripting.executeScript({
+      const [{ result: clicked }] = await chrome.scripting.executeScript({
         target: { tabId },
         func: (s) => {
           const el = document.querySelector(s);
-          if (el) el.click();
+          if (!el) return false;
+          el.click();
+          return true;
         },
         args: [sel],
       });
+      if (!clicked) {
+        return {
+          ...base,
+          ok: false,
+          error: `selector not found: ${sel}`,
+          duration_ms: Date.now() - started,
+        };
+      }
     } else if (command.op === "fill") {
       const sel = command.params?.selector;
       const val = command.params?.value || "";
-      await chrome.scripting.executeScript({
+      const [{ result: filled }] = await chrome.scripting.executeScript({
         target: { tabId },
         func: (s, v) => {
           const el = document.querySelector(s);
-          if (el) {
-            el.value = v;
-            el.dispatchEvent(new Event("input", { bubbles: true }));
-          }
+          if (!el) return false;
+          el.value = v;
+          el.dispatchEvent(new Event("input", { bubbles: true }));
+          return true;
         },
         args: [sel, val],
       });
+      if (!filled) {
+        return {
+          ...base,
+          ok: false,
+          error: `selector not found: ${sel}`,
+          duration_ms: Date.now() - started,
+        };
+      }
     } else if (command.op === "wait") {
       await new Promise((r) => setTimeout(r, command.params?.ms || 500));
     }
@@ -425,7 +453,12 @@ async function runBrowserCommand(command) {
     }
 
     if (command.op === "closeTab" && tabId) {
+      const block = policyBlock(command, tabId);
+      if (block) {
+        return { ...base, ok: false, error: block, duration_ms: Date.now() - started };
+      }
       await chrome.tabs.remove(tabId);
+      return { ...base, tab_id: tabId, duration_ms: Date.now() - started };
     }
 
     return { ...base, duration_ms: Date.now() - started };
@@ -445,10 +478,12 @@ function mintRunId() {
 
 async function scrollAgentTab(tabId, loops) {
   const waitMs = deskConfig.browser?.default_wait_ms ?? 500;
+  const ratio = scrollViewportRatio();
   for (let i = 0; i < loops; i++) {
     await chrome.scripting.executeScript({
       target: { tabId },
-      func: () => window.scrollBy(0, window.innerHeight * 0.85),
+      func: (r) => window.scrollBy(0, window.innerHeight * r),
+      args: [ratio],
     });
     await new Promise((r) => setTimeout(r, waitMs));
   }
@@ -489,6 +524,9 @@ async function buildHandoffPayload(tab, intent) {
 async function handoffActiveTab(intent) {
   const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
   if (!tab?.id) return { ok: false, error: "no active tab" };
+  if (!wsConnected || ws?.readyState !== WebSocket.OPEN) {
+    return { ok: false, error: "extension not connected to host — reload panel when WS connected" };
+  }
   let handoff;
   try {
     handoff = await buildHandoffPayload(tab, intent);
@@ -566,6 +604,9 @@ async function denyProposal({ itemId, proposalId, runId, reason }) {
 }
 
 async function runAgentItem({ itemId, runId }) {
+  if (!wsConnected) {
+    return { ok: false, error: "WS disconnected — cannot execute" };
+  }
   const res = await fetch(`${hostUrl}/v1/items/${itemId}/execute`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -580,12 +621,18 @@ async function runAgentItem({ itemId, runId }) {
 }
 
 async function completeItem({ itemId, runId }) {
+  if (!wsConnected) {
+    return { ok: false, error: "WS disconnected — cannot complete" };
+  }
   const res = await fetch(`${hostUrl}/v1/items/${itemId}/complete`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ run_id: runId }),
   });
   const data = await res.json();
+  if (!res.ok) {
+    return { ok: false, error: data.detail || res.statusText, ...data };
+  }
   chrome.runtime.sendMessage({ type: "boardUpdated" }).catch(() => {});
   return data;
 }
