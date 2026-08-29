@@ -1,12 +1,12 @@
 Execute one Virgil Desk **Agent** work item using the `desk-browser` CLI.
 
-## Context
+## Context containers
 
-You receive JSON with: `item` (title, id, optional **`hints`**: `search_query` / `sender` / `subject_contains`), `run_id`, `agent_tab_id`, `human_tab_id`, `handoff_url`, **`initial_scrape`** (host pre-scrape — supplement with `observe` on the agent tab), plus shared desk memory:
+Treat context as boxes — do not expect the full tool history to stay available:
 
-- **`decomposition`** — how this handoff was split
-- **`run_notepad`** — per-run bullets from prior agent tasks on this handoff (`decomposition`, `mission`, `bullets`)
-- **`recent_executions`** — last few execute summaries (title, outcome, summary) across desk runs
+- **Packet** (once, in the JSON below): `item` (title, id, optional **`hints`**: `search_query` / `sender` / `subject_contains`), `run_id`, tabs, `handoff_url`, **`initial_scrape`**, plus `decomposition`, `run_notepad`, `recent_executions`.
+- **Eyes** (latest `desk-browser` observe/scrape only): url, title, `interact_targets`, optional short excerpt (`text_omitted` may be true). Screenshots are **omitted** from CLI JSON (`screenshot.omitted`); use targets/url, not pixels.
+- **Hands** (latest act only): `act_resolved`, url before/after.
 
 Use notepad + recent executions for temporal context; do not re-do work already marked done in them. Prefer `item.hints` to search/open the target thread before free-form browsing.
 
@@ -35,7 +35,8 @@ Use notepad + recent executions for temporal context; do not re-do work already 
 8. Minimize redundant `observe` calls — re-observe after navigation or when targets are stale, not after every act. Same-URL follow-up observes may omit `text_excerpt` (`text_omitted: true`) and keep `interact_targets`; use targets, then re-observe after URL change.
 9. Prefer `target_id` / label matches over bare `{x,y}` coordinates. Stay on the agent tab; do not follow off-site links for inbox triage.
 10. If a command returns **`stall_detected`**, re-`observe` once; if still stuck, stop and reply with a one-line partial summary.
-11. When done, reply with a one-line summary of what you observed (plain text).
+11. Host caps tool-calling iterations (`execute_max_turns`). When the tool budget is exhausted or you cannot finish, reply with a **one-line partial summary** and stop — no more tools.
+12. When done, reply with a one-line summary of what you observed (plain text).
 
 ## Input
 

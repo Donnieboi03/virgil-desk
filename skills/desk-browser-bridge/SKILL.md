@@ -3,7 +3,7 @@ name: desk-browser-bridge
 description: >-
   Virgil Desk browser bridge: desk-browser CLI, observe-first interact targets,
   You/Agent/Waiting board, Accept/Deny proposals.
-version: 1.2.0
+version: 1.3.0
 metadata:
   hermes:
     tags: [virgil-desk, browser, handoff]
@@ -48,23 +48,23 @@ Script: [`scripts/desk-browser`](../scripts/desk-browser)
 
 ## Observe–act–observe
 
-Use **`observe`** as the primary read on an agent tab. It returns:
+Use **`observe`** as the primary read on an agent tab. CLI stdout is a **thin Eyes/Hands envelope** (no screenshot base64 — `screenshot.omitted: true`). It returns:
 
 - `text_excerpt` (first visit for a URL: up to `browser.scrape_excerpt_max_chars`; after a URL change: capped by `browser.observe_followup_excerpt_max_chars`)
 - `text_omitted: true` when the URL is unchanged since the last full/follow-up excerpt — targets remain; do not expect inbox text again
 - `interact_targets[]` — numbered targets (`id`, `ref`, `label`, `rect`, `center`)
 - `scroll_containers[]` when nested panes are scrollable
-- `screenshot` with viewport + `device_pixel_ratio` metadata
+- Screenshot dims only in CLI (`omitted: true`); do not expect image bytes in the terminal JSON
 
 **Act** by `target_id` (preferred), `text`/`contains`, or `{x,y}` CSS pixels as fallback — not agent-authored CSS selectors.
 
-Loop until the task is done:
+Loop until the task is done (host also enforces `hermes.execute_max_turns`):
 
 ```
-observe → pick target_id → click | fill | scroll | key → verify (url + act_resolved + post-action scrape/screenshot)
+observe → pick target_id → click | fill | scroll | key → verify (url + act_resolved + thin post-action result)
 ```
 
-Mutating ops auto-return post-action scrape + screenshot (same omit/cap rules). Check `act_resolved.url_before` vs `url_after` when opening threads or navigating.
+Mutating ops auto-return post-action scrape metadata (same omit/cap rules). Check `act_resolved.url_before` vs `url_after` when opening threads or navigating.
 
 ### Click / fill resolution order (extension)
 
@@ -92,10 +92,10 @@ Operator clicks **Run agent** on Agent column items. Hermes uses `desk-browser` 
 
 ## Evidence
 
-`command_result` includes `act_resolved` (which resolution path succeeded), `interact_targets` on observe, and capped scrape + screenshot on acts.
+`command_result` (extension/host) may include screenshots; **`desk-browser` CLI strips base64** before Hermes sees it — keep `act_resolved`, `interact_targets`, and capped scrape fields.
 
 ## Budget
 
-First `observe` (or host `initial_scrape`) may be large; same-URL follow-ups omit page text and keep targets. After navigation, expect a capped follow-up excerpt. Host caps `browser.screenshot_max_per_run` per `run_id`; handoff snapshot at user gesture is exempt.
+First `observe` (or host `initial_scrape`) may be large; same-URL follow-ups omit page text and keep targets. After navigation, expect a capped follow-up excerpt. Host caps `browser.screenshot_max_per_run` per `run_id`; handoff snapshot at user gesture is exempt. Execute also passes Hermes `--max-turns` from `hermes.execute_max_turns` (default 12) — when hit, emit a one-line partial summary and stop.
 
 On **`stall_detected`**: re-observe once, then stop with a one-line partial summary — do not keep clicking stale targets. Prefer `target_id` over coordinates. Do not follow off-origin links during inbox triage (extension auto-closes those tabs).

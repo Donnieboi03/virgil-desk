@@ -38,6 +38,17 @@ OpenRouter in-flight **402** (budget) and native Gemini fallback **404** current
 - [ ] Avoid OpenRouter 402 mid-run without a working Gemini native path
 - [ ] Confirm board `last_error` shows the real API failure after fallbacks
 
+### Host-owned rolling execute history
+
+True Packet/Eyes/Hands rebuild each Hermes call (host loop or mid-session history rewrite) — not shipped. Today: thin CLI envelopes + `execute_max_turns` only.
+
+- [ ] Host re-prompt loop or Hermes compression profile dedicated to Desk
+- [ ] Drop/collapse prior tool messages inside one session
+
+### Progress-stop heuristics
+
+Mission-progress stop (URL unchanged K acts / repeated targets) — parked (easy to overfit). Prefer max-turns + stall.
+
 ## Done (reference)
 
 - Rich handoff: duplicate agent tab + excerpt + screenshot for decompose
@@ -52,6 +63,8 @@ OpenRouter in-flight **402** (budget) and native Gemini fallback **404** current
 - **Model cast:** decompose `gemini-3.1-flash-lite` / execute `gemini-3.7-flash`; execute hooks off
 - **Slim observe:** same-URL omit full excerpt; URL-change capped follow-up
 - **Clearer execute `last_error`** from Hermes stderr / API snippets
+- **Thin desk-browser CLI envelope** (no screenshot base64 into Hermes transcript)
+- **Execute `--max-turns`** via `hermes.execute_max_turns` (default 12)
 
 ## Links
 

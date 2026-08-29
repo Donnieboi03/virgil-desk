@@ -48,10 +48,13 @@ Required: `command_id`, `ok`, `duration_ms`. **`observe`** adds `interact_target
 
 Same-URL follow-up `observe` / post-act scrapes may set `text_omitted: true` with an empty `scrape_excerpt` while keeping targets; URL changes get a capped follow-up excerpt (`browser.observe_followup_excerpt_max_chars`).
 
+**`desk-browser` CLI** prints a thin Eyes/Hands envelope for Hermes: screenshot **base64 is stripped** (`screenshot.omitted: true`; optional `screenshot_ref` if host persistence is on). Extension/host evidence paths are unchanged.
+
 ## Hermes models + hooks
 
 - Decompose: `hermes.decompose_model` (default `google/gemini-3.1-flash-lite`); no `--accept-hooks`.
 - Execute: `hermes.execute_model` (default `google/gemini-3.7-flash`); `hermes.execute_accept_hooks: false` (single-agent `terminal` + `skills` + desk-browser — no compound-topology hooks).
+- Execute tool-loop cap: `hermes.execute_max_turns` (default `12`) → Hermes `--max-turns` (decompose does not set it).
 
 ## WorkItem fields (runtime)
 
