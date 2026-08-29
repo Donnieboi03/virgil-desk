@@ -9,6 +9,8 @@ import sys
 import urllib.error
 import urllib.request
 
+from desk_host.thin_browser_result import thin_browser_response
+
 
 def main() -> int:
     parser = argparse.ArgumentParser(description="Virgil Desk browser bridge CLI")
@@ -67,7 +69,7 @@ def main() -> int:
         print(str(exc.reason), file=sys.stderr)
         return 1
 
-    print(json.dumps(out, indent=2))
+    print(json.dumps(thin_browser_response(out), indent=2))
     return 0 if out.get("ok", True) else 1
 
 
