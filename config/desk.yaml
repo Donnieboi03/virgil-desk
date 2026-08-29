@@ -12,7 +12,7 @@ browser:
   observe_annotate_default: true
   act_stall_max: 3
   observe_followup_excerpt_max_chars: 4000
-  # execute browser ops: harness (Way 1 everyday Chrome) | extension (MV3)
+  # execute browser ops: harness (everyday Chrome) | extension (MV3)
   driver: harness
   harness_bin: browser-harness
   harness_bu_name: virgil-desk

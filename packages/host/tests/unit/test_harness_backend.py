@@ -1,4 +1,4 @@
-"""Unit tests for harness Way 1 backend (no live Chrome)."""
+"""Unit tests for harness on everyday Chrome backend (no live Chrome)."""
 
 from __future__ import annotations
 

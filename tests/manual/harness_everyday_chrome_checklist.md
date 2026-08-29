@@ -1,6 +1,6 @@
-# Manual: Desk harness Way 1 execute
+# Manual: Desk harness on everyday Chrome
 
-Live proof that **Run agent** / `desk-browser` uses **browser-harness** on everyday Chrome (same cookies), not Virgil `:9223`.
+Live proof that **Run agent** / `desk-browser` uses **browser-harness** attached to everyday Chrome (same cookies), not Virgil `:9223`.
 
 ## Prerequisites
 
@@ -40,6 +40,6 @@ Live proof that **Run agent** / `desk-browser` uses **browser-harness** on every
 
 | Symptom | Likely cause |
 |---------|----------------|
-| Allow remote debugging / daemon FAIL | Way 1 not enabled or popup not clicked |
+| Allow remote debugging / daemon FAIL | Remote debugging not enabled or Allow popup not clicked |
 | Attached to wrong Chrome | `BU_CDP_URL` pointed at Virgil `:9223` — unset it for Desk |
 | `click requires x/y or selector` | Hermes still sending `target_id` — harness path does not resolve SoM ids |

@@ -1,7 +1,7 @@
 ---
 name: desk-browser-bridge
 description: >-
-  Virgil Desk browser bridge: desk-browser CLI, harness Way 1 (default) or
+  Virgil Desk browser bridge: desk-browser CLI, harness on everyday Chrome (default) or
   extension observe targets, You/Agent/Waiting board, Accept/Deny proposals.
 version: 1.4.0
 metadata:
@@ -37,7 +37,7 @@ desk-browser --run-id desk_abc --op key --human-tab-id 1 --tab-id 2 \
 
 - **`--tab-id`** = agent tab from handoff (`agent_tab_id`) — never automate `human_tab_id`.
 - **`--wait`** blocks until host returns `command_result` (extension or harness).
-- **Harness driver (default):** needs everyday Chrome Way 1 Allow remote debugging — not Virgil `:9223`. Extension WS still required for board/handoff.
+- **Harness driver (default):** needs everyday Chrome with Allow remote debugging — not Virgil `:9223`. Extension WS still required for board/handoff.
 - Rollback: host `browser.driver: extension` uses interact_targets + `target_id` again.
 
 Script: [`scripts/desk-browser`](../scripts/desk-browser)

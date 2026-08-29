@@ -69,7 +69,7 @@ Mission-progress stop (URL unchanged K acts / repeated targets) — parked (easy
 - **Clearer execute `last_error`** from Hermes stderr / API snippets
 - **Thin desk-browser CLI envelope** (no screenshot base64 into Hermes transcript)
 - **Execute `--max-turns`** via `hermes.execute_max_turns` (default 12)
-- **Execute via browser-harness Way 1** (`browser.driver: harness`) — everyday Chrome cookies; sticky CDP target; rollback `extension`
+- **Execute via browser-harness on everyday Chrome** (`browser.driver: harness`) — same cookies; sticky CDP target; rollback `extension`
 
 ## Links
 

@@ -4,12 +4,12 @@ Virgil Desk can drive Chrome two ways. **Handoff / board / decompose** always us
 
 | `browser.driver` | Execute path | Cookies | Operator setup |
 |------------------|--------------|---------|----------------|
-| **`harness`** (default) | Host → `browser-harness` CDP (Way 1) | Everyday Chrome profile (same logins) | `chrome://inspect/#remote-debugging` Allow + Chrome 144+ Allow popup |
+| **`harness`** (default) | Host → `browser-harness` CDP (everyday Chrome) | Everyday Chrome profile (same logins) | `chrome://inspect/#remote-debugging` Allow + Chrome 144+ Allow popup |
 | **`extension`** | Host → extension WS → `scripting` + `captureVisibleTab` | Same profile (agent tab duplicate) | Extension side panel connected |
 
 Harness daemon isolation: `BU_NAME=virgil-desk` (never Virgil tick `:9223` / `BU_CDP_URL` to chrome-virgil). Rollback: set `browser.driver: extension` or `DESK_BROWSER_DRIVER=extension`.
 
-## Harness execute (Way 1)
+## Harness execute (everyday Chrome)
 
 - Sticky CDP **target per `run_id`** (no per-call `with tab()` auto-close).
 - Eyes: `page_info` + screenshot dims (`eyes: harness`); `interact_targets` empty in v1 — prefer `{x,y}` or CSS `selector` / `click_element`.
@@ -69,4 +69,4 @@ Harness screenshots use CDP `Page.captureScreenshot` on the sticky target (no ta
 
 Playwright in `packages/e2e/playwright/` is **CI/E2E only** — not the runtime browser driver.
 
-Virgil Hub tick / `browser_queue` stays on isolated Chrome (`~/.chrome-virgil/*`). Desk Way 1 is interactive everyday Chrome only.
+Virgil Hub tick / `browser_queue` stays on isolated Chrome (`~/.chrome-virgil/*`). Desk harness attach is interactive everyday Chrome only.

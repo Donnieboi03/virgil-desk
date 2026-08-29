@@ -37,7 +37,7 @@ Use notepad + recent executions for temporal context; do not re-do work already 
 11. Host caps tool-calling iterations (`execute_max_turns`). When the tool budget is exhausted or you cannot finish, reply with a **one-line partial summary** and stop — no more tools.
 12. When done, reply with a one-line summary of what you observed (plain text).
 
-## Way 1 prerequisite
+## Everyday Chrome prerequisite
 
 Everyday Chrome must allow remote debugging (`chrome://inspect/#remote-debugging`). If ops fail with Allow/daemon errors, stop and report that — do not thrash.
 

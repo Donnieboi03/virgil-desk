@@ -1,5 +1,6 @@
-"""Execute Desk browser ops via real browser-harness (Way 1 everyday Chrome).
+"""Execute Desk browser ops via real browser-harness on everyday Chrome.
 
+Attaches through Chrome's Allow remote debugging (same profile cookies).
 Does not set BU_CDP_URL to Virgil isolated ports (:9223). Uses BU_NAME so Desk
 does not share Virgil tick's harness daemon. Sticky CDP target per run_id —
 no per-call ``with tab(url):`` auto-close (that would break multi-turn execute).
@@ -33,7 +34,7 @@ EXTENSION_OPS = frozenset(
 
 
 class HarnessBackendError(RuntimeError):
-    """Raised when browser-harness fails or Way 1 attach is incomplete."""
+    """Raised when browser-harness fails or everyday-Chrome attach is incomplete."""
 
 
 @dataclass
@@ -93,7 +94,7 @@ def map_connection_error(message: str) -> str:
     low = text.lower()
     if "allow remote debugging" in low or "remote-debugging" in low:
         return (
-            "browser-harness cannot attach to everyday Chrome (Way 1). "
+            "browser-harness cannot attach to everyday Chrome. "
             "Open chrome://inspect/#remote-debugging, tick Allow remote debugging, "
             "and click Allow on the Chrome 144+ popup. "
             f"Detail: {text[:1500]}"
@@ -111,7 +112,7 @@ def map_connection_error(message: str) -> str:
 
 
 def _strip_virgil_cdp_env(env: dict[str, str]) -> dict[str, str]:
-    """Never inherit Virgil isolated Chrome CDP endpoints for Desk Way 1."""
+    """Never inherit Virgil isolated Chrome CDP endpoints for Desk everyday attach."""
     out = dict(env)
     for key in ("BU_CDP_URL", "BU_CDP_WS"):
         val = (out.get(key) or "").strip()
@@ -121,7 +122,7 @@ def _strip_virgil_cdp_env(env: dict[str, str]) -> dict[str, str]:
         if "9223" in val or "chrome-virgil" in val.lower():
             out.pop(key, None)
             continue
-        # Way 1 discovers DevToolsActivePort; drop explicit URL so everyday Chrome wins.
+        # Everyday attach discovers DevToolsActivePort; drop explicit URL so everyday Chrome wins.
         out.pop(key, None)
     return out
 
