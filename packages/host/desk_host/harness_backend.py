@@ -215,6 +215,11 @@ def _resolve_seed_url(command: dict[str, Any]) -> str:
     return ""
 
 
+def _py_lit(value: Any) -> str:
+    """Embed a value as a Python literal (JSON null is invalid in Python scripts)."""
+    return repr(value)
+
+
 def build_ensure_target_script(
     *,
     seed_url: str,
@@ -223,8 +228,8 @@ def build_ensure_target_script(
     """Attach to sticky target or find/create a page for seed_url."""
     return f"""
 import json
-seed = {json.dumps(seed_url)}
-existing = {json.dumps(existing_target_id)}
+seed = {_py_lit(seed_url)}
+existing = {_py_lit(existing_target_id)}
 opened = False
 tid = existing
 
@@ -276,7 +281,7 @@ _OP_SCRIPT_TEMPLATE = r'''
 import json, base64
 from pathlib import Path
 
-params = __PARAMS__
+params = json.loads(__PARAMS_JSON__)
 tid = __TID__
 shot_path = __SHOT__
 skip_screenshot = __SKIP__
@@ -470,12 +475,12 @@ def build_op_script(
 ) -> str:
     """Script that assumes sticky target already attached; prints Desk-shaped JSON."""
     return (
-        _OP_SCRIPT_TEMPLATE.replace("__PARAMS__", json.dumps(params))
-        .replace("__TID__", json.dumps(target_id))
-        .replace("__SHOT__", json.dumps(screenshot_path))
+        _OP_SCRIPT_TEMPLATE.replace("__PARAMS_JSON__", json.dumps(json.dumps(params)))
+        .replace("__TID__", _py_lit(target_id))
+        .replace("__SHOT__", _py_lit(screenshot_path))
         .replace("__SKIP__", "True" if skip_screenshot else "False")
         .replace("__EXCERPT_MAX__", str(int(excerpt_max)))
-        .replace("__OP__", json.dumps(op))
+        .replace("__OP__", _py_lit(op))
     )
 
 

@@ -16,6 +16,26 @@ def _reset():
     hb.reset_for_tests()
 
 
+def test_build_ensure_script_uses_python_none_not_json_null():
+    script = hb.build_ensure_target_script(seed_url="https://example.com/", existing_target_id=None)
+    assert "existing = None" in script
+    assert "existing = null" not in script
+
+
+def test_build_op_script_none_shot_path_is_python_none():
+    script = hb.build_op_script(
+        "observe",
+        {},
+        target_id="T1",
+        screenshot_path=None,
+        skip_screenshot=True,
+        excerpt_max=100,
+    )
+    assert "shot_path = None" in script
+    assert "shot_path = null" not in script
+    assert "json.loads" in script
+
+
 def test_map_connection_error_allow_debugging():
     msg = hb.map_connection_error("please Allow remote debugging for this browser")
     assert "chrome://inspect" in msg
