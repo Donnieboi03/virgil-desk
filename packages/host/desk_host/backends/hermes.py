@@ -187,6 +187,7 @@ class HermesBackend:
             toolsets=cfg.hermes.execute_toolsets,
             accept_hooks=cfg.hermes.execute_accept_hooks,
             model=cfg.hermes.execute_model,
+            max_turns=cfg.hermes.execute_max_turns,
             timeout_sec=cfg.hermes.execute_timeout_sec,
         )
         if result.exit_code != 0:
@@ -320,6 +321,7 @@ class HermesBackend:
         toolsets: list[str] | None = None,
         accept_hooks: bool = False,
         model: str | None = None,
+        max_turns: int | None = None,
         timeout_sec: int | None = None,
     ) -> HermesRunResult:
         cfg = load_config()
@@ -338,6 +340,8 @@ class HermesBackend:
         ]
         if model:
             cmd.extend(["-m", model])
+        if max_turns is not None and max_turns > 0:
+            cmd.extend(["--max-turns", str(max_turns)])
         if toolsets:
             cmd.extend(["-t", ",".join(toolsets)])
         if accept_hooks:

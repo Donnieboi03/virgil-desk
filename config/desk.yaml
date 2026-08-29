@@ -26,6 +26,7 @@ hermes:
     - terminal
     - skills
   execute_accept_hooks: false
+  execute_max_turns: 12
 observability:
   persist_screenshots: false
 memory:

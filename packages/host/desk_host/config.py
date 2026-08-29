@@ -58,6 +58,7 @@ class HermesConfig:
     execute_model: str
     execute_toolsets: list[str]
     execute_accept_hooks: bool
+    execute_max_turns: int
 
 
 @dataclass

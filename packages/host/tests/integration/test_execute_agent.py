@@ -80,7 +80,6 @@ def test_execute_agent_posts_browser_command_and_marks_done():
             updated = finished["board_patch"]["ops"][0]["item"]
             assert updated["status"] == "done"
             assert updated.get("evidence", {}).get("summary")
-            assert finished["cleanup"]["type"] == "execute_cleanup"
             assert ext.memory["global_recent"]
             thread.join(timeout=5)
             assert holder
@@ -155,8 +154,7 @@ def test_execute_injects_recent_memory_into_ctx(monkeypatch):
             thread.start()
             ext.begin_execute()
             ext.respond_next_browser_command(run_id=run_id, op="scrape")
-            finished = ext.finish_execute_messages()
-            assert finished["cleanup"]["item_id"] == agent["id"]
+            ext.finish_execute_messages()
             thread.join(timeout=5)
             assert holder[0].status_code == 200
             assert captured

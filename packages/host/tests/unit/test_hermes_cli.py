@@ -59,6 +59,24 @@ async def test_hermes_run_passes_model_flag(monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_hermes_run_passes_max_turns_flag(monkeypatch):
+    captured: dict = {}
+
+    def fake_run_sync(cmd, *, env, timeout):
+        captured["cmd"] = cmd
+        return HermesRunResult(stdout="ok", stderr="", exit_code=0)
+
+    async def fake_to_thread(func, *args, **kwargs):
+        return fake_run_sync(*args, **kwargs)
+
+    monkeypatch.setattr("desk_host.backends.hermes.asyncio.to_thread", fake_to_thread)
+    backend = HermesBackend()
+    await backend._hermes_run("p", max_turns=12)
+    assert "--max-turns" in captured["cmd"]
+    assert "12" in captured["cmd"]
+
+
+@pytest.mark.asyncio
 async def test_decompose_uses_decompose_model(monkeypatch):
     captured: dict = {}
     cfg = load_config()
@@ -66,6 +84,7 @@ async def test_decompose_uses_decompose_model(monkeypatch):
     async def fake_run(self, message, **kwargs):
         captured["model"] = kwargs.get("model")
         captured["accept_hooks"] = kwargs.get("accept_hooks", False)
+        captured["max_turns"] = kwargs.get("max_turns")
         return HermesRunResult(
             stdout='{"decomposition":"ok","items":[]}',
             stderr="",
@@ -84,6 +103,7 @@ async def test_decompose_uses_decompose_model(monkeypatch):
     )
     assert captured["model"] == cfg.hermes.decompose_model
     assert captured["accept_hooks"] is False
+    assert captured["max_turns"] is None
 
 
 @pytest.mark.asyncio
@@ -102,6 +122,7 @@ async def test_execute_uses_execute_model_and_hooks_off(monkeypatch):
     async def fake_run(self, message, **kwargs):
         captured["model"] = kwargs.get("model")
         captured["accept_hooks"] = kwargs.get("accept_hooks")
+        captured["max_turns"] = kwargs.get("max_turns")
         return HermesRunResult(stdout="Done looking.", stderr="", exit_code=0)
 
     monkeypatch.setattr(
@@ -124,6 +145,8 @@ async def test_execute_uses_execute_model_and_hooks_off(monkeypatch):
     assert captured["model"] == cfg.hermes.execute_model
     assert captured["accept_hooks"] is False
     assert cfg.hermes.execute_accept_hooks is False
+    assert captured["max_turns"] == cfg.hermes.execute_max_turns
+    assert cfg.hermes.execute_max_turns == 12
 
 
 @pytest.mark.asyncio
