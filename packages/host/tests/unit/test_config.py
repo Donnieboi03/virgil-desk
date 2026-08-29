@@ -16,7 +16,13 @@ from desk_host.config import (
 )
 
 
-def test_load_config_matches_desk_yaml():
+def test_load_config_matches_desk_yaml(monkeypatch):
+    monkeypatch.delenv("DESK_BROWSER_DRIVER", raising=False)
+    monkeypatch.delenv("BROWSER_HARNESS_BIN", raising=False)
+    monkeypatch.delenv("DESK_HARNESS_BU_NAME", raising=False)
+    from desk_host.config import clear_config_cache
+
+    clear_config_cache()
     raw = yaml.safe_load(repo_config_path().read_text(encoding="utf-8"))
     cfg = load_config()
     for section, cls in config_schema_sections():
@@ -24,6 +30,14 @@ def test_load_config_matches_desk_yaml():
         actual = getattr(cfg, section)
         for f in fields(actual):
             assert getattr(actual, f.name) == expected[f.name], f"{section}.{f.name}"
+
+
+def test_desk_browser_driver_env_override(monkeypatch):
+    monkeypatch.setenv("DESK_BROWSER_DRIVER", "extension")
+    from desk_host.config import clear_config_cache
+
+    clear_config_cache()
+    assert load_config().browser.driver == "extension"
 
 
 def test_desk_yaml_covers_schema():

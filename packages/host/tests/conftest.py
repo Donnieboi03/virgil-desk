@@ -10,6 +10,13 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 def _force_mock_backend(monkeypatch):
     """CI and local dev may have DESK_AGENT_BACKEND=hermes in .env; tests use mock."""
     monkeypatch.setenv("DESK_AGENT_BACKEND", "mock")
+    # Existing extension-path tests; harness suites set DESK_BROWSER_DRIVER=harness.
+    monkeypatch.setenv("DESK_BROWSER_DRIVER", "extension")
+    from desk_host.config import clear_config_cache
+
+    clear_config_cache()
+    yield
+    clear_config_cache()
 
 
 @pytest.fixture

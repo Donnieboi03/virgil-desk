@@ -17,7 +17,9 @@ Chrome → `chrome://extensions` → **Load unpacked** → `packages/extension/d
 
 Open any page → Virgil Desk side panel → **Hand off this tab**. Board columns **You / Agent / Waiting** should populate. Hand off duplicates the page into **Virgil · Agent**, scrolls (config), scrapes, and captures a screenshot for Hermes decompose.
 
-**Run agent** (Agent column) triggers Hermes execute via Host. **Mark done** closes You items. **Accept/Deny** on Waiting proposals.
+**Run agent** (Agent column) triggers Hermes execute via Host. Default execute driver is **browser-harness Way 1** (everyday Chrome cookies — see [`BROWSER_LAYER.md`](BROWSER_LAYER.md) and [`tests/manual/harness_way1_checklist.md`](../tests/manual/harness_way1_checklist.md)): enable `chrome://inspect/#remote-debugging` before Run agent. Rollback: `browser.driver: extension`.
+
+**Mark done** closes You items. **Accept/Deny** on Waiting proposals.
 
 Events: `~/.virgil-desk/logs/desk_events.jsonl`
 

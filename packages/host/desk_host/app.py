@@ -14,6 +14,14 @@ from pydantic import BaseModel, Field
 from .backends import get_backend, new_run_id
 from .calendar import book_calendar_slot
 from .config import clear_config_cache, config_for_extension, load_config
+from .harness_backend import (
+    HarnessBackendError,
+    is_harness_op,
+    release_run as harness_release_run,
+    reset_for_tests as harness_reset_for_tests,
+    run_browser_op as harness_run_browser_op,
+    uses_harness_driver,
+)
 from .memory import format_for_execute
 from .navigation import normalize_browser_command
 from .observability import measure_from_snapshot, record
@@ -246,6 +254,18 @@ async def _execute_cleanup(
     agent_tab_id: Any,
     human_tab_id: Any,
 ) -> None:
+    cfg = get_config()
+    if uses_harness_driver(cfg.browser.driver):
+        try:
+            await asyncio.to_thread(
+                harness_release_run,
+                run_id,
+                harness_bin=cfg.browser.harness_bin,
+                bu_name=cfg.browser.harness_bu_name,
+                timeout_sec=min(30.0, float(cfg.host.browser_wait_timeout_sec)),
+            )
+        except Exception:
+            pass
     await _send_to_extension(
         {
             "type": "execute_cleanup",
@@ -390,6 +410,7 @@ def reset_state_for_tests() -> None:
     _command_evidence_flags.clear()
     _extension_ws = None
     _extension_connected = False
+    harness_reset_for_tests()
     reset_config_cache()
 
 
@@ -423,29 +444,192 @@ def _browser_results_for_run(run_id: str) -> int:
 
 @app.post("/v1/browser")
 async def browser_command(body: BrowserCommandBody) -> dict[str, Any]:
-    """desk_browser tool entry — forwards BrowserOp to the extension."""
+    """desk_browser tool entry — extension or harness driver for execute ops."""
     cmd = body.model_dump(exclude={"wait", "wait_timeout_sec"})
     if not cmd.get("handoff_url") and cmd.get("run_id"):
         cmd["handoff_url"] = _handoff_urls.get(cmd["run_id"], "")
     cmd = normalize_browser_command(cmd)
     if not cmd.get("command_id"):
         cmd["command_id"] = uuid.uuid4().hex
+    cfg = get_config()
+    harness_path = uses_harness_driver(cfg.browser.driver) and is_harness_op(
+        str(cmd.get("op") or "")
+    )
     try:
         if body.wait:
-            _require_extension()
+            if not harness_path:
+                _require_extension()
             result = await dispatch_browser_command_and_wait(
                 cmd, timeout=body.wait_timeout_sec
             )
             return {"ok": True, "command_id": cmd["command_id"], "result": result}
-        _require_extension()
+        if not harness_path:
+            _require_extension()
         await dispatch_browser_command(cmd)
     except ExtensionNotConnectedError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    except HarnessBackendError as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
     except PermissionError as exc:
         raise HTTPException(status_code=403, detail=str(exc)) from exc
     except asyncio.TimeoutError as exc:
         raise HTTPException(status_code=504, detail="command_result timeout") from exc
     return {"ok": True, "command_id": cmd["command_id"]}
+
+
+async def _dispatch_harness_and_record(command: dict[str, Any]) -> dict[str, Any]:
+    """Run harness op synchronously in a thread; record events like extension path."""
+    cfg = get_config()
+    run_id = command.get("run_id", "")
+    cid = command.get("command_id") or ""
+    op = command.get("op", "")
+
+    def _run() -> dict[str, Any]:
+        return harness_run_browser_op(
+            command,
+            harness_bin=cfg.browser.harness_bin,
+            bu_name=cfg.browser.harness_bu_name,
+            timeout_sec=float(cfg.host.browser_wait_timeout_sec),
+            excerpt_max=int(cfg.browser.scrape_excerpt_max_chars),
+            skip_screenshot=bool(command.get("skip_screenshot")),
+        )
+
+    try:
+        result = await asyncio.to_thread(_run)
+    except HarnessBackendError:
+        raise
+
+    _command_results[cid] = result
+    record(
+        "browser.command_result",
+        run_id,
+        cfg=cfg,
+        include_limits=False,
+        measure={
+            "duration_ms": result.get("duration_ms"),
+            "scrape_bytes": len(result.get("scrape_excerpt") or ""),
+            "screenshot_count_run_total": _screenshot_counts.get(run_id, 0),
+            "target_count": len(result.get("interact_targets") or []),
+        },
+        flags={
+            "ok": result.get("ok"),
+            "has_screenshot": bool(result.get("screenshot")),
+            "has_interact_targets": bool(result.get("interact_targets")),
+            "driver": "harness",
+        },
+        command_id=cid,
+        act_resolved=result.get("act_resolved"),
+        driver="harness",
+        op=op,
+    )
+    if run_id and result.get("ok"):
+        count_evidence = _command_evidence_flags.pop(cid, True)
+        if count_evidence:
+            _browser_result_counts[run_id] = _browser_result_counts.get(run_id, 0) + 1
+    if cfg.observability.persist_screenshots and result.get("screenshot"):
+        path = persist_screenshot(run_id, cid, result["screenshot"])
+        if path:
+            result["screenshot_ref"] = path
+    return result
+
+
+async def dispatch_browser_command(command: dict[str, Any]) -> None:
+    command = normalize_browser_command(command)
+    run_id = command.get("run_id", "")
+    op = command.get("op", "")
+    cfg = get_config()
+    cid = command.get("command_id")
+    if cid:
+        _command_evidence_flags[cid] = command.get("count_evidence", True)
+
+    harness_path = uses_harness_driver(cfg.browser.driver) and is_harness_op(str(op))
+
+    if op in SCREENSHOT_OPS and run_id:
+        count = _screenshot_counts.get(run_id, 0)
+        if count >= cfg.browser.screenshot_max_per_run:
+            command["skip_screenshot"] = True
+            record(
+                "policy.screenshot_skipped",
+                run_id,
+                cfg=cfg,
+                measure={"count": count},
+                rule="screenshot_cap",
+                op=op,
+            )
+        else:
+            _screenshot_counts[run_id] = count + 1
+
+    reason = policy_denied_reason(
+        command.get("op", ""),
+        command.get("tab_id"),
+        command.get("human_tab_id"),
+    )
+    if reason:
+        record(
+            "policy.denied",
+            command.get("run_id", ""),
+            cfg=cfg,
+            rule=reason,
+            op=command.get("op"),
+        )
+        raise PermissionError(reason)
+
+    driver = "harness" if harness_path else "extension"
+    record(
+        "browser.command",
+        command.get("run_id", ""),
+        cfg=cfg,
+        include_limits=False,
+        command_id=command.get("command_id"),
+        op=command.get("op"),
+        driver=driver,
+    )
+
+    if harness_path:
+        # Fire-and-forget style: run and stash result for waiters if any.
+        result = await _dispatch_harness_and_record(command)
+        waiter = _command_waiters.get(cid or "")
+        if waiter and not waiter.done():
+            waiter.set_result(result)
+        return
+
+    sent = await _send_to_extension({"type": "browser_command", "command": command})
+    if not sent:
+        raise ExtensionNotConnectedError("extension not connected")
+
+
+async def dispatch_browser_command_and_wait(
+    command: dict[str, Any],
+    *,
+    timeout: float = 30.0,
+) -> dict[str, Any]:
+    cid = command.get("command_id") or uuid.uuid4().hex
+    command["command_id"] = cid
+    cfg = get_config()
+    harness_path = uses_harness_driver(cfg.browser.driver) and is_harness_op(
+        str(command.get("op") or "")
+    )
+    if harness_path:
+        # Apply the same pre-flight as dispatch (caps + policy + record command).
+        loop = asyncio.get_running_loop()
+        fut: asyncio.Future[dict[str, Any]] = loop.create_future()
+        _command_waiters[cid] = fut
+        try:
+            await dispatch_browser_command(command)
+            if fut.done():
+                return fut.result()
+            return await asyncio.wait_for(fut, timeout=timeout)
+        finally:
+            _command_waiters.pop(cid, None)
+
+    loop = asyncio.get_running_loop()
+    fut = loop.create_future()
+    _command_waiters[cid] = fut
+    try:
+        await dispatch_browser_command(command)
+        return await asyncio.wait_for(fut, timeout=timeout)
+    finally:
+        _command_waiters.pop(cid, None)
 
 
 @app.post("/v1/items/{item_id}/deny")
@@ -736,71 +920,3 @@ async def extension_ws(ws: WebSocket) -> None:
         _extension_connected = False
         if _extension_ws is ws:
             _extension_ws = None
-
-
-async def dispatch_browser_command(command: dict[str, Any]) -> None:
-    command = normalize_browser_command(command)
-    run_id = command.get("run_id", "")
-    op = command.get("op", "")
-    cfg = get_config()
-    cid = command.get("command_id")
-    if cid:
-        _command_evidence_flags[cid] = command.get("count_evidence", True)
-
-    if op in SCREENSHOT_OPS and run_id:
-        count = _screenshot_counts.get(run_id, 0)
-        if count >= cfg.browser.screenshot_max_per_run:
-            command["skip_screenshot"] = True
-            record(
-                "policy.screenshot_skipped",
-                run_id,
-                cfg=cfg,
-                measure={"count": count},
-                rule="screenshot_cap",
-                op=op,
-            )
-        else:
-            _screenshot_counts[run_id] = count + 1
-
-    reason = policy_denied_reason(
-        command.get("op", ""),
-        command.get("tab_id"),
-        command.get("human_tab_id"),
-    )
-    if reason:
-        record(
-            "policy.denied",
-            command.get("run_id", ""),
-            cfg=cfg,
-            rule=reason,
-            op=command.get("op"),
-        )
-        raise PermissionError(reason)
-    record(
-        "browser.command",
-        command.get("run_id", ""),
-        cfg=cfg,
-        include_limits=False,
-        command_id=command.get("command_id"),
-        op=command.get("op"),
-    )
-    sent = await _send_to_extension({"type": "browser_command", "command": command})
-    if not sent:
-        raise ExtensionNotConnectedError("extension not connected")
-
-
-async def dispatch_browser_command_and_wait(
-    command: dict[str, Any],
-    *,
-    timeout: float = 30.0,
-) -> dict[str, Any]:
-    cid = command.get("command_id") or uuid.uuid4().hex
-    command["command_id"] = cid
-    loop = asyncio.get_running_loop()
-    fut: asyncio.Future[dict[str, Any]] = loop.create_future()
-    _command_waiters[cid] = fut
-    try:
-        await dispatch_browser_command(command)
-        return await asyncio.wait_for(fut, timeout=timeout)
-    finally:
-        _command_waiters.pop(cid, None)

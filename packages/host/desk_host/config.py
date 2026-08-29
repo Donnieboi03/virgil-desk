@@ -40,6 +40,9 @@ class BrowserConfig:
     observe_annotate_default: bool
     act_stall_max: int
     observe_followup_excerpt_max_chars: int
+    driver: str
+    harness_bin: str
+    harness_bu_name: str
 
 
 @dataclass
@@ -163,6 +166,12 @@ def load_config() -> DeskConfig:
         cfg.hermes.decompose_enabled = False
     if os.environ.get("DESK_PERSIST_SCREENSHOTS") == "1":
         cfg.observability.persist_screenshots = True
+    if os.environ.get("DESK_BROWSER_DRIVER"):
+        cfg.browser.driver = os.environ["DESK_BROWSER_DRIVER"].strip()
+    if os.environ.get("BROWSER_HARNESS_BIN"):
+        cfg.browser.harness_bin = os.environ["BROWSER_HARNESS_BIN"].strip()
+    if os.environ.get("DESK_HARNESS_BU_NAME"):
+        cfg.browser.harness_bu_name = os.environ["DESK_HARNESS_BU_NAME"].strip()
 
     return cfg
 
@@ -183,6 +192,7 @@ def config_for_extension(cfg: DeskConfig | None = None) -> dict[str, Any]:
             "observe_annotate_default": c.browser.observe_annotate_default,
             "act_stall_max": c.browser.act_stall_max,
             "observe_followup_excerpt_max_chars": c.browser.observe_followup_excerpt_max_chars,
+            "driver": c.browser.driver,
         },
         "host": {
             "browser_wait_timeout_sec": c.host.browser_wait_timeout_sec,
