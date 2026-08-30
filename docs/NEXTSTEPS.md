@@ -6,7 +6,7 @@ Portable checklist for Desk work not in the current MVP slice. Check items off a
 
 ### Dual-focus (agent Gmail + human homework)
 
-Research SoT: [`docs/DUAL_FOCUS_RESEARCH.md`](DUAL_FOCUS_RESEARCH.md) — atoms, feasibility battery, build DAG. Not scheduled until P0/C2/A1 spikes.
+Research SoT: [`docs/DUAL_FOCUS_RESEARCH.md`](DUAL_FOCUS_RESEARCH.md) — atoms, feasibility battery, build DAG. Interaction taxonomy (Eyes/Hands, costs): [`docs/INTERACTION_LAYERS.md`](INTERACTION_LAYERS.md). Not scheduled until P0/C2/A1 spikes.
 
 ### Auto-execute Agent items
 

@@ -4,6 +4,8 @@
 **Status:** Research synthesis (Aug 29, 2026). Not a build plan until feasibility atoms pass.  
 **Product stake:** Desk’s value is **dual-work** — agent finishes Gmail (or similar) while you do homework. Focus-steal fights that promise.
 
+**Eyes / Hands taxonomy** (DOM vs CDP Input vs OS, costs, pros/cons): [`INTERACTION_LAYERS.md`](INTERACTION_LAYERS.md).
+
 Swarm lenses: CDP background semantics, MV3 `chrome.debugger`, prior-art contradictions, architecture cuts, Desk/harness activate audit ([codebase TT](0c3f3098-7253-49c4-903e-5fdb3e1f625a)).
 
 ---

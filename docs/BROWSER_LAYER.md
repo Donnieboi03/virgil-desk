@@ -1,5 +1,7 @@
 # Browser layer
 
+Eyes vs Hands (DOM / CDP Input / OS), costs, and dual-focus fit: [`INTERACTION_LAYERS.md`](INTERACTION_LAYERS.md).
+
 Virgil Desk can drive Chrome two ways. **Handoff / board / decompose** always use the **MV3 extension**. **Execute** (`desk-browser` / `POST /v1/browser` observe·click·fill·scroll·key) follows `browser.driver` in [`config/desk.yaml`](../config/desk.yaml).
 
 | `browser.driver` | Execute path | Cookies | Operator setup |
