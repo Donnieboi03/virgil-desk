@@ -25,7 +25,7 @@ Confirm attach: `BU_NAME=virgil-desk browser-harness --doctor` (chrome ok, daemo
 
 When `driver: extension`, **`observe`** returns an Anthropic-style hybrid payload:
 
-- `text_excerpt` — page text (up to `browser.scrape_excerpt_max_chars`, default 100k)
+- `text_excerpt` — page text (up to `browser.scrape_excerpt_max_chars`, default 12k)
 - `interact_targets[]` — numbered clickable/fillable elements (`id`, `ref`, `label`, `rect`, `center`)
 - `scroll_containers[]` — nested scroll panes when detected
 - `screenshot` — viewport PNG with `css_width`, `css_height`, `device_pixel_ratio`

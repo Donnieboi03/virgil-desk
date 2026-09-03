@@ -533,7 +533,7 @@ def run_browser_op(
     harness_bin: str,
     bu_name: str,
     timeout_sec: float = 60.0,
-    excerpt_max: int = 100_000,
+    excerpt_max: int = 12_000,
     skip_screenshot: bool = False,
     shot_dir: Path | None = None,
 ) -> dict[str, Any]:
