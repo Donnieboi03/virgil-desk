@@ -53,12 +53,12 @@ def format_hermes_summary(text: str, max_chars: int) -> str:
 def format_hermes_failure(result: HermesRunResult) -> str:
     """Prefer stderr / API snippets over a bare session_id line."""
     stdout = strip_session_id_noise(result.stdout or "")
-    stderr = (result.stderr or "").strip()
+    stderr = strip_session_id_noise(result.stderr or "")
     combined = "\n".join(p for p in (stderr, stdout) if p).strip()
     lower = combined.lower()
     if any(h in lower for h in _API_FAILURE_HINTS):
         return combined
-    if stderr and (not stdout or stdout.lower().startswith("session_id:")):
+    if stderr and not stdout:
         return stderr
     if combined:
         return combined

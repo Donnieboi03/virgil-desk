@@ -12,5 +12,10 @@ def test_detects_policy_blocked():
     assert execute_summary_indicates_failure("blocked due to user policy restrictions")
 
 
+def test_detects_max_iterations_and_partial():
+    assert execute_summary_indicates_failure("Reached maximum iterations")
+    assert execute_summary_indicates_failure("Partial: searched inbox but could not open thread")
+
+
 def test_accepts_normal_summary():
     assert not execute_summary_indicates_failure("Reviewed inbox scrape; Cursor payment email visible.")

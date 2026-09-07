@@ -12,7 +12,10 @@ EXECUTE_FAILURE_RE = re.compile(
     r"|policy restriction"
     r"|I have paused"
     r"|cannot (?:proceed|run|execute)"
-    r"|was blocked)",
+    r"|was blocked"
+    r"|reached maximum iterations?"
+    r"|maximum iterations? reached"
+    r"|^\s*partial\s*:)",
 )
 
 

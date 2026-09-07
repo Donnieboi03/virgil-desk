@@ -146,7 +146,7 @@ async def test_execute_uses_execute_model_and_hooks_off(monkeypatch):
     assert captured["accept_hooks"] is False
     assert cfg.hermes.execute_accept_hooks is False
     assert captured["max_turns"] == cfg.hermes.execute_max_turns
-    assert cfg.hermes.execute_max_turns == 12
+    assert cfg.hermes.execute_max_turns == 20
 
 
 @pytest.mark.asyncio
@@ -209,6 +209,25 @@ def test_build_decompose_prompt_strips_screenshot_blob():
 def test_strip_session_id_noise():
     assert strip_session_id_noise("hello\nsession_id: 20260828_abc\n") == "hello"
     assert strip_session_id_noise("session_id: only") == ""
+
+
+def test_format_hermes_failure_strips_session_id_on_stderr():
+    result = HermesRunResult(
+        stdout="",
+        stderr="session_id: 20260907_desk_ebd0327b51ab48f6",
+        exit_code=1,
+    )
+    assert format_hermes_failure(result) == "hermes exit 1"
+    assert (
+        format_hermes_failure(
+            HermesRunResult(
+                stdout="session_id: abc",
+                stderr="session_id: abc",
+                exit_code=1,
+            )
+        )
+        == "hermes exit 1"
+    )
 
 
 def test_format_hermes_failure_prefers_api_stderr():
