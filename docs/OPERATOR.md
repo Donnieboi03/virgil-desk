@@ -17,7 +17,7 @@ Chrome → `chrome://extensions` → **Load unpacked** → `packages/extension/d
 
 Open any page → Virgil Desk side panel → **Hand off this tab**. Board columns **You / Agent / Waiting** should populate. Hand off duplicates the page into **Virgil · Agent**, scrolls (config), scrapes, and captures a screenshot for Hermes decompose.
 
-**Run agent** (Agent column) triggers Hermes execute via Host. Default execute driver is **browser-harness on everyday Chrome** (same cookies — see [`BROWSER_LAYER.md`](BROWSER_LAYER.md) and [`tests/manual/harness_everyday_chrome_checklist.md`](../tests/manual/harness_everyday_chrome_checklist.md)): enable `chrome://inspect/#remote-debugging` before Run agent. Rollback: `browser.driver: extension`.
+**Run agent** (Agent column) triggers Hermes execute via Host. Default execute driver is **extension Path B** (slim targets + `target_id`; no CDP — see [`BROWSER_LAYER.md`](BROWSER_LAYER.md)). Rollback to harness CDP: `browser.driver: harness` or `DESK_BROWSER_DRIVER=harness` (then enable `chrome://inspect/#remote-debugging` — [`tests/manual/harness_everyday_chrome_checklist.md`](../tests/manual/harness_everyday_chrome_checklist.md)). Cross-branch compare: [`tests/manual/path_compare_checklist.md`](../tests/manual/path_compare_checklist.md).
 
 **Mark done** closes You items. **Accept/Deny** on Waiting proposals.
 

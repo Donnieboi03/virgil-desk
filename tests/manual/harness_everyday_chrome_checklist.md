@@ -15,7 +15,7 @@ Live proof that **Run agent** / `desk-browser` uses **browser-harness** attached
 
    Expect chrome ok / daemon path that can attach.
 
-5. desk-host running with `browser.driver: harness` (default in `config/desk.yaml`).
+5. desk-host running with `browser.driver: harness` (set in `config/desk.yaml` or `DESK_BROWSER_DRIVER=harness` — Path B default is `extension`).
 6. Extension loaded and **WS connected** (board/handoff still extension).
 
 ## Steps
@@ -32,9 +32,9 @@ Live proof that **Run agent** / `desk-browser` uses **browser-harness** attached
 3. Check `~/.virgil-desk/logs/desk_events.jsonl` for `driver: harness` on `browser.command` / `browser.command_result`.
 4. Confirm `act_resolved.used` is `xy` or `selector` (not extension `target_id`), and URL/title look right.
 
-## Rollback
+## Rollback to Path B default
 
-`browser.driver: extension` or `DESK_BROWSER_DRIVER=extension`, restart desk-host.
+Unset `DESK_BROWSER_DRIVER` / set `browser.driver: extension`, restart desk-host.
 
 ## Failures
 

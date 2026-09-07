@@ -59,6 +59,9 @@ export type BrowserOp =
   | "scrape"
   | "screenshot"
   | "observe"
+  | "probe_form"
+  | "probe_links"
+  | "probe_table"
   | "click"
   | "fill"
   | "key"
@@ -97,19 +100,21 @@ export interface InteractTarget {
   text?: string;
   role?: string;
   tag?: string;
-  rect: RectInfo;
-  center: PointInfo;
+  rect?: RectInfo;
+  center?: PointInfo;
   selector_hint?: string;
   selector_stable?: boolean;
+  frame_id?: number;
 }
 
 export interface ScrollContainer {
   id: number;
   ref: string;
   label: string;
-  rect: RectInfo;
+  rect?: RectInfo;
   scrollHeight: number;
   clientHeight: number;
+  frame_id?: number;
 }
 
 export interface ObservePayload {
@@ -118,6 +123,9 @@ export interface ObservePayload {
   viewport: ViewportInfo;
   device_pixel_ratio: number;
   text_excerpt: string;
+  text_omitted?: boolean;
+  excerpt_note?: string;
+  page_tree?: string;
   interact_targets: InteractTarget[];
   scroll_containers: ScrollContainer[];
 }
@@ -151,6 +159,7 @@ export interface BrowserCommand {
   handoff_url?: string;
   verify_level?: VerifyLevel;
   params?: Record<string, unknown>;
+  skip_screenshot?: boolean;
 }
 
 export interface ScreenshotPayload {
@@ -170,6 +179,10 @@ export interface CommandResult {
   observe?: ObservePayload;
   interact_targets?: InteractTarget[];
   scroll_containers?: ScrollContainer[];
+  page_tree?: string;
+  form_fields?: Record<string, unknown>[];
+  links?: { text: string; href: string; frame_id?: number }[];
+  rows?: { index: number; cells: string[] }[];
   viewport?: ViewportInfo;
   device_pixel_ratio?: number;
   act_resolved?: ActResolved;

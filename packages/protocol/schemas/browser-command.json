@@ -16,6 +16,9 @@
         "scrape",
         "screenshot",
         "observe",
+        "probe_form",
+        "probe_links",
+        "probe_table",
         "click",
         "fill",
         "key",
@@ -28,6 +31,7 @@
     "url": { "type": "string" },
     "handoff_url": { "type": "string" },
     "verify_level": { "enum": ["read", "action", "handoff"] },
-    "params": { "type": "object" }
+    "params": { "type": "object" },
+    "skip_screenshot": { "type": "boolean" }
   }
 }

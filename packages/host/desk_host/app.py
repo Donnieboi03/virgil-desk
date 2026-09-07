@@ -120,6 +120,7 @@ class BrowserCommandBody(BaseModel):
     count_evidence: bool = True
     wait: bool = False
     wait_timeout_sec: float = Field(default=30.0, ge=1.0, le=120.0)
+    skip_screenshot: bool | None = None
 
 
 @asynccontextmanager
@@ -543,6 +544,15 @@ async def dispatch_browser_command(command: dict[str, Any]) -> None:
         _command_evidence_flags[cid] = command.get("count_evidence", True)
 
     harness_path = uses_harness_driver(cfg.browser.driver) and is_harness_op(str(op))
+
+    # Path B: execute observe skips captureVisibleTab unless caller overrides False.
+    if (
+        op == "observe"
+        and not harness_path
+        and cfg.browser.observe_skip_screenshot_default
+        and command.get("skip_screenshot") is None
+    ):
+        command["skip_screenshot"] = True
 
     if op in SCREENSHOT_OPS and run_id:
         count = _screenshot_counts.get(run_id, 0)

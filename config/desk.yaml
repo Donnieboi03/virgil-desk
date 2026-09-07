@@ -12,15 +12,19 @@ browser:
   observe_annotate_default: true
   act_stall_max: 3
   observe_followup_excerpt_max_chars: 4000
-  # execute browser ops: harness (everyday Chrome) | extension (MV3)
-  driver: harness
+  observe_skip_screenshot_default: true
+  observe_all_frames: true
+  page_tree_max_chars: 8000
+  page_tree_max_nodes: 400
+  # execute browser ops: extension (Path B) | harness (CDP rollback)
+  driver: extension
   harness_bin: browser-harness
   harness_bu_name: virgil-desk
 host:
   browser_wait_timeout_sec: 30
 hermes:
   decompose_timeout_sec: 120
-  execute_timeout_sec: 180
+  execute_timeout_sec: 240
   execute_require_browser_evidence: true
   decompose_fallback_stub: true
   decompose_enabled: true
@@ -30,7 +34,7 @@ hermes:
     - terminal
     - skills
   execute_accept_hooks: false
-  execute_max_turns: 12
+  execute_max_turns: 20
 observability:
   persist_screenshots: false
 memory:

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { resolveTarget } from "./interactBundle.js";
+import { resolveTarget, targetSortKeyFromTarget } from "./interactBundle.js";
 
 describe("resolveTarget target_id coercion", () => {
   it("matches string target_id to numeric id", () => {
@@ -16,5 +16,14 @@ describe("resolveTarget target_id coercion", () => {
     const scrollTargets = [{ id: 1, ref: "s1", kind: "scroll_container" }];
     const byRef = resolveTarget(scrollTargets, { ref: "s1" });
     expect(byRef.target?.kind).toBe("scroll_container");
+  });
+});
+
+describe("targetSortKeyFromTarget", () => {
+  it("prioritizes conversation rows over chrome", () => {
+    expect(targetSortKeyFromTarget({ tag: "tr", role: "row" })).toBe(0);
+    expect(targetSortKeyFromTarget({ tag: "input" })).toBe(1);
+    expect(targetSortKeyFromTarget({ tag: "button" })).toBe(2);
+    expect(targetSortKeyFromTarget({ tag: "div" })).toBe(3);
   });
 });

@@ -14,7 +14,18 @@ def test_strips_screenshot_base64_keeps_targets_and_act():
             "title": "Inbox",
             "scrape_excerpt": "hello",
             "text_omitted": False,
-            "interact_targets": [{"id": 1, "ref": "t1", "label": "Apply"}],
+            "interact_targets": [
+                {
+                    "id": 1,
+                    "ref": "t1",
+                    "kind": "clickable",
+                    "label": "Apply",
+                    "text": "Apply now for the job",
+                    "rect": {"x": 1, "y": 2, "w": 3, "h": 4},
+                    "center": {"x": 10, "y": 20},
+                    "frame_id": 0,
+                }
+            ],
             "act_resolved": {"op": "click", "used": "target_id"},
             "screenshot": {
                 "mime": "image/png",
@@ -30,12 +41,18 @@ def test_strips_screenshot_base64_keeps_targets_and_act():
     assert "base64" not in shot
     assert shot["width"] == 1280
     assert shot["height"] == 720
-    assert out["result"]["interact_targets"][0]["ref"] == "t1"
+    tgt = out["result"]["interact_targets"][0]
+    assert tgt["ref"] == "t1"
+    assert tgt["label"] == "Apply"
+    assert tgt["frame_id"] == 0
+    assert "text" not in tgt
+    assert "rect" not in tgt
+    assert "center" not in tgt
     assert out["result"]["act_resolved"]["used"] == "target_id"
     assert out["result"]["scrape_excerpt"] == "hello"
     # Original untouched
     assert "base64" in payload["result"]["screenshot"]
-
+    assert "text" in payload["result"]["interact_targets"][0]
 
 def test_preserves_screenshot_ref_when_present():
     payload = {

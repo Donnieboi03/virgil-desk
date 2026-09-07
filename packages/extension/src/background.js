@@ -37,8 +37,8 @@ let deskConfig = {
   browser: {
     scrape_text_max_chars: 16000,
     scrape_links_max: 200,
-    scrape_excerpt_max_chars: 8000,
-    handoff_excerpt_max_chars: 8000,
+    scrape_excerpt_max_chars: 12000,
+    handoff_excerpt_max_chars: 12000,
     handoff_scroll_loops: 2,
     handoff_scroll_viewport_ratio: 0.85,
     screenshot_mode: "captureVisibleTab",
@@ -47,6 +47,10 @@ let deskConfig = {
     observe_annotate_default: true,
     act_stall_max: 3,
     observe_followup_excerpt_max_chars: 4000,
+    observe_skip_screenshot_default: true,
+    observe_all_frames: true,
+    page_tree_max_chars: 8000,
+    page_tree_max_nodes: 400,
   },
   memory: {
     recent_max: 3,
@@ -646,9 +650,46 @@ function scrollViewportRatio() {
   return deskConfig.browser?.handoff_scroll_viewport_ratio ?? 0.85;
 }
 
-async function injectInteractBundle(tabId) {
+function observeAllFrames() {
+  return deskConfig.browser?.observe_all_frames !== false;
+}
+
+function slimTargetForEyes(t) {
+  if (!t) return t;
+  const out = {
+    id: t.id,
+    ref: t.ref,
+    kind: t.kind,
+    label: t.label,
+  };
+  if (t.frame_id != null) out.frame_id = t.frame_id;
+  return out;
+}
+
+/** Prefer conversation rows when merging multi-frame Eyes under the cap. */
+function targetSortKey(t) {
+  const tag = (t?.tag || "").toLowerCase();
+  const role = (t?.role || "").toLowerCase();
+  if (tag === "tr" || role === "row") return 0;
+  if (tag === "input" || tag === "textarea") return 1;
+  if (tag === "a" || tag === "button") return 2;
+  return 3;
+}
+
+/** Bare Gmail/list row CSS hits the first match — force target_id instead. */
+function isBareAmbiguousRowSelector(selector) {
+  const s = String(selector || "").trim();
+  if (!s) return false;
+  return (
+    /^tr\.z[AE]$/i.test(s) ||
+    /^tr\.z[AE]\s*$/i.test(s) ||
+    /^\[role=["']?row["']?\]$/i.test(s)
+  );
+}
+
+async function injectInteractBundle(tabId, { allFrames = false } = {}) {
   await chrome.scripting.executeScript({
-    target: { tabId },
+    target: allFrames ? { tabId, allFrames: true } : { tabId },
     files: [BUNDLE_FILE],
     world: "MAIN",
   });
@@ -667,21 +708,88 @@ async function readViewportMeta(tabId) {
 }
 
 async function runPageObserve(tabId, opts) {
-  await injectInteractBundle(tabId);
-  const [{ result }] = await chrome.scripting.executeScript({
-    target: { tabId },
+  const allFrames = observeAllFrames();
+  await injectInteractBundle(tabId, { allFrames });
+  const results = await chrome.scripting.executeScript({
+    target: allFrames ? { tabId, allFrames: true } : { tabId },
     world: "MAIN",
     func: (o) => globalThis.deskObserve(o),
     args: [opts],
   });
-  return result;
+  const maxTargets = opts.maxTargets ?? 80;
+  const collected = [];
+  const scroll_containers = [];
+  let primary = results?.[0]?.result || {};
+  for (const entry of results || []) {
+    const frameId = entry.frameId ?? 0;
+    const r = entry.result;
+    if (!r) continue;
+    if (frameId === 0 || !primary.url) primary = r;
+    for (const t of r.interact_targets || []) {
+      collected.push({
+        ...t,
+        frame_id: frameId,
+      });
+    }
+    for (const s of r.scroll_containers || []) {
+      if (scroll_containers.length >= 20) break;
+      scroll_containers.push({
+        ...s,
+        frame_id: frameId,
+        id: scroll_containers.length + 1,
+        ref: `s${scroll_containers.length + 1}`,
+      });
+    }
+  }
+  collected.sort((a, b) => targetSortKey(a) - targetSortKey(b));
+  const interact_targets = collected.slice(0, maxTargets).map((t, idx) => ({
+    ...t,
+    id: idx + 1,
+    ref: `t${idx + 1}`,
+  }));
+  return {
+    ...primary,
+    interact_targets,
+    scroll_containers,
+  };
+}
+
+async function runPageTree(tabId, { includeTree }) {
+  if (!includeTree) return null;
+  const allFrames = observeAllFrames();
+  await injectInteractBundle(tabId, { allFrames });
+  const maxChars = deskConfig.browser?.page_tree_max_chars ?? 8000;
+  const maxNodes = deskConfig.browser?.page_tree_max_nodes ?? 400;
+  const results = await chrome.scripting.executeScript({
+    target: allFrames ? { tabId, allFrames: true } : { tabId },
+    world: "MAIN",
+    func: (o) => globalThis.deskPageTree(o),
+    args: [{ maxChars, maxNodes }],
+  });
+  const chunks = [];
+  let used = 0;
+  for (const entry of results || []) {
+    const tree = entry.result?.page_tree;
+    if (!tree) continue;
+    const header =
+      (entry.frameId ?? 0) === 0 ? "" : `\n--- frame ${entry.frameId} ---\n`;
+    const piece = `${header}${tree}`;
+    if (used + piece.length > maxChars) {
+      chunks.push(piece.slice(0, Math.max(0, maxChars - used)));
+      break;
+    }
+    chunks.push(piece);
+    used += piece.length;
+  }
+  return chunks.length ? chunks.join("\n") : null;
 }
 
 async function runPageUnmark(tabId) {
   try {
-    await injectInteractBundle(tabId);
+    const allFrames = observeAllFrames();
+    await injectInteractBundle(tabId, { allFrames });
     await chrome.scripting.executeScript({
-      target: { tabId },
+      target: allFrames ? { tabId, allFrames: true } : { tabId },
       world: "MAIN",
       func: () => globalThis.deskUnmark(),
     });
@@ -691,14 +799,67 @@ async function runPageUnmark(tabId) {
 }
 
 async function runPageAct(tabId, op, params, targets, urlBefore) {
-  await injectInteractBundle(tabId);
+  const frameId = Number(
+    params?.frame_id ??
+      targets?.find((t) => t.id === Number(params?.target_id))?.frame_id ??
+      0,
+  );
+  const allFrames = observeAllFrames();
+  await injectInteractBundle(tabId, { allFrames });
+  const target =
+    Number.isFinite(frameId) && frameId > 0
+      ? { tabId, frameIds: [frameId] }
+      : { tabId };
   const [{ result }] = await chrome.scripting.executeScript({
-    target: { tabId },
+    target,
     world: "MAIN",
     func: (operation, p, t, before) => globalThis.deskAct(operation, p, t, before),
     args: [op, params, targets, urlBefore],
   });
   return result;
+}
+
+async function runPageProbe(tabId, kind) {
+  const allFrames = observeAllFrames();
+  await injectInteractBundle(tabId, { allFrames });
+  const results = await chrome.scripting.executeScript({
+    target: allFrames ? { tabId, allFrames: true } : { tabId },
+    world: "MAIN",
+    func: (k) => {
+      if (k === "probe_form") return globalThis.deskProbeForm();
+      if (k === "probe_links") return globalThis.deskProbeLinks();
+      if (k === "probe_table") return globalThis.deskProbeTable();
+      return { error: "unknown probe" };
+    },
+    args: [kind],
+  });
+  if (kind === "probe_form") {
+    const form_fields = [];
+    for (const entry of results || []) {
+      for (const f of entry.result?.form_fields || []) {
+        if (form_fields.length >= 40) break;
+        form_fields.push({ ...f, frame_id: entry.frameId ?? 0 });
+      }
+    }
+    return { form_fields, url: results?.[0]?.result?.url };
+  }
+  if (kind === "probe_links") {
+    const links = [];
+    for (const entry of results || []) {
+      for (const l of entry.result?.links || []) {
+        if (links.length >= 80) break;
+        links.push({ ...l, frame_id: entry.frameId ?? 0 });
+      }
+    }
+    return { links, url: results?.[0]?.result?.url };
+  }
+  // probe_table: prefer first frame with rows
+  for (const entry of results || []) {
+    if (entry.result?.found && entry.result?.rows?.length) {
+      return { ...entry.result, frame_id: entry.frameId ?? 0 };
+    }
+  }
+  return results?.[0]?.result || { rows: [], found: false };
 }
 
 async function screenshotTab(tabId) {
@@ -851,14 +1012,18 @@ async function runBrowserCommand(command) {
         true;
       const snap = await scrapeTab(tabId);
       const pageObserve = await runPageObserve(tabId, { maxTargets, annotate });
-      const shot = command.skip_screenshot ? null : await screenshotTab(tabId);
+      const skipShot =
+        command.skip_screenshot ??
+        deskConfig.browser?.observe_skip_screenshot_default ??
+        true;
+      const shot = skipShot ? null : await screenshotTab(tabId);
       await runPageUnmark(tabId);
-      const interact_targets = (pageObserve?.interact_targets || []).map(
+      const interact_targets_full = (pageObserve?.interact_targets || []).map(
         ({ mark_label, ...rest }) => rest,
       );
       const pageUrl = pageObserve?.url || snap.url;
       storeTargetMap(command.run_id, tabId, {
-        interact_targets,
+        interact_targets: interact_targets_full,
         scroll_containers: pageObserve?.scroll_containers || [],
         url: pageUrl,
       });
@@ -868,6 +1033,9 @@ async function runBrowserCommand(command) {
         pageUrl,
         snap.text || "",
       );
+      const includeTree = !excerpt.text_omitted;
+      const page_tree = await runPageTree(tabId, { includeTree }).catch(() => null);
+      const interact_targets = interact_targets_full.map(slimTargetForEyes);
       const observe = {
         url: pageUrl,
         title: pageObserve?.title || snap.title,
@@ -876,9 +1044,17 @@ async function runBrowserCommand(command) {
         text_excerpt: excerpt.text,
         text_omitted: excerpt.text_omitted,
         interact_targets,
-        scroll_containers: pageObserve?.scroll_containers || [],
+        scroll_containers: (pageObserve?.scroll_containers || []).map((s) => ({
+          id: s.id,
+          ref: s.ref,
+          label: s.label,
+          scrollHeight: s.scrollHeight,
+          clientHeight: s.clientHeight,
+          frame_id: s.frame_id,
+        })),
       };
       if (excerpt.note) observe.excerpt_note = excerpt.note;
+      if (page_tree) observe.page_tree = page_tree;
       return {
         ...base,
         tab_id: tabId,
@@ -892,7 +1068,24 @@ async function runBrowserCommand(command) {
         scroll_containers: observe.scroll_containers,
         viewport: observe.viewport,
         device_pixel_ratio: observe.device_pixel_ratio,
+        page_tree: page_tree || undefined,
         screenshot: shot,
+        duration_ms: Date.now() - started,
+      };
+    }
+
+    if (
+      command.op === "probe_form" ||
+      command.op === "probe_links" ||
+      command.op === "probe_table"
+    ) {
+      const probe = await runPageProbe(tabId, command.op);
+      return {
+        ...base,
+        tab_id: tabId,
+        ok: true,
+        url: probe.url,
+        ...probe,
         duration_ms: Date.now() - started,
       };
     }
@@ -1025,6 +1218,15 @@ async function runBrowserCommand(command) {
         }
         actResolved = act.act_resolved;
       } else if (params.selector) {
+        if (isBareAmbiguousRowSelector(params.selector)) {
+          return {
+            ...base,
+            ok: false,
+            error:
+              "ambiguous_row_selector: use target_id from observe (bare tr.zA / [role=row] rejected)",
+            duration_ms: Date.now() - started,
+          };
+        }
         const [{ result: clicked }] = await chrome.scripting.executeScript({
           target: { tabId },
           func: (s) => {
@@ -1182,7 +1384,11 @@ async function runBrowserCommand(command) {
     if (["click", "fill", "scroll", "key", "scrape", "screenshot", "openTab", "duplicateTab"].includes(command.op)) {
       const snap = await scrapeTab(tabId);
       let shot = null;
-      if (!command.skip_screenshot) {
+      const skipShot =
+        command.skip_screenshot ??
+        (command.op !== "screenshot" &&
+          deskConfig.browser?.observe_skip_screenshot_default);
+      if (!skipShot) {
         shot = await screenshotTab(tabId);
       }
       const excerpt = applyExcerptPolicy(

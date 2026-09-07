@@ -1,6 +1,8 @@
 import { describe, it, expect } from "vitest";
 import {
   decideExcerpt,
+  contentFingerprint,
+  makeExcerptBaseline,
   setLastFullTextUrl,
   getLastFullTextUrl,
   clearExcerptBaselinesForRun,
@@ -9,19 +11,21 @@ import {
 
 describe("decideExcerpt", () => {
   it("sends full excerpt on first visit", () => {
+    const text = "x".repeat(500);
+    const url = "https://mail.example/inbox";
     const r = decideExcerpt({
-      url: "https://mail.example/inbox",
-      text: "x".repeat(500),
+      url,
+      text,
       lastFullTextUrl: null,
       fullMax: 100,
       followupMax: 40,
     });
     expect(r.text_omitted).toBe(false);
     expect(r.text).toHaveLength(100);
-    expect(r.nextBaseline).toBe("https://mail.example/inbox");
+    expect(r.nextBaseline).toBe(makeExcerptBaseline(url, text));
   });
 
-  it("omits text when URL unchanged", () => {
+  it("omits text when URL unchanged (legacy url-only baseline)", () => {
     const url = "https://mail.example/inbox";
     const r = decideExcerpt({
       url,
@@ -36,17 +40,49 @@ describe("decideExcerpt", () => {
     expect(r.nextBaseline).toBe(url);
   });
 
+  it("omits text when url+fingerprint unchanged", () => {
+    const url = "https://mail.example/inbox";
+    const text = "same body";
+    const r = decideExcerpt({
+      url,
+      text,
+      lastFullTextUrl: makeExcerptBaseline(url, text),
+      fullMax: 1000,
+      followupMax: 40,
+    });
+    expect(r.text_omitted).toBe(true);
+    expect(r.text).toBe("");
+  });
+
+  it("sends followup excerpt when same URL but content changes", () => {
+    const url = "https://mail.example/inbox";
+    const r = decideExcerpt({
+      url,
+      text: "opened thread body ".repeat(20),
+      lastFullTextUrl: makeExcerptBaseline(url, "list preview only"),
+      fullMax: 1000,
+      followupMax: 40,
+    });
+    expect(r.text_omitted).toBe(false);
+    expect(r.text).toHaveLength(40);
+    expect(r.nextBaseline).toContain("@@");
+    expect(contentFingerprint("opened thread body ".repeat(20))).toBeTruthy();
+  });
+
   it("caps followup excerpt when URL changes", () => {
+    const text = "y".repeat(200);
     const r = decideExcerpt({
       url: "https://mail.example/thread/1",
-      text: "y".repeat(200),
+      text,
       lastFullTextUrl: "https://mail.example/inbox",
       fullMax: 1000,
       followupMax: 40,
     });
     expect(r.text_omitted).toBe(false);
     expect(r.text).toHaveLength(40);
-    expect(r.nextBaseline).toBe("https://mail.example/thread/1");
+    expect(r.nextBaseline).toBe(
+      makeExcerptBaseline("https://mail.example/thread/1", text),
+    );
   });
 });
 

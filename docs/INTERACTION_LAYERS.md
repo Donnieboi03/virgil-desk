@@ -186,10 +186,10 @@ Rough orders of magnitude for **one observe→act cycle** on Desk-like work. “
 | Phase | Eyes | Hands | Driver |
 |-------|------|-------|--------|
 | Handoff / decompose | Extension scrape + screenshot | — | Extension |
-| Execute (default) | `page_info` + dims (screenshot stripped in CLI) | CDP Input (`x,y` / selector) | `browser.driver: harness` |
-| Execute (rollback) | interact_targets + excerpt | DOM synthetic | `browser.driver: extension` |
+| Execute (default / Path B) | slim targets + optional `page_tree` + excerpt omit | DOM `target_id` | `browser.driver: extension` |
+| Execute (rollback) | dims / scrape; empty targets | CDP Input (`x,y` / selector) | `browser.driver: harness` |
 
-**Focus policy** (`activateTarget`) is orthogonal: it wraps Hands/Eyes that need a live compositor. Turning it off is a **spike**, not a new Hands type — see dual-focus atoms P0 / C2 / A2.
+**Focus policy** (`activateTarget`) applies to harness only. Path B skips execute screenshots by default so `captureVisibleTab` does not steal the visible tab.
 
 ---
 

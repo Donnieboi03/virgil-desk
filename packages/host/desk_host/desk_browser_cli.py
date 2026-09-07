@@ -23,6 +23,11 @@ def main() -> int:
     parser.add_argument("--params", default="{}")
     parser.add_argument("--wait", action="store_true")
     parser.add_argument("--timeout", type=float, default=30.0)
+    parser.add_argument(
+        "--skip-screenshot",
+        action="store_true",
+        help="Skip viewport capture (default for Path B observe via host config)",
+    )
     args = parser.parse_args()
 
     host = os.environ.get("DESK_HOST", "127.0.0.1")
@@ -51,6 +56,8 @@ def main() -> int:
         body["handoff_url"] = args.handoff_url
     if params:
         body["params"] = params
+    if args.skip_screenshot:
+        body["skip_screenshot"] = True
 
     req = urllib.request.Request(
         f"{base}/v1/browser",

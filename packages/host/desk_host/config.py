@@ -40,6 +40,10 @@ class BrowserConfig:
     observe_annotate_default: bool
     act_stall_max: int
     observe_followup_excerpt_max_chars: int
+    observe_skip_screenshot_default: bool
+    observe_all_frames: bool
+    page_tree_max_chars: int
+    page_tree_max_nodes: int
     driver: str
     harness_bin: str
     harness_bu_name: str
@@ -192,6 +196,10 @@ def config_for_extension(cfg: DeskConfig | None = None) -> dict[str, Any]:
             "observe_annotate_default": c.browser.observe_annotate_default,
             "act_stall_max": c.browser.act_stall_max,
             "observe_followup_excerpt_max_chars": c.browser.observe_followup_excerpt_max_chars,
+            "observe_skip_screenshot_default": c.browser.observe_skip_screenshot_default,
+            "observe_all_frames": c.browser.observe_all_frames,
+            "page_tree_max_chars": c.browser.page_tree_max_chars,
+            "page_tree_max_nodes": c.browser.page_tree_max_nodes,
             "driver": c.browser.driver,
         },
         "host": {
