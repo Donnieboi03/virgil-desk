@@ -1810,7 +1810,8 @@ async function buildHandoffPayload(tab, intent) {
   if (scrollLoops > 0) {
     await scrollAgentTab(snapshotTabId, scrollLoops);
   }
-  const snap = await scrapeTab(snapshotTabId);
+  const settled = await settleScrapeEyes(snapshotTabId);
+  const snap = settled.result || (await scrapeTab(snapshotTabId));
   const shot = await screenshotTab(snapshotTabId);
   // Defer agent collage until Run agent — close scrape tab after snapshot.
   await clearHandoffSnapshotTab(runId, snapshotTabId);
