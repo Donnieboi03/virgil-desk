@@ -12,11 +12,19 @@ Coverage:
 2. `navigate` + same URL → `duplicateTab`; different URL → `openTab`
 3. Calendar Accept after mock handoff
 4. Hermes backend path with calendar proposal + browser verify
+5. Handoff **without** `agent_tab_id` still decomposes (defer tabs until Run agent / PATCH)
+6. `openTab` with `params.placement=human` forwarded to the extension
+7. Host integration: `mint_item` board_patch + parent done blocked while agent children open (see `packages/host/tests/integration/test_execute_agent.py`)
 
 Helper: `packages/host/tests/helpers/mock_extension.py`
 
 ## Manual Chrome checklist (M2+)
 
-See items 1–9 in the plan manual validation section — run after loading `packages/extension/dist` unpacked.
+See [`docs/OPERATOR.md`](../../docs/OPERATOR.md) § Manual checklist — run after loading `packages/extension/dist` unpacked:
 
-Playwright against a real unpacked extension is deferred to nightly CI.
+1. Handoff scrape-then-close (no per-task agent collage)
+2. **Run agent** on one root → provisions that item only
+3. Mid-run `mint_item` children appear under Agent accordion / You-Waiting columns
+4. You child + `openTab` `placement=human` outside **Virgil · Agent**
+
+Playwright smoke (`packages/e2e/playwright`) loads the unpacked extension in CI.

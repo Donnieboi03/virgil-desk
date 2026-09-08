@@ -32,13 +32,19 @@ desk-events --run-id <run_id>
 Run once with a real tab ([`packages/e2e/README.md`](../packages/e2e/README.md)):
 
 1. Handoff scrapes via a short-lived agent duplicate, then closes it — board cards without open agent tabs until **Run agent**
-2. Different URL → `openTab` in **Virgil · Agent** group
+2. Different URL → `openTab` in **Virgil · Agent** group (default `placement: agent`)
 3. Same page work → `duplicateTab`; human tab untouched
 4. Post-click `command_result` includes scrape + screenshot
-5. **Run agent** on one Agent item → provisions that item’s tab only → `browser.command` events in log
-6. **Accept** on a Waiting calendar proposal
-7. **Mark done** on a You item
-8. Reload Chrome — board persists (`storage.local`)
+5. **Run agent** on one Agent **root** → provisions that item’s tab only → `browser.command` events in log
+6. Mid-flight children: accordion under parent; You/Waiting show minted remainder (`from:` meta)
+7. Human remainder URL → `openTab` with `placement: human` (tab outside **Virgil · Agent**, not focused)
+8. **Accept** on a Waiting calendar proposal
+9. **Mark done** on a You item
+10. Reload Chrome — board persists (`storage.local`)
+
+## Hub Q-mapping (Desk)
+
+Virgil Hub allocate-then-handoff (Q1 Do / Q2 Schedule / Q3 Delegate) maps here as **You / Waiting / Agent**. Desk execute mints mid-flight children (Hub Drafts analogue); parent stays open until agent children finish or human remainder is parked.
 
 ## 3. Wire Hermes (real agent)
 
