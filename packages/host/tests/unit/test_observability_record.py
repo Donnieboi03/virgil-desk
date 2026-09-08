@@ -63,6 +63,32 @@ def test_record_emits_envelope(tmp_path, monkeypatch):
     assert row["backend"] == "mock"
 
 
+def test_browser_command_result_fields_includes_error_tab_url():
+    from desk_host.observability import browser_command_result_fields
+
+    fields = browser_command_result_fields(
+        {
+            "command_id": "c1",
+            "ok": False,
+            "error": "inject failed",
+            "tab_id": 9,
+            "url": "https://linkedin.com/x",
+            "duration_ms": 12,
+            "scrape_excerpt": "",
+            "interact_targets": [],
+            "op": "scrape",
+        },
+        op="scrape",
+        screenshot_count_run_total=3,
+    )
+    assert fields["flags"]["ok"] is False
+    assert fields["detail"]["error"] == "inject failed"
+    assert fields["detail"]["tab_id"] == 9
+    assert fields["detail"]["url"] == "https://linkedin.com/x"
+    assert fields["detail"]["op"] == "scrape"
+    assert fields["measure"]["screenshot_count_run_total"] == 3
+
+
 def test_limits_reflect_cfg_override():
     cfg = load_config()
     cfg = replace(cfg, prompts=replace(cfg.prompts, decompose_items_max=7))

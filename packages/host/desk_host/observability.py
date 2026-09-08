@@ -89,6 +89,42 @@ def record(
     emit(kind, run_id, payload)
 
 
+def browser_command_result_fields(
+    result: dict[str, Any],
+    *,
+    op: str | None = None,
+    screenshot_count_run_total: int = 0,
+) -> dict[str, Any]:
+    """Shared measure/flags/detail for browser.command_result (extension + harness)."""
+    resolved_op = op if op is not None else result.get("op")
+    detail: dict[str, Any] = {
+        "command_id": result.get("command_id"),
+        "act_resolved": result.get("act_resolved"),
+    }
+    if resolved_op:
+        detail["op"] = resolved_op
+    if result.get("error") is not None:
+        detail["error"] = result.get("error")
+    if result.get("tab_id") is not None:
+        detail["tab_id"] = result.get("tab_id")
+    if result.get("url") is not None:
+        detail["url"] = result.get("url")
+    return {
+        "measure": {
+            "duration_ms": result.get("duration_ms"),
+            "scrape_bytes": len(result.get("scrape_excerpt") or ""),
+            "screenshot_count_run_total": screenshot_count_run_total,
+            "target_count": len(result.get("interact_targets") or []),
+        },
+        "flags": {
+            "ok": result.get("ok"),
+            "has_screenshot": bool(result.get("screenshot")),
+            "has_interact_targets": bool(result.get("interact_targets")),
+        },
+        "detail": detail,
+    }
+
+
 def emit(kind: str, run_id: str, fields: dict[str, Any] | None = None) -> None:
     path = events_path()
     path.parent.mkdir(parents=True, exist_ok=True)

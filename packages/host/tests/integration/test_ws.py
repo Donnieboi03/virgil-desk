@@ -127,3 +127,93 @@ def test_ws_second_observe_same_url_omits_excerpt():
             assert body2.get("observe", {}).get("text_omitted") is True
         finally:
             ext.close()
+
+
+def test_ws_command_result_logs_error_tab_url(tmp_path, monkeypatch):
+    monkeypatch.setenv("DESK_LOG_DIR", str(tmp_path / "logs"))
+    from desk_host.observability import read_events
+
+    with TestClient(app) as client:
+        ext = MockExtensionSession(client)
+        try:
+            result = ext.handoff(
+                {
+                    "url": "https://example.com/job/1",
+                    "human_tab_id": 101,
+                    "window_id": 1,
+                }
+            )
+            run_id = result["run_id"]
+            pending = run_browser_wait(
+                client,
+                {
+                    "run_id": run_id,
+                    "op": "openTab",
+                    "human_tab_id": 101,
+                    "tab_id": 202,
+                    "url": "https://mail.google.com",
+                },
+            )
+            ext.respond_next_browser_command(
+                run_id=run_id,
+                op="openTab",
+                url="https://mail.google.com",
+                ok=False,
+                error="open failed",
+            )
+            pending["thread"].join(timeout=5)
+            assert pending["holder"][0]["status"] == 200
+            rows = [
+                r
+                for r in read_events(run_id=run_id)
+                if r.get("kind") == "browser.command_result"
+            ]
+            assert rows
+            last = rows[-1]
+            assert last["flags"]["ok"] is False
+            assert last.get("error") == "open failed"
+            assert last.get("tab_id") == 202
+            assert last.get("url") == "https://mail.google.com"
+            assert last.get("op") == "openTab"
+        finally:
+            ext.close()
+
+
+def test_ws_execute_cleanup_done_recorded(tmp_path, monkeypatch):
+    monkeypatch.setenv("DESK_LOG_DIR", str(tmp_path / "logs"))
+    from desk_host.observability import read_events
+
+    with TestClient(app) as client:
+        ext = MockExtensionSession(client)
+        try:
+            result = ext.handoff(
+                {
+                    "url": "https://example.com/job/1",
+                    "human_tab_id": 101,
+                    "window_id": 1,
+                }
+            )
+            run_id = result["run_id"]
+            ext.ws.send_json(
+                {
+                    "type": "execute_cleanup_done",
+                    "run_id": run_id,
+                    "item_id": "agent_0",
+                    "closed_tab_ids": [10, 20],
+                }
+            )
+            # Give the host receive loop a tick
+            import time
+
+            time.sleep(0.05)
+            rows = [
+                r
+                for r in read_events(run_id=run_id)
+                if r.get("kind") == "execute.cleanup_done"
+            ]
+            assert len(rows) == 1
+            assert rows[0]["item_id"] == "agent_0"
+            assert rows[0]["closed_tab_ids"] == [10, 20]
+            assert rows[0]["measure"]["closed_tab_count"] == 2
+        finally:
+            ext.close()

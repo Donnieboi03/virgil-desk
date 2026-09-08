@@ -24,7 +24,7 @@ from .harness_backend import (
 )
 from .memory import format_for_execute
 from .navigation import normalize_browser_command
-from .observability import measure_from_snapshot, record
+from .observability import browser_command_result_fields, measure_from_snapshot, record
 from .policy import policy_denied_reason
 from .execute_validation import (
     empty_probe_links_only_cover,
@@ -534,27 +534,21 @@ async def _dispatch_harness_and_record(command: dict[str, Any]) -> dict[str, Any
         raise
 
     _command_results[cid] = result
+    fields = browser_command_result_fields(
+        result,
+        op=str(op) if op else None,
+        screenshot_count_run_total=_screenshot_counts.get(run_id, 0),
+    )
+    flags = {**fields["flags"], "driver": "harness"}
     record(
         "browser.command_result",
         run_id,
         cfg=cfg,
         include_limits=False,
-        measure={
-            "duration_ms": result.get("duration_ms"),
-            "scrape_bytes": len(result.get("scrape_excerpt") or ""),
-            "screenshot_count_run_total": _screenshot_counts.get(run_id, 0),
-            "target_count": len(result.get("interact_targets") or []),
-        },
-        flags={
-            "ok": result.get("ok"),
-            "has_screenshot": bool(result.get("screenshot")),
-            "has_interact_targets": bool(result.get("interact_targets")),
-            "driver": "harness",
-        },
-        command_id=cid,
-        act_resolved=result.get("act_resolved"),
+        measure=fields["measure"],
+        flags=flags,
         driver="harness",
-        op=op,
+        **fields["detail"],
     )
     if run_id and result.get("ok"):
         count_evidence = _command_evidence_flags.pop(cid, True)
@@ -1047,7 +1041,17 @@ async def extension_ws(ws: WebSocket) -> None:
                     url=raw.get("url"),
                 )
             elif msg_type == "execute_cleanup_done":
-                pass
+                record(
+                    "execute.cleanup_done",
+                    raw.get("run_id", ""),
+                    cfg=get_config(),
+                    include_limits=False,
+                    item_id=raw.get("item_id"),
+                    closed_tab_ids=raw.get("closed_tab_ids") or [],
+                    measure={
+                        "closed_tab_count": len(raw.get("closed_tab_ids") or []),
+                    },
+                )
             elif msg_type == "command_result":
                 result = raw.get("result") or {}
                 cid = result.get("command_id")
@@ -1058,24 +1062,20 @@ async def extension_ws(ws: WebSocket) -> None:
                         waiter.set_result(result)
                 run_id = raw.get("run_id", "")
                 cfg = get_config()
+                op_name = _command_ops.get(cid or "", "") or result.get("op")
+                fields = browser_command_result_fields(
+                    result,
+                    op=str(op_name) if op_name else None,
+                    screenshot_count_run_total=_screenshot_counts.get(run_id, 0),
+                )
                 record(
                     "browser.command_result",
                     run_id,
                     cfg=cfg,
                     include_limits=False,
-                    measure={
-                        "duration_ms": result.get("duration_ms"),
-                        "scrape_bytes": len(result.get("scrape_excerpt") or ""),
-                        "screenshot_count_run_total": _screenshot_counts.get(run_id, 0),
-                        "target_count": len(result.get("interact_targets") or []),
-                    },
-                    flags={
-                        "ok": result.get("ok"),
-                        "has_screenshot": bool(result.get("screenshot")),
-                        "has_interact_targets": bool(result.get("interact_targets")),
-                    },
-                    command_id=cid,
-                    act_resolved=result.get("act_resolved"),
+                    measure=fields["measure"],
+                    flags=fields["flags"],
+                    **fields["detail"],
                 )
                 if run_id and result.get("ok"):
                     count_evidence = _command_evidence_flags.pop(cid or "", True)
@@ -1083,10 +1083,13 @@ async def extension_ws(ws: WebSocket) -> None:
                         _browser_result_counts[run_id] = (
                             _browser_result_counts.get(run_id, 0) + 1
                         )
-                    op_name = _command_ops.pop(cid or "", "")
-                    if op_name == "probe_links":
+                    op_popped = _command_ops.pop(cid or "", "")
+                    if op_popped == "probe_links":
                         links = result.get("links") or []
                         _last_probe_links_empty[run_id] = len(links) == 0
+                elif cid:
+                    _command_ops.pop(cid or "", None)
+                    _command_evidence_flags.pop(cid or "", None)
                 cfg = get_config()
                 if cfg.observability.persist_screenshots and result.get("screenshot"):
                     path = persist_screenshot(

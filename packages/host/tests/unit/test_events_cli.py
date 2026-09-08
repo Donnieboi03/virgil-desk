@@ -35,3 +35,24 @@ def test_summarize_run_omits_live_when_not_reported():
     summary = _summarize_run(rows)
     assert summary["live_decompose"] is None
     assert summary["item_count"] == 2
+
+
+def test_summarize_run_failed_ops():
+    rows = [
+        {
+            "kind": "browser.command_result",
+            "flags": {"ok": False, "has_screenshot": False},
+            "op": "openTab",
+            "error": "timeout",
+            "tab_id": 5,
+            "url": "https://mail.google.com",
+            "command_id": "c1",
+        },
+        {"kind": "browser.command_result", "flags": {"ok": True, "has_screenshot": True}},
+    ]
+    summary = _summarize_run(rows)
+    assert summary["failed_command_count"] == 1
+    assert summary["failed_ops"][0]["op"] == "openTab"
+    assert summary["failed_ops"][0]["error"] == "timeout"
+    assert summary["failed_ops"][0]["tab_id"] == 5
+    assert summary["screenshot_count"] == 1

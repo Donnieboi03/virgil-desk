@@ -26,7 +26,7 @@ High-frequency `browser.command` / `browser.command_result` omit `limits` (still
 
 ## Event kinds
 
-`handoff.started`, `handoff.snapshot`, `handoff.decomposed`, `handoff.decompose_failed`, `agent.execute_started`, `agent.executed`, `agent.execute_failed`, `item.completed`, `board.patch_dropped`, `browser.command`, `browser.command_result`, `proposal.accepted`, `proposal.denied`, `run.finished`, `policy.denied`
+`handoff.started`, `handoff.snapshot`, `handoff.decomposed`, `handoff.decompose_failed`, `agent.execute_started`, `agent.executed`, `agent.execute_failed`, `item.completed`, `board.patch_dropped`, `browser.command`, `browser.command_result`, `execute.cleanup_done`, `proposal.accepted`, `proposal.denied`, `run.finished`, `policy.denied`
 
 ## Examples
 
@@ -42,7 +42,17 @@ High-frequency `browser.command` / `browser.command_result` omit `limits` (still
 
 ### `browser.command_result`
 
-`measure.duration_ms`, `measure.scrape_bytes`, `measure.target_count`, `flags.ok`, `flags.has_screenshot`, `flags.has_interact_targets`, optional top-level `act_resolved` (`used`, `url_before`, `url_after`)
+`measure`: `duration_ms`, `scrape_bytes`, `target_count`, …
+
+`flags`: `ok`, `has_screenshot`, `has_interact_targets` (harness adds `driver: harness`)
+
+Top-level detail: `command_id`, `op`, `act_resolved`, and when present **`error`**, **`tab_id`**, **`url`**.
+
+`desk-events --summary` includes `failed_command_count` and up to 20 `failed_ops` (`op`/`error`/`tab_id`/`url`).
+
+### `execute.cleanup_done`
+
+After agent execute cleanup: `item_id`, `closed_tab_ids`, `measure.closed_tab_count`.
 
 ### `policy.denied`
 

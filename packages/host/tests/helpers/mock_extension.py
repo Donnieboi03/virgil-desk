@@ -29,6 +29,9 @@ def fake_command_result(
     last_full_text_url: str | None = None,
     full_max: int = 8000,
     followup_max: int = 4000,
+    tab_id: int | None = 202,
+    ok: bool = True,
+    error: str | None = None,
 ) -> dict[str, Any]:
     excerpt = decide_excerpt(
         url=url,
@@ -39,17 +42,23 @@ def fake_command_result(
     )
     result: dict[str, Any] = {
         "command_id": command_id,
-        "ok": True,
+        "ok": ok,
         "url": url,
         "title": "Job",
-        "scrape_excerpt": excerpt["text"],
-        "text_omitted": excerpt["text_omitted"],
-        "excerpt_note": excerpt["note"],
-        "screenshot": fake_screenshot(),
+        "scrape_excerpt": excerpt["text"] if ok else "",
+        "text_omitted": excerpt["text_omitted"] if ok else False,
+        "excerpt_note": excerpt["note"] if ok else None,
+        "screenshot": fake_screenshot() if ok else None,
         "duration_ms": 42,
         "op": op,
-        "_next_baseline": excerpt["next_baseline"],
+        "_next_baseline": excerpt["next_baseline"] if ok else None,
     }
+    if tab_id is not None:
+        result["tab_id"] = tab_id
+    if error is not None:
+        result["error"] = error
+    if not ok:
+        return result
     if op == "observe":
         result["interact_targets"] = [
             {
@@ -173,6 +182,8 @@ class MockExtensionSession:
         op: str = "click",
         url: str | None = None,
         text: str | None = None,
+        ok: bool = True,
+        error: str | None = None,
     ) -> dict[str, Any]:
         msg = self.ws.receive_json()
         assert msg["type"] == "browser_command", msg
@@ -190,6 +201,9 @@ class MockExtensionSession:
             last_full_text_url=self._excerpt_baselines.get(baseline_key),
             full_max=8000,
             followup_max=40,
+            tab_id=tab_id if tab_id is not None else 202,
+            ok=ok,
+            error=error,
         )
         next_base = result.pop("_next_baseline", None)
         if next_base and tab_id is not None:
