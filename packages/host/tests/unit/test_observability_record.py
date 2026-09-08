@@ -41,6 +41,18 @@ def test_limits_from_config_includes_prompts():
     assert "hermes" in limits
 
 
+def test_usage_measure_keeps_numeric_fields_only():
+    from desk_host.observability import usage_measure
+
+    assert usage_measure(None) == {}
+    assert usage_measure({}) == {}
+    assert usage_measure({"prompt_tokens": 10, "junk": "x", "cost_usd": "0.12"}) == {
+        "prompt_tokens": 10,
+        "cost_usd": 0.12,
+    }
+    assert usage_measure({"cost_usd": "n/a"}) == {}
+
+
 def test_record_emits_envelope(tmp_path, monkeypatch):
     log_dir = tmp_path / "logs"
     monkeypatch.setenv("DESK_LOG_DIR", str(log_dir))

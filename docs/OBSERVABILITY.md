@@ -38,7 +38,11 @@ High-frequency `browser.command` / `browser.command_result` omit `limits` (still
 
 ### `handoff.decomposed`
 
-`measure.item_count`, `flags.live`, detail `backend`
+`measure.item_count`, optional usage (`prompt_tokens` / `completion_tokens` / `total_tokens` / `cost_usd` when the backend exposes them), `flags.live`, detail `backend`
+
+### `agent.executed` / `agent.execute_failed` / `run.finished`
+
+Optional usage fields on `measure` when present — never required; missing usage does not fail the run.
 
 ### `browser.command_result`
 
@@ -48,7 +52,7 @@ High-frequency `browser.command` / `browser.command_result` omit `limits` (still
 
 Top-level detail: `command_id`, `op`, `act_resolved`, and when present **`error`**, **`tab_id`**, **`url`**.
 
-`desk-events --summary` includes `failed_command_count` and up to 20 `failed_ops` (`op`/`error`/`tab_id`/`url`).
+`desk-events --summary` includes `failed_command_count` and up to 20 `failed_ops` (`op`/`error`/`tab_id`/`url`). When any event carried usage, summary also rolls up `prompt_tokens` / `completion_tokens` / `total_tokens` / `cost_usd` (omit keys that are zero/absent).
 
 ### `execute.cleanup_done`
 

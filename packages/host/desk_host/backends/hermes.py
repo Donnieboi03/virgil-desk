@@ -14,7 +14,7 @@ from typing import Any
 from ..backends import new_run_id
 from ..config import load_config
 from ..decompose_parser import DecomposeError, parse_decompose_json
-from ..observability import record
+from ..observability import record, usage_measure
 from ..execute_validation import (
     execute_summary_incomplete_reason,
     execute_summary_indicates_failure,
@@ -97,10 +97,119 @@ class HermesRunResult:
     stdout: str
     stderr: str
     exit_code: int
+    usage: dict[str, Any] | None = None
 
     @property
     def text(self) -> str:
         return (self.stdout or self.stderr or "").strip()
+
+
+_DESK_USAGE_LINE = re.compile(r"(?m)^DESK_USAGE:(\{.*\})\s*$")
+_USAGE_WALK_KEYS = frozenset(
+    {
+        "prompt_tokens",
+        "completion_tokens",
+        "total_tokens",
+        "cost",
+        "cost_usd",
+        "usage",
+    }
+)
+
+
+def _coerce_usage_dict(raw: dict[str, Any]) -> dict[str, Any] | None:
+    """Normalize common token/cost keys into usage_measure-compatible shape."""
+    mapped: dict[str, Any] = {}
+    if "prompt_tokens" in raw:
+        mapped["prompt_tokens"] = raw["prompt_tokens"]
+    if "completion_tokens" in raw:
+        mapped["completion_tokens"] = raw["completion_tokens"]
+    if "total_tokens" in raw:
+        mapped["total_tokens"] = raw["total_tokens"]
+    cost = raw.get("cost_usd", raw.get("cost"))
+    if cost is not None:
+        mapped["cost_usd"] = cost
+    cleaned = usage_measure(mapped)
+    return cleaned or None
+
+
+def _walk_usage(obj: Any, *, depth: int = 0) -> dict[str, Any] | None:
+    if depth > 8:
+        return None
+    if isinstance(obj, dict):
+        # Prefer nested usage object when present.
+        nested = obj.get("usage")
+        if isinstance(nested, dict):
+            found = _coerce_usage_dict(nested)
+            if found:
+                return found
+        found = _coerce_usage_dict(obj)
+        if found:
+            return found
+        for key, val in obj.items():
+            if key in _USAGE_WALK_KEYS or isinstance(val, (dict, list)):
+                hit = _walk_usage(val, depth=depth + 1)
+                if hit:
+                    return hit
+    elif isinstance(obj, list):
+        for item in obj:
+            hit = _walk_usage(item, depth=depth + 1)
+            if hit:
+                return hit
+    return None
+
+
+def extract_hermes_usage(
+    *,
+    home: str,
+    stdout: str = "",
+    stderr: str = "",
+    started_at: float | None = None,
+) -> dict[str, Any] | None:
+    """Best-effort usage extract — never raises; returns None when unknown."""
+    try:
+        for blob in (stdout or "", stderr or ""):
+            matches = list(_DESK_USAGE_LINE.finditer(blob))
+            if not matches:
+                continue
+            try:
+                raw = json.loads(matches[-1].group(1))
+            except json.JSONDecodeError:
+                continue
+            if isinstance(raw, dict):
+                found = _coerce_usage_dict(raw)
+                if found:
+                    return found
+
+        sessions_dir = Path(home).expanduser() / "sessions"
+        if not sessions_dir.is_dir():
+            return None
+        candidates = sorted(
+            sessions_dir.glob("session_*.json"),
+            key=lambda p: p.stat().st_mtime,
+            reverse=True,
+        )
+        import time as _time
+
+        now = _time.time()
+        window_start = (started_at or now) - 2.0
+        for path in candidates[:12]:
+            try:
+                mtime = path.stat().st_mtime
+            except OSError:
+                continue
+            if mtime < window_start or mtime > now + 5.0:
+                continue
+            try:
+                data = json.loads(path.read_text(encoding="utf-8"))
+            except (OSError, json.JSONDecodeError, UnicodeDecodeError):
+                continue
+            found = _walk_usage(data)
+            if found:
+                return found
+        return None
+    except Exception:
+        return None
 
 
 class HermesBackend:
@@ -133,12 +242,17 @@ class HermesBackend:
             parsed = parse_decompose_json(result.text, run_id, handoff)
             if parsed:
                 parsed["live"] = True
+                if result.usage:
+                    parsed["usage"] = result.usage
                 return parsed
             record(
                 "handoff.decompose_failed",
                 run_id,
                 cfg=cfg,
-                measure={"exit_code": result.exit_code},
+                measure={
+                    "exit_code": result.exit_code,
+                    **(result.usage or {}),
+                },
                 reason="parse_failed" if result.text else "empty_output",
                 stderr_snippet=(result.stderr or "")[: cfg.prompts.event_snippet_max_chars],
                 stdout_snippet=(result.text or "")[: cfg.prompts.event_snippet_max_chars],
@@ -214,7 +328,10 @@ class HermesBackend:
                 if incomplete.lower().startswith("partial:")
                 else f"Partial: {incomplete}"
             )
-        return {"summary": summary, "exit_code": result.exit_code}
+        out: dict[str, Any] = {"summary": summary, "exit_code": result.exit_code}
+        if result.usage:
+            out["usage"] = result.usage
+        return out
 
     def _stub_decompose(self, handoff: dict[str, Any], run_id: str) -> dict[str, Any]:
         url = handoff.get("url", "")
@@ -335,6 +452,8 @@ class HermesBackend:
         max_turns: int | None = None,
         timeout_sec: int | None = None,
     ) -> HermesRunResult:
+        import time
+
         cfg = load_config()
         timeout = timeout_sec or cfg.hermes.decompose_timeout_sec
         env = self._hermes_subprocess_env(accept_hooks=accept_hooks)
@@ -362,12 +481,22 @@ class HermesBackend:
                 cmd.extend(["-s", skill])
         if image_path and Path(image_path).is_file():
             cmd.extend(["--image", image_path])
-        return await asyncio.to_thread(
+        started_at = time.time()
+        result = await asyncio.to_thread(
             self._hermes_run_sync,
             cmd,
             env=env,
             timeout=timeout,
         )
+        usage = extract_hermes_usage(
+            home=self.home,
+            stdout=result.stdout,
+            stderr=result.stderr,
+            started_at=started_at,
+        )
+        if usage:
+            result.usage = usage
+        return result
 
     async def execute_safe(self, item: dict[str, Any], ctx: dict[str, Any]) -> dict[str, Any]:
         run_id = ctx.get("run_id", "")

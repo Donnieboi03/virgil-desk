@@ -3,18 +3,18 @@ name: desk-browser-bridge
 description: >-
   Virgil Desk browser bridge: desk-browser CLI, Path B extension Eyes/Hands
   (default) or harness CDP rollback, You/Agent/Waiting board, Accept/Deny proposals.
-version: 1.10.0
+version: 1.11.0
 metadata:
   hermes:
     tags: [virgil-desk, browser, handoff]
-    keywords: [mint_item, subtask, auth_wall, soft_help]
+    keywords: [mint_item, subtask, auth_wall, soft_help, park_last_resort]
 ---
 
 # Desk browser bridge
 
 Use when executing a **Virgil Desk** handoff via Host `POST /v1/browser` or the **`desk-browser`** CLI.
 
-**Primary model = DOM Eyes → `target_id` Hands.** URL open/construct is a **secondary workaround** (hostile/empty Eyes, human park) — not the default path.
+**Primary model = DOM Eyes → `target_id` Hands.** URL open/construct is a **secondary workaround** (hostile/empty Eyes) — not the default path. **Park to You is last resort**, not a general Done option.
 
 ## CLI (Hermes `terminal`)
 
@@ -40,8 +40,8 @@ desk-browser --run-id desk_abc --op probe_form --human-tab-id 1 --tab-id 2 --wai
 # Mid-flight subtask (board mint — not a browser op)
 desk-browser --run-id desk_abc --op mint_item --params '{
   "parent_id": "PARENT_ID",
-  "column": "you",
-  "title": "Approve calendar invite"
+  "column": "agent",
+  "title": "Open Drive folder and list files"
 }'
 # closeTab requires the tab id returned from openTab
 desk-browser --run-id desk_abc --op closeTab --tab-id 99 --wait
@@ -65,16 +65,17 @@ See [`docs/BROWSER_LAYER.md`](../docs/BROWSER_LAYER.md).
 
 ## Tab rules
 
-- **`openTab`** — agent needs a **different URL** than the handoff page (extension). For You remainder with a URL, use `--params '{"placement":"human"}'` so the tab opens **outside** **Virgil · Agent** (visible in the strip, `active: false`). Always use the returned **`tab_id`** for later `closeTab`.
+- **`openTab`** (default / agent) — different URL than handoff; stays in **Virgil · Agent**. Use this to **continue** on Drive/Docs/job pages.
+- **`openTab` + `placement:human`** — **last-resort park only** (outside agent group). Always use returned **`tab_id`** for later `closeTab`.
 - **`duplicateTab`** — same page as human (extension).
 - **`closeTab`** — requires `--tab-id`; missing id is rejected (not a silent no-op).
 - Handoff uses a short-lived **ungrouped** scrape tab then closes it — **Virgil · Agent** is created only on **Run agent**.
 
-## Auth wall / empty Eyes
+## Agent-continue vs park (last resort)
 
-- **Login / CAPTCHA / auth wall:** `mint_item` → **You** + `openTab placement=human` + stop thrashing (`Partial:`).
-- **Hostile/empty Eyes:** soft-help via `mint_item` → **You** (keywords / draft / checklist toward the goal). Playbook = that mint's wording — not a separate API. Do not claim Observed success from blank scrape.
-- Prefer DOM Eyes first; URL construction only after Eyes fail.
+**Continue as agent** when links are readable: Drive folders/Docs, thread bodies, job pages — `openTab` (agent) → observe → read/summarize; mint **agent** children for multi-closure.
+
+**Park You only when:** login/CAPTCHA/auth wall; forbidden send/connect/pay/sign/submit; hostile/empty Eyes soft-help; or stuck after re-observe. Soft-help = `mint_item` → You (keywords/draft/checklist). Do not claim Observed success from blank scrape.
 
 ## Observe–act–observe
 
@@ -95,15 +96,15 @@ Check `act_resolved.url_before` vs `url_after` when opening threads or navigatin
 - **Must open** the matching message/thread and re-observe body/URL before claiming progress.
 - **List / search snippets are not done.**
 - Prefer row `target_id`s. **Forbidden:** bare CSS `tr.zA` / `[role=row]`.
-- **Done** = work finished, **or** remainder parked (`mint_item` + `openTab placement=human` when URL), **or** `Partial:`. Host rejects bare “Observed …” / “Opened …”. Host also rejects “Reviewed …” after a failed `openTab`.
+- **Done** = agent-safe work finished (incl. following Drive/Docs links as agent), **or** `Partial:`, **or** last-resort park. Host rejects bare “Observed …” / “Opened …”. Host also rejects “Reviewed …” after a failed `openTab`.
 - **Stop only when Done is met.** Turn ceiling is backup; ceiling without Done → `Partial:`.
-- After open, **follow relevant in-body links** (Drive/Docs/PandaDoc/jobs) or mint+park them. Empty `probe_links` ≠ links checked — re-observe or click targets.
+- After open, **follow relevant in-body links as agent** before parking. Empty `probe_links` ≠ links checked.
 
 ## Mid-flight subtasks
 
-When Eyes / non-empty probes show **multiple closures**, **must** `mint_item` before success stop. Host blocks parent `done` while agent children are open. Truly one closure: say “Single closure: …” after finishing it.
+When Eyes / non-empty probes show **multiple closures**, **must** `mint_item` before success stop. Prefer **agent** column for readable follow-ups; You/Waiting only under last-resort park. Host blocks parent `done` while agent children are open. Truly one closure: say “Single closure: …” after finishing it.
 
-Park human remainder with a board You/Waiting child **and** optional:
+Last-resort park example:
 
 ```bash
 desk-browser --run-id RUN --op openTab --human-tab-id H --url 'https://…' \
@@ -112,7 +113,7 @@ desk-browser --run-id RUN --op openTab --human-tab-id H --url 'https://…' \
 
 ## Forbidden
 
-- **LinkedIn send / connect / InMail**, public posts, payment submits
+- **LinkedIn send / connect / InMail**, public posts, payment/sign submits
 - send email without human Accept (email **drafts** are allowed)
 - any browser op on `human_tab_id` (except snapshot at user gesture)
 - bare row CSS selectors (`tr.zA` / `[role=row]`) instead of `target_id`
@@ -129,7 +130,7 @@ Operator clicks **Run agent** on Agent column **root** items. Hermes uses `desk-
 
 ## Evidence
 
-`command_result` (host) may include screenshots; **`desk-browser` CLI strips base64** and fat target geometry before Hermes sees it. Failed ops log `error` / `tab_id` / `url` in `desk_events.jsonl`.
+`command_result` (host) may include screenshots; **`desk-browser` CLI strips base64** and fat target geometry before Hermes sees it. Failed ops log `error` / `tab_id` / `url` in `desk_events.jsonl`. Optional usage/cost may appear on execute/decompose events when the agent backend exposes it.
 
 ## Budget
 

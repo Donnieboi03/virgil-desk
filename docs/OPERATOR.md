@@ -43,6 +43,7 @@ Run once with a real tab ([`packages/e2e/README.md`](../packages/e2e/README.md))
 10. **Mark done** on a You item
 11. Reload Chrome — board persists (`storage.local`)
 12. Failed ops show `error` / `tab_id` / `url` in `desk-events --summary`
+13. When backends expose usage, `desk-events --summary` may include rolled-up `cost_usd` / token totals (optional; omit when absent)
 
 ## Hub Q-mapping (Desk)
 

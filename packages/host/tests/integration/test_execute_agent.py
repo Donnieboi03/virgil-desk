@@ -304,8 +304,119 @@ def test_complete_you_item():
 
 
 
+def test_execute_records_usage_measure(monkeypatch, tmp_path):
+    """Injected backend usage lands on agent.executed / run.finished measure."""
+    monkeypatch.setenv("DESK_LOG_DIR", str(tmp_path / "logs"))
+    from desk_host.observability import read_events
+
+    async def usage_execute(_self, item: dict[str, Any], ctx: dict[str, Any]) -> dict[str, Any]:
+        from desk_host.app import dispatch_browser_command_and_wait
+
+        await dispatch_browser_command_and_wait(
+            {
+                "run_id": ctx["run_id"],
+                "op": "scrape",
+                "human_tab_id": ctx.get("human_tab_id"),
+                "tab_id": ctx.get("agent_tab_id") or 2,
+                "count_evidence": True,
+            }
+        )
+        return {
+            "summary": f"Finished: {item.get('title')}",
+            "exit_code": 0,
+            "usage": {
+                "prompt_tokens": 120,
+                "completion_tokens": 30,
+                "total_tokens": 150,
+                "cost_usd": 0.04,
+            },
+        }
+
+    monkeypatch.setattr(MockBackend, "execute_item", usage_execute)
+    with TestClient(app) as client:
+        ext = MockExtensionSession(client)
+        try:
+            result = ext.handoff(
+                {
+                    "url": "https://example.com",
+                    "human_tab_id": 1,
+                    "agent_tab_id": 2,
+                    "window_id": 1,
+                }
+            )
+            run_id = result["run_id"]
+            agent = [i for i in result["items"] if i["column"] == "agent"][0]
+            holder: list = []
+
+            def _execute():
+                holder.append(
+                    client.post(
+                        f"/v1/items/{agent['id']}/execute",
+                        json={"run_id": run_id},
+                    )
+                )
+
+            thread = threading.Thread(target=_execute, daemon=True)
+            thread.start()
+            ext.begin_execute()
+            ext.respond_next_browser_command(run_id=run_id, op="scrape")
+            ext.finish_execute_messages()
+            thread.join(timeout=5)
+            assert holder[0].status_code == 200
+            executed = [
+                r for r in read_events(run_id=run_id) if r.get("kind") == "agent.executed"
+            ]
+            finished = [
+                r for r in read_events(run_id=run_id) if r.get("kind") == "run.finished"
+            ]
+            assert executed
+            assert executed[0]["measure"]["cost_usd"] == 0.04
+            assert executed[0]["measure"]["prompt_tokens"] == 120
+            assert finished
+            assert finished[0]["measure"]["cost_usd"] == 0.04
+        finally:
+            ext.close()
+
+
+def test_handoff_records_usage_measure(monkeypatch, tmp_path):
+    monkeypatch.setenv("DESK_LOG_DIR", str(tmp_path / "logs"))
+    from desk_host.observability import read_events
+
+    original = MockBackend.decompose
+
+    async def wrapped(self, handoff):
+        out = await original(self, handoff)
+        out["usage"] = {"prompt_tokens": 50, "cost_usd": 0.01}
+        return out
+
+    monkeypatch.setattr(MockBackend, "decompose", wrapped)
+    with TestClient(app) as client:
+        ext = MockExtensionSession(client)
+        try:
+            result = ext.handoff(
+                {
+                    "url": "https://example.com",
+                    "human_tab_id": 1,
+                    "window_id": 1,
+                }
+            )
+            run_id = result["run_id"]
+            rows = [
+                r
+                for r in read_events(run_id=run_id)
+                if r.get("kind") == "handoff.decomposed"
+            ]
+            assert rows
+            assert rows[0]["measure"]["item_count"] >= 1
+            assert rows[0]["measure"]["prompt_tokens"] == 50
+            assert rows[0]["measure"]["cost_usd"] == 0.01
+        finally:
+            ext.close()
+
+
 def test_mint_item_board_patch_and_parent_done_blocked(monkeypatch):
     """mint_item adds child; parent execute stays running while agent child open."""
+
     async def quick_execute(_self, item: dict[str, Any], ctx: dict[str, Any]) -> dict[str, Any]:
         from desk_host.app import dispatch_browser_command_and_wait
 

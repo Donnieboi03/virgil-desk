@@ -254,3 +254,60 @@ def test_format_hermes_summary_strips_max_iter_banner():
     assert format_hermes_summary(raw, 200) == (
         "Reviewed thread body with cash on hand details."
     )
+
+
+def test_extract_hermes_usage_from_desk_usage_line(tmp_path):
+    from desk_host.backends.hermes import extract_hermes_usage
+
+    stdout = 'Done.\nDESK_USAGE:{"prompt_tokens":10,"completion_tokens":5,"cost_usd":0.02}\n'
+    usage = extract_hermes_usage(home=str(tmp_path), stdout=stdout, stderr="")
+    assert usage == {
+        "prompt_tokens": 10,
+        "completion_tokens": 5,
+        "cost_usd": 0.02,
+    }
+
+
+def test_extract_hermes_usage_from_session_file(tmp_path):
+    import json
+    import time
+
+    from desk_host.backends.hermes import extract_hermes_usage
+
+    sessions = tmp_path / "sessions"
+    sessions.mkdir()
+    started = time.time()
+    path = sessions / "session_test.json"
+    path.write_text(
+        json.dumps(
+            {
+                "messages": [],
+                "usage": {
+                    "prompt_tokens": 100,
+                    "completion_tokens": 40,
+                    "total_tokens": 140,
+                    "cost": 0.03,
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+    usage = extract_hermes_usage(
+        home=str(tmp_path),
+        stdout="ok",
+        stderr="",
+        started_at=started,
+    )
+    assert usage == {
+        "prompt_tokens": 100,
+        "completion_tokens": 40,
+        "total_tokens": 140,
+        "cost_usd": 0.03,
+    }
+
+
+def test_extract_hermes_usage_none_when_missing(tmp_path):
+    from desk_host.backends.hermes import extract_hermes_usage
+
+    assert extract_hermes_usage(home=str(tmp_path), stdout="ok", stderr="") is None
+

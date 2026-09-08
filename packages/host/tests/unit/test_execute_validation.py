@@ -68,6 +68,21 @@ def test_opened_summary_incomplete_unless_single_closure():
     )
 
 
+def test_engevity_opened_with_park_to_you_column_is_done():
+    """Open-only gate must not false-fail real park language after 'Opened…'."""
+    summary = (
+        "Opened Engevity August 2026 Monthly Update from Deilen Davis; "
+        "parked Drive folder and PandaDoc agreement to You column."
+    )
+    assert execute_summary_incomplete_reason(summary) is None
+    assert execute_summary_incomplete_reason(
+        "Opened thread; parked human review subtasks for Drive + job link."
+    ) is None
+    assert execute_summary_incomplete_reason(
+        "Opened thread; parked remainder You for auth wall."
+    ) is None
+
+
 def test_partial_not_flagged_incomplete():
     assert (
         execute_summary_incomplete_reason("Partial: could not open Drive link") is None

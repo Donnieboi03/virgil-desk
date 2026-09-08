@@ -28,6 +28,13 @@ def _summarize_run(rows: list[dict[str, Any]]) -> dict[str, Any]:
     kinds: dict[str, int] = {}
     limits: dict[str, Any] | None = None
     failed_ops: list[dict[str, Any]] = []
+    usage_totals = {
+        "prompt_tokens": 0,
+        "completion_tokens": 0,
+        "total_tokens": 0,
+        "cost_usd": 0.0,
+    }
+    usage_seen = False
     for row in rows:
         k = str(row.get("kind") or "")
         kinds[k] = kinds.get(k, 0) + 1
@@ -53,6 +60,18 @@ def _summarize_run(rows: list[dict[str, Any]]) -> dict[str, Any]:
             ic = _field(row, "item_count")
             if ic is not None:
                 item_count = int(ic)
+        measure = row.get("measure")
+        if isinstance(measure, dict):
+            for key in usage_totals:
+                val = measure.get(key)
+                if val is None:
+                    continue
+                try:
+                    num = float(val)
+                except (TypeError, ValueError):
+                    continue
+                usage_totals[key] += num
+                usage_seen = True
         if limits is None and isinstance(row.get("limits"), dict):
             limits = row["limits"]
     out: dict[str, Any] = {
@@ -68,6 +87,15 @@ def _summarize_run(rows: list[dict[str, Any]]) -> dict[str, Any]:
         out["item_count"] = item_count
     if limits is not None:
         out["limits"] = limits
+    if usage_seen:
+        if usage_totals["prompt_tokens"]:
+            out["prompt_tokens"] = int(usage_totals["prompt_tokens"])
+        if usage_totals["completion_tokens"]:
+            out["completion_tokens"] = int(usage_totals["completion_tokens"])
+        if usage_totals["total_tokens"]:
+            out["total_tokens"] = int(usage_totals["total_tokens"])
+        if usage_totals["cost_usd"]:
+            out["cost_usd"] = round(usage_totals["cost_usd"], 6)
     return out
 
 

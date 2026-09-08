@@ -34,6 +34,38 @@ def limits_from_config(cfg: DeskConfig | None = None) -> dict[str, Any]:
     }
 
 
+_USAGE_KEYS = (
+    "prompt_tokens",
+    "completion_tokens",
+    "total_tokens",
+    "cost_usd",
+)
+
+
+def usage_measure(usage: dict[str, Any] | None) -> dict[str, Any]:
+    """Keep numeric usage/cost fields only; empty dict if nothing usable.
+
+    Desk always *can* record these on measure; backends omit when absent.
+    Never raise — callers merge into measure only when non-empty.
+    """
+    if not isinstance(usage, dict):
+        return {}
+    out: dict[str, Any] = {}
+    for key in _USAGE_KEYS:
+        val = usage.get(key)
+        if val is None:
+            continue
+        try:
+            num = float(val)
+        except (TypeError, ValueError):
+            continue
+        if key.endswith("_tokens"):
+            out[key] = int(num)
+        else:
+            out[key] = num
+    return out
+
+
 def measure_from_snapshot(snap: dict[str, Any]) -> tuple[dict[str, Any], dict[str, Any]]:
     """Extension snapshot → measure + flags (no host config inference)."""
     cap = dict(snap.get("capture") or {})

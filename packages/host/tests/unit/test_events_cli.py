@@ -56,3 +56,35 @@ def test_summarize_run_failed_ops():
     assert summary["failed_ops"][0]["error"] == "timeout"
     assert summary["failed_ops"][0]["tab_id"] == 5
     assert summary["screenshot_count"] == 1
+
+
+def test_summarize_run_usage_rollup():
+    rows = [
+        {
+            "kind": "handoff.decomposed",
+            "measure": {"item_count": 2, "prompt_tokens": 100, "cost_usd": 0.01},
+        },
+        {
+            "kind": "agent.executed",
+            "measure": {
+                "browser_ops": 3,
+                "prompt_tokens": 200,
+                "completion_tokens": 50,
+                "total_tokens": 250,
+                "cost_usd": 0.05,
+            },
+        },
+        {"kind": "run.finished", "measure": {"cost_usd": 0.05}},
+    ]
+    summary = _summarize_run(rows)
+    assert summary["prompt_tokens"] == 300
+    assert summary["completion_tokens"] == 50
+    assert summary["total_tokens"] == 250
+    assert summary["cost_usd"] == 0.11
+
+
+def test_summarize_run_omits_usage_when_absent():
+    rows = [{"kind": "handoff.decomposed", "measure": {"item_count": 1}}]
+    summary = _summarize_run(rows)
+    assert "cost_usd" not in summary
+    assert "prompt_tokens" not in summary

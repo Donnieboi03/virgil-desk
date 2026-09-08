@@ -34,6 +34,9 @@ _EXPLICIT_DONE_CLAIM_RE = re.compile(
     r"|no further (?:closures|action|agent|human)"
     r"|remainder parked"
     r"|parked (?:for|with) (?:human|you)"
+    r"|parked .{0,40}\bYou\b"
+    r"|to You column"
+    r"|human (?:review )?subtasks?"
     r"|minted\b"
     r")\b",
 )

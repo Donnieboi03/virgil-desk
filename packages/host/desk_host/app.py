@@ -24,7 +24,7 @@ from .harness_backend import (
 )
 from .memory import format_for_execute
 from .navigation import normalize_browser_command
-from .observability import browser_command_result_fields, measure_from_snapshot, record
+from .observability import browser_command_result_fields, measure_from_snapshot, record, usage_measure
 from .policy import policy_denied_reason
 from .execute_validation import (
     empty_probe_links_only_cover,
@@ -204,7 +204,10 @@ async def _handle_handoff(payload: dict[str, Any]) -> dict[str, Any]:
         "handoff.decomposed",
         run_id,
         cfg=cfg,
-        measure={"item_count": len(result.get("items", []))},
+        measure={
+            "item_count": len(result.get("items", [])),
+            **usage_measure(result.get("usage")),
+        },
         flags=decompose_flags,
         backend=os.environ.get("DESK_AGENT_BACKEND", "mock"),
     )
@@ -892,6 +895,7 @@ async def execute_item(item_id: str, body: ExecuteBody) -> dict[str, Any]:
             http_exc = HTTPException(status_code=500, detail=err)
             raise http_exc from exc
         browser_after = _browser_results_for_run(body.run_id)
+        usage = usage_measure((result or {}).get("usage"))
         if cfg.hermes.execute_require_browser_evidence and browser_after <= browser_before:
             err = "execute completed without browser evidence"
             record(
@@ -900,6 +904,7 @@ async def execute_item(item_id: str, body: ExecuteBody) -> dict[str, Any]:
                 cfg=cfg,
                 item_id=item_id,
                 error=err,
+                measure=usage or None,
             )
             await _patch_work_item(
                 item_id,
@@ -940,6 +945,7 @@ async def execute_item(item_id: str, body: ExecuteBody) -> dict[str, Any]:
                 cfg=cfg,
                 item_id=item_id,
                 error=err,
+                measure=usage or None,
             )
             await _patch_work_item(
                 item_id,
@@ -980,6 +986,7 @@ async def execute_item(item_id: str, body: ExecuteBody) -> dict[str, Any]:
                 cfg=cfg,
                 item_id=item_id,
                 error=blocked,
+                measure=usage or None,
             )
             return {
                 "ok": False,
@@ -1007,6 +1014,7 @@ async def execute_item(item_id: str, body: ExecuteBody) -> dict[str, Any]:
             measure={
                 "browser_ops": evidence["browser_ops"],
                 "exit_code": (result or {}).get("exit_code"),
+                **usage,
             },
             item_id=item_id,
             summary_snippet=evidence["summary"][: cfg.prompts.event_summary_snippet_max_chars],
@@ -1017,6 +1025,7 @@ async def execute_item(item_id: str, body: ExecuteBody) -> dict[str, Any]:
             cfg=cfg,
             backend=os.environ.get("DESK_AGENT_BACKEND", "mock"),
             item_id=item_id,
+            measure=usage or None,
         )
         return {"ok": True, "work_item_id": item_id, "status": "done", "result": result}
     finally:
