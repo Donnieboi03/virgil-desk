@@ -1,3 +1,5 @@
+import { childChecklist, itemsForColumn } from "./panelBoard.js";
+
 function truncateUrl(url) {
   if (!url) return "";
   try {
@@ -75,11 +77,17 @@ async function runAgentAction(item, li, runBtn) {
   }
 }
 
-function renderColumn(el, items, column) {
+function renderColumn(el, items, column, allItems) {
   el.innerHTML = "";
-  for (const item of items) {
+  const columnItems = items || [];
+  const visible = itemsForColumn(column, columnItems);
+  const byId = Object.fromEntries((allItems || columnItems).map((i) => [i.id, i]));
+  for (const item of visible) {
     const li = document.createElement("li");
     li.dataset.itemId = item.id || "";
+    if (column === "agent") {
+      li.classList.add("item-parent");
+    }
     const badge = document.createElement("span");
     badge.className = `badge ${item.status || "proposed"}`;
     badge.textContent = item.status || "proposed";
@@ -96,16 +104,44 @@ function renderColumn(el, items, column) {
       meta.title = url;
       li.appendChild(meta);
     }
+    if (item.parent_id && byId[item.parent_id]) {
+      const from = document.createElement("div");
+      from.className = "item-meta item-from";
+      from.textContent = `from: ${byId[item.parent_id].title || item.parent_id}`;
+      li.appendChild(from);
+    }
     appendEvidence(li, item);
     if (item.last_error) {
       appendItemError(li, item.last_error);
     }
-    const proposals = item.proposals || [];
     if (column === "agent") {
+      const kids = childChecklist(columnItems, item.id);
+      if (kids.length) {
+        const details = document.createElement("details");
+        details.className = "item-accordion";
+        details.open = kids.some((k) => k.status === "proposed" || k.status === "running");
+        const summary = document.createElement("summary");
+        summary.textContent = `Subtasks (${kids.length})`;
+        details.appendChild(summary);
+        const ul = document.createElement("ul");
+        ul.className = "item-children";
+        for (const child of kids) {
+          const cli = document.createElement("li");
+          const cb = document.createElement("span");
+          cb.className = `badge ${child.status || "proposed"}`;
+          cb.textContent = child.status || "proposed";
+          cli.appendChild(cb);
+          cli.appendChild(document.createTextNode(` ${child.title || "(untitled)"}`));
+          ul.appendChild(cli);
+        }
+        details.appendChild(ul);
+        li.appendChild(details);
+      }
       const canRun =
-        item.status === "running" ||
-        item.status === "proposed" ||
-        item.status === "failed";
+        !item.parent_id &&
+        (item.status === "running" ||
+          item.status === "proposed" ||
+          item.status === "failed");
       if (canRun) {
         const actions = document.createElement("div");
         actions.className = "item-actions";
@@ -149,7 +185,8 @@ function renderColumn(el, items, column) {
       };
       actions.appendChild(doneBtn);
       li.appendChild(actions);
-    } else if (column === "waiting" && (proposals.length || item.status === "proposed")) {
+    } else if (column === "waiting" && ((item.proposals || []).length || item.status === "proposed")) {
+      const proposals = item.proposals || [];
       const actions = document.createElement("div");
       actions.className = "item-actions";
       if (item.status !== "done" && item.status !== "denied") {
@@ -182,8 +219,8 @@ function renderColumn(el, items, column) {
         actions.appendChild(deny);
       }
       li.appendChild(actions);
-    } else if (proposals.length) {
-      for (const p of proposals) {
+    } else if ((item.proposals || []).length) {
+      for (const p of item.proposals) {
         const accept = document.createElement("button");
         accept.textContent = "Accept";
         accept.disabled = !panelWsConnected;
@@ -279,12 +316,18 @@ async function refreshMeta() {
 
 async function refreshBoard() {
   const { board } = await chrome.runtime.sendMessage({ type: "getBoard" });
-  renderColumn(document.getElementById("col-you"), board.you || [], "you");
-  renderColumn(document.getElementById("col-agent"), board.agent || [], "agent");
+  const all = [
+    ...(board.you || []),
+    ...(board.agent || []),
+    ...(board.waiting || []),
+  ];
+  renderColumn(document.getElementById("col-you"), board.you || [], "you", all);
+  renderColumn(document.getElementById("col-agent"), board.agent || [], "agent", all);
   renderColumn(
     document.getElementById("col-waiting"),
     board.waiting || [],
     "waiting",
+    all,
   );
 }
 

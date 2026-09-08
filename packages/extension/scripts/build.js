@@ -34,6 +34,7 @@ const files = [
   "targetMap.js",
   "panel.html",
   "panel.css",
+  "panelBoard.js",
   "panel.js",
   "options.html",
   "options.js",

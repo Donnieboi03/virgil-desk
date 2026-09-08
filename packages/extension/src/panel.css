@@ -130,3 +130,26 @@ button:disabled {
   opacity: 0.5;
   cursor: wait;
 }
+
+.item-accordion {
+  margin-top: 6px;
+  font-size: 11px;
+}
+.item-accordion summary {
+  cursor: pointer;
+  color: #444;
+  font-weight: 500;
+}
+.item-children {
+  list-style: none;
+  padding: 4px 0 0 8px;
+  margin: 0;
+}
+.item-children li {
+  border-bottom: none;
+  padding: 2px 0;
+  font-weight: 400;
+}
+.item-from {
+  font-style: italic;
+}
