@@ -1,4 +1,9 @@
-import { childChecklist, itemsForColumn } from "./panelBoard.js";
+import {
+  childChecklist,
+  itemsForColumn,
+  groupsForFollowColumn,
+  followGroupShouldOpen,
+} from "./panelBoard.js";
 
 function truncateUrl(url) {
   if (!url) return "";
@@ -77,164 +82,227 @@ async function runAgentAction(item, li, runBtn) {
   }
 }
 
+function appendChildRow(ul, child) {
+  const cli = document.createElement("li");
+  const cb = document.createElement("span");
+  cb.className = `badge ${child.status || "proposed"}`;
+  cb.textContent = child.status || "proposed";
+  cli.appendChild(cb);
+  cli.appendChild(document.createTextNode(` ${child.title || "(untitled)"}`));
+  const curl = child.source?.url;
+  if (curl) {
+    const meta = document.createElement("div");
+    meta.className = "item-meta";
+    meta.textContent = truncateUrl(curl);
+    meta.title = curl;
+    cli.appendChild(meta);
+  }
+  if (child.last_error) {
+    const err = document.createElement("div");
+    err.className = "item-error";
+    err.textContent = child.last_error;
+    cli.appendChild(err);
+  }
+  ul.appendChild(cli);
+}
+
+function appendItemActions(li, item, column) {
+  if (column === "agent") {
+    const canRun =
+      !item.parent_id &&
+      (item.status === "running" ||
+        item.status === "proposed" ||
+        item.status === "failed");
+    if (canRun) {
+      const actions = document.createElement("div");
+      actions.className = "item-actions";
+      const runBtn = document.createElement("button");
+      runBtn.textContent = item.status === "failed" ? "Retry agent" : "Run agent";
+      runBtn.disabled = !panelWsConnected;
+      runBtn.title = panelWsConnected ? "" : "Connect extension WS first";
+      runBtn.onclick = () => runAgentAction(item, li, runBtn);
+      actions.appendChild(runBtn);
+      li.appendChild(actions);
+    }
+    return;
+  }
+  if (column === "you" && item.status !== "done" && item.status !== "denied") {
+    const actions = document.createElement("div");
+    actions.className = "item-actions";
+    const doneBtn = document.createElement("button");
+    doneBtn.textContent = "Mark done";
+    doneBtn.disabled = !panelWsConnected;
+    doneBtn.title = panelWsConnected ? "" : "Connect extension WS first";
+    doneBtn.onclick = async () => {
+      doneBtn.disabled = true;
+      appendItemError(li, "");
+      try {
+        const result = await chrome.runtime.sendMessage({
+          type: "completeItem",
+          itemId: item.id,
+          runId: item.run_id || "",
+        });
+        if (result.error || result.detail) {
+          appendItemError(li, result.error || result.detail);
+        }
+      } catch (err) {
+        appendItemError(li, String(err));
+      } finally {
+        doneBtn.disabled = !panelWsConnected;
+        refresh();
+      }
+    };
+    actions.appendChild(doneBtn);
+    li.appendChild(actions);
+    return;
+  }
+  if (column === "waiting" && ((item.proposals || []).length || item.status === "proposed")) {
+    const proposals = item.proposals || [];
+    const actions = document.createElement("div");
+    actions.className = "item-actions";
+    if (item.status !== "done" && item.status !== "denied") {
+      const accept = document.createElement("button");
+      accept.textContent = "Accept";
+      accept.disabled = !panelWsConnected;
+      accept.onclick = async () => {
+        await chrome.runtime.sendMessage({
+          type: "acceptProposal",
+          itemId: item.id,
+          proposalId: proposals[0]?.id || "",
+          runId: item.run_id || "",
+        });
+        refresh();
+      };
+      const deny = document.createElement("button");
+      deny.textContent = "Deny";
+      deny.disabled = !panelWsConnected;
+      deny.onclick = async () => {
+        await chrome.runtime.sendMessage({
+          type: "denyProposal",
+          itemId: item.id,
+          proposalId: proposals[0]?.id || "",
+          runId: item.run_id || "",
+          reason: "operator denied",
+        });
+        refresh();
+      };
+      actions.appendChild(accept);
+      actions.appendChild(deny);
+    }
+    li.appendChild(actions);
+    return;
+  }
+  if ((item.proposals || []).length) {
+    for (const p of item.proposals) {
+      const accept = document.createElement("button");
+      accept.textContent = "Accept";
+      accept.disabled = !panelWsConnected;
+      accept.onclick = () =>
+        chrome.runtime.sendMessage({
+          type: "acceptProposal",
+          itemId: item.id,
+          proposalId: p.id,
+          runId: item.run_id || "",
+        });
+      li.appendChild(accept);
+    }
+  }
+}
+
+function renderItemCard(item, column, columnItems, { showFrom = false, byId = {} } = {}) {
+  const li = document.createElement("li");
+  li.dataset.itemId = item.id || "";
+  if (column === "agent") {
+    li.classList.add("item-parent");
+  }
+  const badge = document.createElement("span");
+  badge.className = `badge ${item.status || "proposed"}`;
+  badge.textContent = item.status || "proposed";
+  const title = document.createElement("div");
+  title.className = "item-title";
+  title.appendChild(badge);
+  title.appendChild(document.createTextNode(item.title || "(untitled)"));
+  li.appendChild(title);
+  const url = item.source?.url;
+  if (url) {
+    const meta = document.createElement("div");
+    meta.className = "item-meta";
+    meta.textContent = truncateUrl(url);
+    meta.title = url;
+    li.appendChild(meta);
+  }
+  if (showFrom && item.parent_id && byId[item.parent_id]) {
+    const from = document.createElement("div");
+    from.className = "item-meta item-from";
+    from.textContent = `from: ${byId[item.parent_id].title || item.parent_id}`;
+    li.appendChild(from);
+  }
+  appendEvidence(li, item);
+  if (item.last_error) {
+    appendItemError(li, item.last_error);
+  }
+  if (column === "agent") {
+    const kids = childChecklist(columnItems, item.id);
+    if (kids.length) {
+      const details = document.createElement("details");
+      details.className = "item-accordion";
+      details.open = kids.some((k) => k.status === "proposed" || k.status === "running");
+      const summary = document.createElement("summary");
+      summary.textContent = `Subtasks (${kids.length})`;
+      details.appendChild(summary);
+      const ul = document.createElement("ul");
+      ul.className = "item-children";
+      for (const child of kids) {
+        appendChildRow(ul, child);
+      }
+      details.appendChild(ul);
+      li.appendChild(details);
+    }
+  }
+  appendItemActions(li, item, column);
+  return li;
+}
+
 function renderColumn(el, items, column, allItems) {
   el.innerHTML = "";
   const columnItems = items || [];
-  const visible = itemsForColumn(column, columnItems);
   const byId = Object.fromEntries((allItems || columnItems).map((i) => [i.id, i]));
+
+  if (column === "you" || column === "waiting") {
+    const { roots, groups } = groupsForFollowColumn(columnItems, allItems || columnItems);
+    for (const item of roots) {
+      el.appendChild(renderItemCard(item, column, columnItems, { showFrom: false, byId }));
+    }
+    for (const group of groups) {
+      const wrap = document.createElement("li");
+      wrap.className = "item-follow-wrap";
+      const details = document.createElement("details");
+      details.className = "item-follow";
+      details.open = followGroupShouldOpen(group.children);
+      const summary = document.createElement("summary");
+      summary.textContent = `From: ${group.parentTitle} (${group.children.length})`;
+      details.appendChild(summary);
+      const ul = document.createElement("ul");
+      ul.className = "item-follow-children";
+      for (const child of group.children) {
+        const childLi = renderItemCard(child, column, columnItems, {
+          showFrom: false,
+          byId,
+        });
+        ul.appendChild(childLi);
+      }
+      details.appendChild(ul);
+      wrap.appendChild(details);
+      el.appendChild(wrap);
+    }
+    return;
+  }
+
+  const visible = itemsForColumn(column, columnItems);
   for (const item of visible) {
-    const li = document.createElement("li");
-    li.dataset.itemId = item.id || "";
-    if (column === "agent") {
-      li.classList.add("item-parent");
-    }
-    const badge = document.createElement("span");
-    badge.className = `badge ${item.status || "proposed"}`;
-    badge.textContent = item.status || "proposed";
-    const title = document.createElement("div");
-    title.className = "item-title";
-    title.appendChild(badge);
-    title.appendChild(document.createTextNode(item.title || "(untitled)"));
-    li.appendChild(title);
-    const url = item.source?.url;
-    if (url) {
-      const meta = document.createElement("div");
-      meta.className = "item-meta";
-      meta.textContent = truncateUrl(url);
-      meta.title = url;
-      li.appendChild(meta);
-    }
-    if (item.parent_id && byId[item.parent_id]) {
-      const from = document.createElement("div");
-      from.className = "item-meta item-from";
-      from.textContent = `from: ${byId[item.parent_id].title || item.parent_id}`;
-      li.appendChild(from);
-    }
-    appendEvidence(li, item);
-    if (item.last_error) {
-      appendItemError(li, item.last_error);
-    }
-    if (column === "agent") {
-      const kids = childChecklist(columnItems, item.id);
-      if (kids.length) {
-        const details = document.createElement("details");
-        details.className = "item-accordion";
-        details.open = kids.some((k) => k.status === "proposed" || k.status === "running");
-        const summary = document.createElement("summary");
-        summary.textContent = `Subtasks (${kids.length})`;
-        details.appendChild(summary);
-        const ul = document.createElement("ul");
-        ul.className = "item-children";
-        for (const child of kids) {
-          const cli = document.createElement("li");
-          const cb = document.createElement("span");
-          cb.className = `badge ${child.status || "proposed"}`;
-          cb.textContent = child.status || "proposed";
-          cli.appendChild(cb);
-          cli.appendChild(document.createTextNode(` ${child.title || "(untitled)"}`));
-          ul.appendChild(cli);
-        }
-        details.appendChild(ul);
-        li.appendChild(details);
-      }
-      const canRun =
-        !item.parent_id &&
-        (item.status === "running" ||
-          item.status === "proposed" ||
-          item.status === "failed");
-      if (canRun) {
-        const actions = document.createElement("div");
-        actions.className = "item-actions";
-        const runBtn = document.createElement("button");
-        runBtn.textContent = item.status === "failed" ? "Retry agent" : "Run agent";
-        runBtn.disabled = !panelWsConnected;
-        runBtn.title = panelWsConnected ? "" : "Connect extension WS first";
-        runBtn.onclick = () => runAgentAction(item, li, runBtn);
-        actions.appendChild(runBtn);
-        li.appendChild(actions);
-      }
-    } else if (
-      column === "you" &&
-      item.status !== "done" &&
-      item.status !== "denied"
-    ) {
-      const actions = document.createElement("div");
-      actions.className = "item-actions";
-      const doneBtn = document.createElement("button");
-      doneBtn.textContent = "Mark done";
-      doneBtn.disabled = !panelWsConnected;
-      doneBtn.title = panelWsConnected ? "" : "Connect extension WS first";
-      doneBtn.onclick = async () => {
-        doneBtn.disabled = true;
-        appendItemError(li, "");
-        try {
-          const result = await chrome.runtime.sendMessage({
-            type: "completeItem",
-            itemId: item.id,
-            runId: item.run_id || "",
-          });
-          if (result.error || result.detail) {
-            appendItemError(li, result.error || result.detail);
-          }
-        } catch (err) {
-          appendItemError(li, String(err));
-        } finally {
-          doneBtn.disabled = !panelWsConnected;
-          refresh();
-        }
-      };
-      actions.appendChild(doneBtn);
-      li.appendChild(actions);
-    } else if (column === "waiting" && ((item.proposals || []).length || item.status === "proposed")) {
-      const proposals = item.proposals || [];
-      const actions = document.createElement("div");
-      actions.className = "item-actions";
-      if (item.status !== "done" && item.status !== "denied") {
-        const accept = document.createElement("button");
-        accept.textContent = "Accept";
-        accept.disabled = !panelWsConnected;
-        accept.onclick = async () => {
-          await chrome.runtime.sendMessage({
-            type: "acceptProposal",
-            itemId: item.id,
-            proposalId: proposals[0]?.id || "",
-            runId: item.run_id || "",
-          });
-          refresh();
-        };
-        const deny = document.createElement("button");
-        deny.textContent = "Deny";
-        deny.disabled = !panelWsConnected;
-        deny.onclick = async () => {
-          await chrome.runtime.sendMessage({
-            type: "denyProposal",
-            itemId: item.id,
-            proposalId: proposals[0]?.id || "",
-            runId: item.run_id || "",
-            reason: "operator denied",
-          });
-          refresh();
-        };
-        actions.appendChild(accept);
-        actions.appendChild(deny);
-      }
-      li.appendChild(actions);
-    } else if ((item.proposals || []).length) {
-      for (const p of item.proposals) {
-        const accept = document.createElement("button");
-        accept.textContent = "Accept";
-        accept.disabled = !panelWsConnected;
-        accept.onclick = () =>
-          chrome.runtime.sendMessage({
-            type: "acceptProposal",
-            itemId: item.id,
-            proposalId: p.id,
-            runId: item.run_id || "",
-          });
-        li.appendChild(accept);
-      }
-    }
-    el.appendChild(li);
+    el.appendChild(
+      renderItemCard(item, column, columnItems, { showFrom: true, byId }),
+    );
   }
 }
 

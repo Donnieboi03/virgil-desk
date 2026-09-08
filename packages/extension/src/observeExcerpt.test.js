@@ -84,6 +84,39 @@ describe("decideExcerpt", () => {
       makeExcerptBaseline("https://mail.example/thread/1", text),
     );
   });
+
+  it("does not lock omit baseline on empty scrape", () => {
+    const url = "https://spa.example/expired";
+    const r = decideExcerpt({
+      url,
+      text: "",
+      lastFullTextUrl: null,
+      fullMax: 1000,
+      followupMax: 40,
+    });
+    expect(r.text_omitted).toBe(false);
+    expect(r.text).toBe("");
+    expect(r.nextBaseline).toBe(null);
+
+    const again = decideExcerpt({
+      url,
+      text: "",
+      lastFullTextUrl: null,
+      fullMax: 1000,
+      followupMax: 40,
+    });
+    expect(again.text_omitted).toBe(false);
+
+    const later = decideExcerpt({
+      url,
+      text: "You can't access the questions. ".repeat(3),
+      lastFullTextUrl: null,
+      fullMax: 1000,
+      followupMax: 40,
+    });
+    expect(later.text_omitted).toBe(false);
+    expect(later.text.length).toBeGreaterThan(0);
+  });
 });
 
 describe("excerpt baseline map", () => {

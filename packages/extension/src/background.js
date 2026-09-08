@@ -27,6 +27,11 @@ import {
   clearExcerptBaselinesForRun,
   clearExcerptBaselinesForTab,
 } from "./observeExcerpt.js";
+import {
+  settleEyes,
+  scrapeEyesReady,
+  observeEyesReady,
+} from "./eyesSettle.js";
 
 const BUNDLE_FILE = "interactObserve.bundle.js";
 
@@ -45,6 +50,9 @@ let deskConfig = {
     handoff_scroll_viewport_ratio: 0.85,
     screenshot_mode: "captureVisibleTab",
     default_wait_ms: 500,
+    eyes_settle_budget_ms: 2000,
+    eyes_settle_poll_ms: 250,
+    eyes_settle_min_text_chars: 40,
     interact_targets_max: 40,
     observe_annotate_default: true,
     act_stall_max: 3,
@@ -821,6 +829,31 @@ async function scrapeTab(tabId) {
   }
 }
 
+async function settleScrapeEyes(tabId) {
+  const budgetMs = deskConfig.browser?.eyes_settle_budget_ms ?? 2000;
+  const pollMs = deskConfig.browser?.eyes_settle_poll_ms ?? 250;
+  const minChars = deskConfig.browser?.eyes_settle_min_text_chars ?? 40;
+  return settleEyes({
+    scrape: () => scrapeTab(tabId),
+    isReady: (snap) => scrapeEyesReady(snap, minChars),
+    budgetMs,
+    pollMs,
+  });
+}
+
+function eyesMetaFromSettle(settled, { targetCount = 0, minChars = 40 } = {}) {
+  const snap = settled?.result || {};
+  const text = snap.text || "";
+  const empty =
+    !observeEyesReady({ text, targetCount }, minChars) &&
+    !scrapeEyesReady(snap, minChars);
+  return {
+    eyes_settle_ms: settled?.elapsedMs ?? 0,
+    eyes_settle_attempts: settled?.attempts ?? 0,
+    eyes_empty: Boolean(empty),
+  };
+}
+
 async function settleTabAfterOpen(tabId) {
   const ms = deskConfig.browser?.default_wait_ms ?? 500;
   if (tabId == null) {
@@ -1239,8 +1272,31 @@ async function runBrowserCommand(command) {
         command.params?.annotate ??
         deskConfig.browser?.observe_annotate_default ??
         true;
-      const snap = await scrapeTab(tabId);
-      const pageObserve = await runPageObserve(tabId, { maxTargets, annotate });
+      const minChars = deskConfig.browser?.eyes_settle_min_text_chars ?? 40;
+
+      const settled = await settleScrapeEyes(tabId);
+      let snap = settled.result || (await scrapeTab(tabId));
+      let pageObserve = null;
+      if (!scrapeEyesReady(snap, minChars)) {
+        pageObserve = await runPageObserve(tabId, { maxTargets, annotate });
+        if (
+          observeEyesReady(
+            {
+              text: snap.text,
+              targetCount: (pageObserve?.interact_targets || []).length,
+            },
+            minChars,
+          )
+        ) {
+          // targets alone count as ready
+        } else {
+          // one more scrape after interact in case paint raced
+          snap = await scrapeTab(tabId);
+        }
+      }
+      if (!pageObserve) {
+        pageObserve = await runPageObserve(tabId, { maxTargets, annotate });
+      }
       const skipShot =
         command.skip_screenshot ??
         deskConfig.browser?.observe_skip_screenshot_default ??
@@ -1262,7 +1318,19 @@ async function runBrowserCommand(command) {
         pageUrl,
         snap.text || "",
       );
-      const includeTree = !excerpt.text_omitted;
+      const eyesMeta = eyesMetaFromSettle(
+        {
+          ...settled,
+          // include post-interact scrape/targets in empty check
+          result: snap,
+        },
+        {
+          targetCount: interact_targets_full.length,
+          minChars,
+        },
+      );
+      // Force AX tree when Eyes still empty (no screenshot / no focus).
+      const includeTree = !excerpt.text_omitted || eyesMeta.eyes_empty;
       const page_tree = await runPageTree(tabId, { includeTree }).catch(() => null);
       const interact_targets = interact_targets_full.map(slimTargetForEyes);
       const observe = {
@@ -1299,6 +1367,7 @@ async function runBrowserCommand(command) {
         device_pixel_ratio: observe.device_pixel_ratio,
         page_tree: page_tree || undefined,
         screenshot: shot,
+        ...eyesMeta,
         duration_ms: Date.now() - started,
       };
     }
@@ -1613,7 +1682,19 @@ async function runBrowserCommand(command) {
     }
 
     if (["click", "fill", "scroll", "key", "scrape", "screenshot", "openTab", "duplicateTab"].includes(command.op)) {
-      const snap = await scrapeTab(tabId);
+      const minChars = deskConfig.browser?.eyes_settle_min_text_chars ?? 40;
+      const useSettle =
+        command.op === "openTab" ||
+        command.op === "duplicateTab" ||
+        command.op === "scrape";
+      let snap;
+      let settled = null;
+      if (useSettle) {
+        settled = await settleScrapeEyes(tabId);
+        snap = settled.result || (await scrapeTab(tabId));
+      } else {
+        snap = await scrapeTab(tabId);
+      }
       let shot = null;
       const skipShot =
         command.skip_screenshot ??
@@ -1628,6 +1709,9 @@ async function runBrowserCommand(command) {
         snap.url,
         snap.text || "",
       );
+      const eyesMeta = settled
+        ? eyesMetaFromSettle(settled, { minChars })
+        : {};
       const out = {
         ...base,
         tab_id: tabId,
@@ -1638,6 +1722,7 @@ async function runBrowserCommand(command) {
         excerpt_note: excerpt.note,
         screenshot: shot,
         act_resolved: actResolved,
+        ...eyesMeta,
         duration_ms: Date.now() - started,
       };
       if (command.op === "scrape" || command.op === "screenshot") return out;

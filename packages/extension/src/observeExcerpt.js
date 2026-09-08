@@ -62,6 +62,15 @@ export function decideExcerpt({
 }) {
   const pageUrl = url || "";
   const raw = text || "";
+  // Empty scrapes must not lock an omit baseline (SPA race / settle retries).
+  if (!raw.trim()) {
+    return {
+      text: "",
+      text_omitted: false,
+      note: undefined,
+      nextBaseline: lastFullTextUrl || null,
+    };
+  }
   const fp = contentFingerprint(raw);
   const prev = parseExcerptBaseline(lastFullTextUrl);
   const sameUrl = Boolean(prev.url && pageUrl && pageUrl === prev.url);

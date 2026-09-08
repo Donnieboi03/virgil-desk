@@ -44,7 +44,7 @@ Park (`mint_item` → **You**/Waiting + `openTab placement=human`) **only when**
 
 - **Login / CAPTCHA / auth wall** — stop thrashing; park wall URL; `Partial:` or stop.
 - **Forbidden action** — LinkedIn send/connect/InMail, public post, pay/charge, sign/submit forms, send email without Accept.
-- **Hostile / empty Eyes** — soft-help You (keywords/draft/checklist); do not invent success from blank scrape.
+- **Hostile / empty Eyes** — soft-help You (keywords/draft/checklist); do not invent success from blank scrape. If observe/open reports **`eyes_empty`** (or blank excerpt + no targets after host settle), do **not** invent page copy from the URL alone — `Partial:` or last-resort park.
 - **Stuck** after one re-`observe` (`stall_detected` / repeated `used:none`).
 
 Do **not** park merely because a Drive/Docs/job URL appeared — continue as agent first.

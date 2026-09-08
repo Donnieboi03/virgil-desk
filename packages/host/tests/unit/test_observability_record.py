@@ -101,6 +101,28 @@ def test_browser_command_result_fields_includes_error_tab_url():
     assert fields["measure"]["screenshot_count_run_total"] == 3
 
 
+def test_browser_command_result_fields_eyes_settle():
+    from desk_host.observability import browser_command_result_fields
+
+    fields = browser_command_result_fields(
+        {
+            "command_id": "c2",
+            "ok": True,
+            "op": "observe",
+            "scrape_excerpt": "",
+            "interact_targets": [],
+            "eyes_empty": True,
+            "eyes_settle_ms": 1800,
+            "eyes_settle_attempts": 8,
+            "duration_ms": 1900,
+        },
+        op="observe",
+    )
+    assert fields["flags"]["eyes_empty"] is True
+    assert fields["measure"]["eyes_settle_ms"] == 1800
+    assert fields["measure"]["eyes_settle_attempts"] == 8
+
+
 def test_limits_reflect_cfg_override():
     cfg = load_config()
     cfg = replace(cfg, prompts=replace(cfg.prompts, decompose_items_max=7))

@@ -40,3 +40,4 @@ def test_execute_prompt_dom_primary_playbooks():
     assert "email **drafts**" in text or "email drafts" in text.lower()
     assert "last resort" in text.lower()
     assert "agent-continue" in text.lower() or "Agent-continue" in text or "agent tab" in text
+    assert "eyes_empty" in text or "invent page copy" in text.lower()

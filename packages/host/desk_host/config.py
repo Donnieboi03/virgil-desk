@@ -36,6 +36,9 @@ class BrowserConfig:
     screenshot_mode: str
     screenshot_max_per_run: int
     default_wait_ms: int
+    eyes_settle_budget_ms: int
+    eyes_settle_poll_ms: int
+    eyes_settle_min_text_chars: int
     interact_targets_max: int
     observe_annotate_default: bool
     act_stall_max: int
@@ -192,6 +195,9 @@ def config_for_extension(cfg: DeskConfig | None = None) -> dict[str, Any]:
             "handoff_scroll_viewport_ratio": c.browser.handoff_scroll_viewport_ratio,
             "screenshot_mode": c.browser.screenshot_mode,
             "default_wait_ms": c.browser.default_wait_ms,
+            "eyes_settle_budget_ms": c.browser.eyes_settle_budget_ms,
+            "eyes_settle_poll_ms": c.browser.eyes_settle_poll_ms,
+            "eyes_settle_min_text_chars": c.browser.eyes_settle_min_text_chars,
             "interact_targets_max": c.browser.interact_targets_max,
             "observe_annotate_default": c.browser.observe_annotate_default,
             "act_stall_max": c.browser.act_stall_max,

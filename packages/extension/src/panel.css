@@ -150,6 +150,27 @@ button:disabled {
   padding: 2px 0;
   font-weight: 400;
 }
+.item-follow-wrap {
+  list-style: none;
+}
+.item-follow {
+  margin-top: 4px;
+  font-size: 11px;
+}
+.item-follow summary {
+  cursor: pointer;
+  color: #444;
+  font-weight: 500;
+}
+.item-follow-children {
+  list-style: none;
+  padding: 4px 0 0 6px;
+  margin: 0;
+}
+.item-follow-children > li {
+  border-bottom: 1px solid #eee;
+  padding: 6px 0;
+}
 .item-from {
   font-style: italic;
 }

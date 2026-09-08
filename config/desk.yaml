@@ -8,6 +8,9 @@ browser:
   screenshot_mode: captureVisibleTab
   screenshot_max_per_run: 40
   default_wait_ms: 500
+  eyes_settle_budget_ms: 2000
+  eyes_settle_poll_ms: 250
+  eyes_settle_min_text_chars: 40
   interact_targets_max: 40
   observe_annotate_default: true
   act_stall_max: 3

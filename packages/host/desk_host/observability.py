@@ -141,18 +141,26 @@ def browser_command_result_fields(
         detail["tab_id"] = result.get("tab_id")
     if result.get("url") is not None:
         detail["url"] = result.get("url")
+    measure: dict[str, Any] = {
+        "duration_ms": result.get("duration_ms"),
+        "scrape_bytes": len(result.get("scrape_excerpt") or ""),
+        "screenshot_count_run_total": screenshot_count_run_total,
+        "target_count": len(result.get("interact_targets") or []),
+    }
+    if result.get("eyes_settle_ms") is not None:
+        measure["eyes_settle_ms"] = result.get("eyes_settle_ms")
+    if result.get("eyes_settle_attempts") is not None:
+        measure["eyes_settle_attempts"] = result.get("eyes_settle_attempts")
+    flags: dict[str, Any] = {
+        "ok": result.get("ok"),
+        "has_screenshot": bool(result.get("screenshot")),
+        "has_interact_targets": bool(result.get("interact_targets")),
+    }
+    if result.get("eyes_empty") is not None:
+        flags["eyes_empty"] = bool(result.get("eyes_empty"))
     return {
-        "measure": {
-            "duration_ms": result.get("duration_ms"),
-            "scrape_bytes": len(result.get("scrape_excerpt") or ""),
-            "screenshot_count_run_total": screenshot_count_run_total,
-            "target_count": len(result.get("interact_targets") or []),
-        },
-        "flags": {
-            "ok": result.get("ok"),
-            "has_screenshot": bool(result.get("screenshot")),
-            "has_interact_targets": bool(result.get("interact_targets")),
-        },
+        "measure": measure,
+        "flags": flags,
         "detail": detail,
     }
 

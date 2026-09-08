@@ -23,7 +23,8 @@ Three Eyes channels (no vision by default):
 
 - Hands: **`target_id`** only (coords kept in extension `targetMap`, stripped from CLI).
 - Execute observe defaults `skip_screenshot: true` (`observe_skip_screenshot_default`) — no `captureVisibleTab` tab flicker.
-- Same-URL follow-up observe: `text_omitted` + no `page_tree`; keep slim targets.
+- Same-URL follow-up observe: `text_omitted` + no `page_tree` when content unchanged; keep slim targets.
+- **Eyes settle (fast):** after open/scrape/observe, poll until excerpt/targets ready or `eyes_settle_budget_ms` (default 2s, poll 250ms). Happy path exits on first scrape. Empty first scrape does **not** lock omit baseline. Still-empty → `eyes_empty` + forced AX `page_tree` (no screenshot / no tab focus).
 
 Implementation: [WebMarker](https://github.com/reidbarber/webmarker) + `deskPageTree` / probes in `interactObserve.bundle.js`. `allFrames: true` stamps `frame_id`; act uses `frameIds`.
 

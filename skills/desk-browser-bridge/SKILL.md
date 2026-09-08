@@ -3,11 +3,11 @@ name: desk-browser-bridge
 description: >-
   Virgil Desk browser bridge: desk-browser CLI, Path B extension Eyes/Hands
   (default) or harness CDP rollback, You/Agent/Waiting board, Accept/Deny proposals.
-version: 1.11.0
+version: 1.12.0
 metadata:
   hermes:
     tags: [virgil-desk, browser, handoff]
-    keywords: [mint_item, subtask, auth_wall, soft_help, park_last_resort]
+    keywords: [mint_item, subtask, auth_wall, soft_help, park_last_resort, eyes_empty]
 ---
 
 # Desk browser bridge
@@ -75,7 +75,7 @@ See [`docs/BROWSER_LAYER.md`](../docs/BROWSER_LAYER.md).
 
 **Continue as agent** when links are readable: Drive folders/Docs, thread bodies, job pages — `openTab` (agent) → observe → read/summarize; mint **agent** children for multi-closure.
 
-**Park You only when:** login/CAPTCHA/auth wall; forbidden send/connect/pay/sign/submit; hostile/empty Eyes soft-help; or stuck after re-observe. Soft-help = `mint_item` → You (keywords/draft/checklist). Do not claim Observed success from blank scrape.
+**Park You only when:** login/CAPTCHA/auth wall; forbidden send/connect/pay/sign/submit; hostile/empty Eyes soft-help; or stuck after re-observe. Soft-help = `mint_item` → You (keywords/draft/checklist). Do not claim Observed success from blank scrape. If Eyes return **`eyes_empty`** (or blank excerpt + no targets after host settle), do not invent page copy from the URL alone — `Partial:` or last-resort park.
 
 ## Observe–act–observe
 
