@@ -31,7 +31,16 @@
     "url": { "type": "string" },
     "handoff_url": { "type": "string" },
     "verify_level": { "enum": ["read", "action", "handoff"] },
-    "params": { "type": "object" },
+    "params": {
+      "type": "object",
+      "properties": {
+        "placement": {
+          "enum": ["agent", "human"],
+          "description": "openTab only: agent (default, Virgil · Agent group) or human (outside group)"
+        }
+      },
+      "additionalProperties": true
+    },
     "skip_screenshot": { "type": "boolean" }
   }
 }

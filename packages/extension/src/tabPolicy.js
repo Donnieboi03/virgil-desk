@@ -25,6 +25,12 @@ export function policyBlock(command, tabId) {
   return null;
 }
 
+/** openTab placement: agent (default, Virgil · Agent group) or human (outside group). */
+export function openTabPlacement(command) {
+  const raw = command?.params?.placement ?? command?.placement;
+  return raw === "human" ? "human" : "agent";
+}
+
 /** Root items: no parent_id. */
 export function selectBoardRoots(items) {
   return (items || []).filter((i) => !i.parent_id);

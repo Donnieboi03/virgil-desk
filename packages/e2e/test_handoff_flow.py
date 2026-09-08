@@ -246,3 +246,36 @@ def test_handoff_seeds_notepad_and_execute_records_recent(monkeypatch):
             assert captured[0].get("run_notepad") is not None
         finally:
             ext.close()
+
+
+
+def test_open_tab_placement_human_passthrough():
+    """Host forwards openTab params.placement=human to the extension."""
+    with TestClient(app) as client:
+        ext = MockExtensionSession(client)
+        try:
+            result = ext.handoff(
+                {
+                    "url": "https://example.com/job/1",
+                    "human_tab_id": 5,
+                    "window_id": 1,
+                }
+            )
+            run_id = result["run_id"]
+            pending = run_browser_wait(
+                client,
+                {
+                    "run_id": run_id,
+                    "op": "openTab",
+                    "url": "https://docs.example.com/doc",
+                    "human_tab_id": 5,
+                    "params": {"placement": "human"},
+                },
+            )
+            handled = ext.respond_next_browser_command(run_id=run_id)
+            assert handled["command"]["op"] == "openTab"
+            assert handled["command"].get("params", {}).get("placement") == "human"
+            pending["thread"].join(timeout=5)
+            assert pending["holder"][0]["status"] == 200
+        finally:
+            ext.close()

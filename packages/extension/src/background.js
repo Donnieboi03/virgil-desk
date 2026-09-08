@@ -3,7 +3,7 @@ const PAIRS_KEY = "virgil_desk_tab_pairs";
 const AGENT_GROUP_TITLE = "Virgil · Agent";
 const DEFAULT_HOST = "http://127.0.0.1:8787";
 
-import { applyBoardPatch, chooseNavigationOp, policyBlock as tabPolicyBlock } from "./tabPolicy.js";
+import { applyBoardPatch, chooseNavigationOp, policyBlock as tabPolicyBlock, openTabPlacement } from "./tabPolicy.js";
 import { withProvisionLock, planAgentTabForItem } from "./agentTabs.js";
 import {
   storeTargetMap,
@@ -628,6 +628,25 @@ async function ensureAgentGroup(tabId, windowId) {
 async function resolveAgentTab(command) {
   const pairs = (await chrome.storage.session.get(PAIRS_KEY))[PAIRS_KEY] || {};
   const runId = command.run_id;
+  const placement = openTabPlacement(command);
+
+  // Human remainder tabs stay outside Virgil · Agent and are not the agent collage.
+  if (command.op === "openTab" && placement === "human") {
+    const human = command.human_tab_id
+      ? await chrome.tabs.get(command.human_tab_id)
+      : null;
+    const windowId = human?.windowId;
+    const tab = await chrome.tabs.create({
+      url: command.url || "about:blank",
+      active: false,
+      windowId,
+    });
+    if (activeExecute?.itemId && runId) {
+      await trackSpawnedTab(runId, activeExecute.itemId, tab.id);
+    }
+    return { tabId: tab.id, tabMode: "create", placement: "human" };
+  }
+
   if (pairs[runId]?.agentTabId) {
     return { tabId: pairs[runId].agentTabId, tabMode: "reuse" };
   }
@@ -635,14 +654,14 @@ async function resolveAgentTab(command) {
     const dup = await chrome.tabs.duplicate(command.human_tab_id);
     await chrome.tabs.update(dup.id, { active: false });
     const tab = await chrome.tabs.get(dup.id);
-    const groupId = await ensureAgentGroup(dup.id, tab.windowId);
+    await ensureAgentGroup(dup.id, tab.windowId);
     pairs[runId] = {
       humanTabId: command.human_tab_id,
       agentTabId: dup.id,
       items: pairs[runId]?.items || {},
     };
     await chrome.storage.session.set({ [PAIRS_KEY]: pairs });
-    return { tabId: dup.id, tabMode: "duplicate" };
+    return { tabId: dup.id, tabMode: "duplicate", placement: "agent" };
   }
   if (command.op === "openTab" || (command.op === "openTab" && command.url)) {
     const human = command.human_tab_id
@@ -654,14 +673,14 @@ async function resolveAgentTab(command) {
       active: false,
       windowId,
     });
-    const groupId = await ensureAgentGroup(tab.id, tab.windowId);
+    await ensureAgentGroup(tab.id, tab.windowId);
     pairs[runId] = {
       humanTabId: command.human_tab_id,
       agentTabId: tab.id,
       items: pairs[runId]?.items || {},
     };
     await chrome.storage.session.set({ [PAIRS_KEY]: pairs });
-    return { tabId: tab.id, tabMode: "create" };
+    return { tabId: tab.id, tabMode: "create", placement: "agent" };
   }
   return { tabId: command.tab_id, tabMode: "reuse" };
 }

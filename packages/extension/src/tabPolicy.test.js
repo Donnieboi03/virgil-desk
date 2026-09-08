@@ -3,6 +3,7 @@ import {
   applyBoardPatch,
   childrenOf,
   chooseNavigationOp,
+  openTabPlacement,
   policyBlock,
   selectBoardRoots,
 } from "./tabPolicy.js";
@@ -35,6 +36,19 @@ describe("policyBlock", () => {
     expect(
       policyBlock({ op: "captureHandoffSnapshot", human_tab_id: 3 }, 3),
     ).toBeNull();
+  });
+});
+
+describe("openTabPlacement", () => {
+  it("defaults to agent", () => {
+    expect(openTabPlacement({ op: "openTab" })).toBe("agent");
+    expect(openTabPlacement({ op: "openTab", params: {} })).toBe("agent");
+  });
+
+  it("accepts human placement", () => {
+    expect(
+      openTabPlacement({ op: "openTab", params: { placement: "human" } }),
+    ).toBe("human");
   });
 });
 

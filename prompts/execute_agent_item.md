@@ -35,7 +35,7 @@ When evidence shows **more than one closure** (agent-safe follow-ups, human-only
      "hints": {"search_query": "optional"}
    }'
    ```
-2. Pursue **agent** children yourself in this run when safe; mint **you** / **waiting** for human remainder (with a URL in `source` when known).
+2. Pursue **agent** children yourself in this run when safe; mint **you** / **waiting** for human remainder (with a URL in `source` when known). For You remainder with a URL, also `openTab` with `--params '{"placement":"human"}'` so the page is visible outside **Virgil · Agent**.
 3. Parent stays open while agent children are still `proposed`/`running` — do not claim parent done until those are finished or parked.
 4. Prefer imperative closure titles (“Open Drive doc and extract deadline”), not “Summarize …”.
 

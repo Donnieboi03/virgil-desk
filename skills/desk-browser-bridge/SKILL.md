@@ -61,7 +61,7 @@ See [`docs/BROWSER_LAYER.md`](../docs/BROWSER_LAYER.md).
 
 ## Tab rules
 
-- **`openTab`** — agent needs a **different URL** than the handoff page (extension). Use `placement: "human"` when parking a You remainder outside **Virgil · Agent**.
+- **`openTab`** — agent needs a **different URL** than the handoff page (extension). For You remainder with a URL, use `--params '{"placement":"human"}'` so the tab opens **outside** **Virgil · Agent** (visible in the strip, `active: false`).
 - **`duplicateTab`** — same page as human (extension).
 - Handoff uses a short-lived scrape tab then closes it; **Run agent** provisions the item collage.
 
@@ -92,6 +92,13 @@ Check `act_resolved.url_before` vs `url_after` when opening threads or navigatin
 ## Mid-flight subtasks
 
 When evidence reveals multiple closures, mint with `--op mint_item` (`parent_id`, `column`, `title`). Host blocks parent `done` while agent children are still `proposed`/`running`.
+
+Park human remainder with a board You/Waiting child **and** optional:
+
+```bash
+desk-browser --run-id RUN --op openTab --human-tab-id H --url 'https://…' \
+  --params '{"placement":"human"}' --wait
+```
 
 ## Forbidden
 
