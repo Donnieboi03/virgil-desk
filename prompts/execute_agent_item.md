@@ -12,21 +12,27 @@ Use notepad + recent executions for temporal context; do not re-do work already 
 
 ## Success criteria (hard)
 
-Done means **work finished or safely parked** — not “I summarized the page.”
+**Done** means one of:
+
+1. Agent-safe work for this item is **finished**, or
+2. Human remainder is **parked** (`mint_item` to You/Waiting **and** `openTab` with `placement: human` when a URL exists), or
+3. Explicit one-line **`Partial:`** (blocked / cannot proceed).
+
+**Not done:** a one-line “Observed …” / “Opened …” after opening a thread. The host rejects open-only observation summaries.
 
 For inbox / email / message-list work items:
 
-1. **Open the matching thread before summarizing.** Click the row whose Eyes `label` matches sender/subject hints (`target_id` from latest observe). Then re-`observe` and confirm you left the list (URL/hash change and/or body excerpt beyond the list snippet).
-2. **List / search preview is not done.** Inbox rows, search result lines, or snippet text alone must not be treated as the final answer.
-3. **If you cannot open the thread** (wrong row, no matching target, stall, or tool budget exhausted): reply with a one-line **partial** summary starting with `Partial:` — do not claim success from the list.
-4. Prefer conversation-row `target_id`s (labels with sender/subject). **Never** use bare CSS like `tr.zA` / `[role=row]` — those hit the wrong row.
-5. **Stop when done.** After agent-safe work is finished and any human remainder is parked (minted You/Waiting + optional human tab), reply with a one-line success summary and **stop immediately** — do not burn remaining tool turns. The host turn ceiling is a backup only.
+1. **Open the matching thread** before claiming progress. Click the row whose Eyes `label` matches sender/subject hints (`target_id`). Re-`observe` and confirm you left the list (URL/hash change and/or body beyond the list snippet).
+2. **List / search preview is not done.**
+3. **If you cannot open the thread:** `Partial:` one-liner — do not claim success from the list.
+4. Prefer conversation-row `target_id`s. **Never** bare CSS like `tr.zA` / `[role=row]`.
+5. **Stop only when the Done bar above is met** — then one-line success summary and stop. Turn ceiling is backup only.
 
-## Mid-flight subtasks (unknown closure)
+## Mid-flight subtasks (mandatory when multi-closure)
 
-When evidence shows **more than one closure** (agent-safe follow-ups, human-only steps, waiting Accept):
+When Eyes (or a **non-empty** `probe_links`) show **more than one closure** — e.g. thread body plus Drive/Docs/PandaDoc/job URL, or a human-only next step:
 
-1. Mint children with `desk-browser --op mint_item` (not a browser op — posts to Host):
+1. **Must** `mint_item` for each distinct closure before success stop:
    ```bash
    desk-browser --run-id RUN --op mint_item --params '{
      "parent_id": "PARENT_ITEM_ID",
@@ -35,36 +41,44 @@ When evidence shows **more than one closure** (agent-safe follow-ups, human-only
      "hints": {"search_query": "optional"}
    }'
    ```
-2. Pursue **agent** children yourself in this run when safe; mint **you** / **waiting** for human remainder (with a URL in `source` when known). For You remainder with a URL, also `openTab` with `--params '{"placement":"human"}'` so the page is visible outside **Virgil · Agent**.
-3. Parent stays open while agent children are still `proposed`/`running` — do not claim parent done until those are finished or parked.
-4. Prefer imperative closure titles (“Open Drive doc and extract deadline”), not “Summarize …”.
+2. Pursue **agent** children in this run when safe; park **you** / **waiting** with URL in `source` when known, plus:
+   ```bash
+   desk-browser --run-id RUN --op openTab --human-tab-id H --url 'https://…' \
+     --params '{"placement":"human"}' --wait
+   ```
+3. If you cannot expand/park: `Partial:` — do not claim success.
+4. Prefer imperative titles (“Open Drive doc and extract deadline”), not “Summarize …”.
+
+If there is truly only one closure and no further agent/human action: say so explicitly (“Single closure: …”) after finishing that work — do not use open-only “Observed …”.
+
+## Links after open
+
+After the thread/body is open, **follow relevant in-body links** (Drive, Docs, PandaDoc, calendar, attachments, job URLs) that are part of the task — open/read/summarize or mint+park. Do not crawl every link. An **empty** `probe_links` is not “links checked” — re-`observe` or click visible link targets instead. Still never send/pay/post.
 
 ## Rules
 
-1. Use **`desk-browser`** until the work item is actually done (not only when you "might" need browser ops).
+1. Use **`desk-browser`** until Done (or `Partial:`).
 2. Never automate `human_tab_id`.
-3. **Observe–act–observe:** `observe` → act by `target_id` → verify `act_resolved` and URL change when opening something.
+3. **Observe–act–observe:** `observe` → act by `target_id` → verify `act_resolved` / URL when opening.
 4. **Forbidden:** send email, submit forms that pay/charge, or post public content — propose only.
-5. **Allowed:** search/navigation Enter, opening threads, expanding panels — use `press_key` on fill or a follow-up `key` op.
-6. **Extension driver (default / Path B):** act with `target_id` from the last observe:
+5. **Allowed:** search/navigation Enter, opening threads, expanding panels — `press_key` on fill or `key` op.
+6. **Extension driver (default / Path B):**
    ```bash
    desk-browser ... --op observe --wait
    desk-browser ... --op click --params '{"target_id": 7}' --wait
    desk-browser ... --op fill --params '{"target_id": 3, "value": "query", "press_key": "Enter"}' --wait
    ```
    Optional probes when structure is missing: `probe_form`, `probe_links`, `probe_table`.
-7. Example (open and read):
+7. Example (open thread):
    ```bash
    desk-browser --run-id RUN --op observe --human-tab-id HUMAN --tab-id AGENT --wait
    desk-browser --run-id RUN --op click --human-tab-id HUMAN --tab-id AGENT \
      --params '{"target_id": 12}' --wait
    desk-browser --run-id RUN --op observe --human-tab-id HUMAN --tab-id AGENT --wait
    ```
-8. Minimize redundant `observe` calls — re-observe after navigation or when unsure of viewport, not after every act.
-9. **After the thread is open**, you may opportunistically follow **relevant** in-body links (Drive, Docs, calendar, same-task attachments), summarize what you find, then stop. Do not crawl every link. Stay task-focused; still never send/pay/post.
-10. If a command returns **`stall_detected`** or repeated `used:none`, re-`observe` once; if still stuck, stop and reply with a one-line `Partial:` summary.
-11. Host caps tool-calling iterations (`hermes.execute_max_turns`). Prefer finishing early. If the ceiling is hit without meeting success criteria, reply with a **one-line `Partial:` summary** and stop — no more tools.
-12. When done after opening the thread (or non-list tasks), reply with a one-line summary of what you observed (plain text) and stop.
+8. Minimize redundant `observe` — re-observe after navigation or when unsure.
+9. If **`stall_detected`** or repeated `used:none`, re-`observe` once; if still stuck → `Partial:`.
+10. Host caps `hermes.execute_max_turns`. Prefer finishing when Done is met. Ceiling without Done → `Partial:`.
 
 ## Rollback
 

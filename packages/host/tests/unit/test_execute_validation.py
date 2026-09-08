@@ -1,6 +1,8 @@
 """Execute summary failure detection."""
 
 from desk_host.execute_validation import (
+    empty_probe_links_only_cover,
+    execute_summary_incomplete_reason,
     execute_summary_indicates_failure,
     open_agent_children,
     parent_done_blocked_reason,
@@ -41,6 +43,48 @@ def test_strip_max_iter_banner():
 def test_accepts_normal_summary():
     assert not execute_summary_indicates_failure(
         "Reviewed inbox scrape; Cursor payment email visible."
+    )
+    assert execute_summary_incomplete_reason(
+        "Reviewed inbox scrape; Cursor payment email visible."
+    ) is None
+
+
+def test_open_only_observed_is_incomplete():
+    reason = execute_summary_incomplete_reason(
+        "Observed PandaDoc notification confirming the agreement was completed."
+    )
+    assert reason and "open-only" in reason
+
+
+def test_opened_summary_incomplete_unless_single_closure():
+    assert execute_summary_incomplete_reason(
+        "Opened Handshake job round-up email featuring Welocalize."
+    )
+    assert (
+        execute_summary_incomplete_reason(
+            "Single closure: extracted Welocalize rate from Handshake email; no further action."
+        )
+        is None
+    )
+
+
+def test_partial_not_flagged_incomplete():
+    assert (
+        execute_summary_incomplete_reason("Partial: could not open Drive link") is None
+    )
+
+
+def test_empty_probe_links_only_cover():
+    assert empty_probe_links_only_cover(
+        ops_since_start=["scrape", "observe", "click", "observe", "probe_links"],
+        last_probe_links_empty=True,
+    )
+    assert (
+        empty_probe_links_only_cover(
+            ops_since_start=["scrape", "observe", "click", "observe", "probe_links"],
+            last_probe_links_empty=False,
+        )
+        is None
     )
 
 

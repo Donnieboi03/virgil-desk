@@ -16,6 +16,7 @@ from ..config import load_config
 from ..decompose_parser import DecomposeError, parse_decompose_json
 from ..observability import record
 from ..execute_validation import (
+    execute_summary_incomplete_reason,
     execute_summary_indicates_failure,
     strip_max_iter_banner,
 )
@@ -206,6 +207,13 @@ class HermesBackend:
             )
         if execute_summary_indicates_failure(summary):
             raise RuntimeError(summary)
+        incomplete = execute_summary_incomplete_reason(summary)
+        if incomplete:
+            raise RuntimeError(
+                incomplete
+                if incomplete.lower().startswith("partial:")
+                else f"Partial: {incomplete}"
+            )
         return {"summary": summary, "exit_code": result.exit_code}
 
     def _stub_decompose(self, handoff: dict[str, Any], run_id: str) -> dict[str, Any]:

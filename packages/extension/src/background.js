@@ -495,6 +495,22 @@ async function applyPatch(ops, runId) {
   chrome.runtime.sendMessage({ type: "boardUpdated" }).catch(() => {});
 }
 
+async function duplicateUngroupedSnapshot(humanTabId, runId) {
+  /** Handoff scrape only — do NOT create Virgil · Agent (group on Run agent). */
+  const dup = await chrome.tabs.duplicate(humanTabId);
+  await chrome.tabs.update(dup.id, { active: false });
+  const data = await chrome.storage.session.get(PAIRS_KEY);
+  const pairs = data[PAIRS_KEY] || {};
+  pairs[runId] = {
+    humanTabId,
+    items: pairs[runId]?.items || {},
+    spawnedByItem: pairs[runId]?.spawnedByItem || {},
+    humanParkedByItem: pairs[runId]?.humanParkedByItem || {},
+  };
+  await chrome.storage.session.set({ [PAIRS_KEY]: pairs });
+  return dup.id;
+}
+
 async function duplicateAgentTabForItem(humanTabId, runId, itemId) {
   const dup = await chrome.tabs.duplicate(humanTabId);
   await chrome.tabs.update(dup.id, { active: false });
@@ -507,6 +523,8 @@ async function duplicateAgentTabForItem(humanTabId, runId, itemId) {
   }
   if (!pairs[runId].items) pairs[runId].items = {};
   pairs[runId].items[itemId] = dup.id;
+  pairs[runId].humanTabId = humanTabId;
+  pairs[runId].agentTabId = dup.id;
   await chrome.storage.session.set({ [PAIRS_KEY]: pairs });
   return dup.id;
 }
@@ -1554,13 +1572,8 @@ async function buildHandoffPayload(tab, intent) {
   const scrapeLinksMax = deskConfig.browser?.scrape_links_max ?? 200;
   const scrollLoops = deskConfig.browser?.handoff_scroll_loops ?? 0;
   const scrollRatio = scrollViewportRatio();
-  const resolved = await resolveAgentTab({
-    op: "duplicateTab",
-    run_id: runId,
-    human_tab_id: tab.id,
-    url: tab.url || "",
-  });
-  const snapshotTabId = resolved.tabId;
+  // Ungrouped temp tab — Virgil · Agent is created only on Run agent.
+  const snapshotTabId = await duplicateUngroupedSnapshot(tab.id, runId);
   const scrollLoopsExecuted = scrollLoops > 0 ? scrollLoops : 0;
   if (scrollLoops > 0) {
     await scrollAgentTab(snapshotTabId, scrollLoops);

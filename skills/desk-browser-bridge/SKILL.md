@@ -3,7 +3,7 @@ name: desk-browser-bridge
 description: >-
   Virgil Desk browser bridge: desk-browser CLI, Path B extension Eyes/Hands
   (default) or harness CDP rollback, You/Agent/Waiting board, Accept/Deny proposals.
-version: 1.8.0
+version: 1.9.0
 metadata:
   hermes:
     tags: [virgil-desk, browser, handoff]
@@ -63,7 +63,7 @@ See [`docs/BROWSER_LAYER.md`](../docs/BROWSER_LAYER.md).
 
 - **`openTab`** — agent needs a **different URL** than the handoff page (extension). For You remainder with a URL, use `--params '{"placement":"human"}'` so the tab opens **outside** **Virgil · Agent** (visible in the strip, `active: false`).
 - **`duplicateTab`** — same page as human (extension).
-- Handoff uses a short-lived scrape tab then closes it; **Run agent** provisions the item collage.
+- Handoff uses a short-lived **ungrouped** scrape tab then closes it — **Virgil · Agent** is created only on **Run agent**.
 
 ## Observe–act–observe
 
@@ -81,17 +81,16 @@ Check `act_resolved.url_before` vs `url_after` when opening threads or navigatin
 
 ## Inbox / thread success criteria
 
-- **Must open** the matching message/thread (row `target_id` whose label matches sender/subject) and re-observe body/URL before summarizing.
-- **List or search snippets are not done** — never finish from inbox preview alone.
-- Prefer row targets with sender/subject in `label`. **Forbidden:** bare CSS `tr.zA`, `tr.zE`, or `[role=row]` (ambiguous; wrong-row risk). Extension rejects those selectors.
-- **Done = work finished or parked** — not a one-line “Observed …” alone. Mint You/Waiting children for human remainder; keep pursuing agent-safe children.
-- **Stop when done** — after open + body (or task complete / remainder parked), one-line summary and stop; do not burn remaining turns. Turn ceiling is backup only.
-- After the thread is open, **may** follow relevant in-body links (Drive/docs/attachments); summarize; not an exhaustive crawl. Still forbid send/pay/public post.
-- Tool budget exhausted without opening → one-line `Partial: …` (not a success claim).
+- **Must open** the matching message/thread and re-observe body/URL before claiming progress.
+- **List / search snippets are not done.**
+- Prefer row `target_id`s. **Forbidden:** bare CSS `tr.zA` / `[role=row]`.
+- **Done** = work finished, **or** remainder parked (`mint_item` + `openTab placement=human` when URL), **or** `Partial:`. Host rejects bare “Observed …” / “Opened …”.
+- **Stop only when Done is met.** Turn ceiling is backup; ceiling without Done → `Partial:`.
+- After open, **follow relevant in-body links** (Drive/Docs/PandaDoc/jobs) or mint+park them. Empty `probe_links` ≠ links checked — re-observe or click targets. Never send/pay/post.
 
 ## Mid-flight subtasks
 
-When evidence reveals multiple closures, mint with `--op mint_item` (`parent_id`, `column`, `title`). Host blocks parent `done` while agent children are still `proposed`/`running`.
+When Eyes / non-empty probes show **multiple closures**, **must** `mint_item` before success stop. Host blocks parent `done` while agent children are open. Truly one closure: say “Single closure: …” after finishing it.
 
 Park human remainder with a board You/Waiting child **and** optional:
 

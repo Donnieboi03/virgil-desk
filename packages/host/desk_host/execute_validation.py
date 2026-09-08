@@ -1,4 +1,4 @@
-"""Detect Hermes execute summaries that report failure or blocked tools."""
+"""Detect Hermes execute summaries that report failure or incomplete done claims."""
 
 from __future__ import annotations
 
@@ -24,6 +24,20 @@ _MAX_ITER_BANNER = re.compile(
     r"(?:Requesting summary[^\n]*\n?)?",
 )
 
+_OPEN_ONLY_SUMMARY_RE = re.compile(
+    r"(?i)^\s*(observed|opened)\b",
+)
+
+_EXPLICIT_DONE_CLAIM_RE = re.compile(
+    r"(?i)\b("
+    r"single[\s-]?closure"
+    r"|no further (?:closures|action|agent|human)"
+    r"|remainder parked"
+    r"|parked (?:for|with) (?:human|you)"
+    r"|minted\b"
+    r")\b",
+)
+
 _OPEN_CHILD_STATUSES = frozenset({"proposed", "running"})
 
 
@@ -36,6 +50,26 @@ def strip_max_iter_banner(text: str) -> str:
 
 def execute_summary_indicates_failure(text: str) -> bool:
     return bool(EXECUTE_FAILURE_RE.search(text or ""))
+
+
+def execute_summary_incomplete_reason(text: str) -> str | None:
+    """
+    Host/Hermes gate: open-only “Observed/Opened …” is not done.
+    Allow explicit single-closure / parked claims; Partial: handled as failure elsewhere.
+    """
+    body = strip_max_iter_banner(text or "")
+    if not body:
+        return "empty execute summary"
+    if execute_summary_indicates_failure(body):
+        return None
+    if _EXPLICIT_DONE_CLAIM_RE.search(body):
+        return None
+    if _OPEN_ONLY_SUMMARY_RE.search(body):
+        return (
+            "open-only observation is not done — finish work, park remainder "
+            "(mint_item / openTab placement=human), claim single-closure, or Partial:"
+        )
+    return None
 
 
 def open_agent_children(
@@ -69,3 +103,26 @@ def parent_done_blocked_reason(
     titles = ", ".join(str(k.get("title") or k.get("id")) for k in kids[:5])
     more = f" (+{len(kids) - 5} more)" if len(kids) > 5 else ""
     return f"open agent children remain: {titles}{more}"
+
+
+def empty_probe_links_only_cover(
+    *,
+    ops_since_start: list[str],
+    last_probe_links_empty: bool,
+) -> str | None:
+    """
+    If execute used probe_links and it returned empty, that does not count as
+    having checked in-body links — reject when that was the only post-open Eyes.
+    """
+    if not last_probe_links_empty:
+        return None
+    if "probe_links" not in ops_since_start:
+        return None
+    # Empty probe as last meaningful Eyes step after open/click → incomplete.
+    meaningful = [op for op in ops_since_start if op not in ("scrape",)]
+    if meaningful and meaningful[-1] == "probe_links":
+        return (
+            "empty probe_links is not link-check — re-observe, follow link targets, "
+            "or Partial:"
+        )
+    return None

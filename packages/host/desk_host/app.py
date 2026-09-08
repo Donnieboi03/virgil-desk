@@ -26,7 +26,11 @@ from .memory import format_for_execute
 from .navigation import normalize_browser_command
 from .observability import measure_from_snapshot, record
 from .policy import policy_denied_reason
-from .execute_validation import parent_done_blocked_reason
+from .execute_validation import (
+    empty_probe_links_only_cover,
+    execute_summary_incomplete_reason,
+    parent_done_blocked_reason,
+)
 from .screenshot_store import persist_handoff_screenshot, persist_screenshot
 
 # In-memory proposal + extension connection state
@@ -44,6 +48,9 @@ _command_waiters: dict[str, asyncio.Future[dict[str, Any]]] = {}
 _memory_waiters: dict[str, asyncio.Future[dict[str, Any]]] = {}
 _browser_result_counts: dict[str, int] = {}
 _command_evidence_flags: dict[str, bool] = {}
+_execute_ops: dict[str, list[str]] = {}
+_command_ops: dict[str, str] = {}
+_last_probe_links_empty: dict[str, bool] = {}
 
 
 class ExtensionNotConnectedError(Exception):
@@ -432,6 +439,9 @@ def reset_state_for_tests() -> None:
     _memory_waiters.clear()
     _browser_result_counts.clear()
     _command_evidence_flags.clear()
+    _execute_ops.clear()
+    _command_ops.clear()
+    _last_probe_links_empty.clear()
     _extension_ws = None
     _extension_connected = False
     harness_reset_for_tests()
@@ -550,6 +560,9 @@ async def _dispatch_harness_and_record(command: dict[str, Any]) -> dict[str, Any
         count_evidence = _command_evidence_flags.pop(cid, True)
         if count_evidence:
             _browser_result_counts[run_id] = _browser_result_counts.get(run_id, 0) + 1
+        if op == "probe_links":
+            links = result.get("links") or []
+            _last_probe_links_empty[run_id] = len(links) == 0
     if cfg.observability.persist_screenshots and result.get("screenshot"):
         path = persist_screenshot(run_id, cid, result["screenshot"])
         if path:
@@ -565,6 +578,9 @@ async def dispatch_browser_command(command: dict[str, Any]) -> None:
     cid = command.get("command_id")
     if cid:
         _command_evidence_flags[cid] = command.get("count_evidence", True)
+        _command_ops[cid] = str(op)
+    if run_id and op:
+        _execute_ops.setdefault(str(run_id), []).append(str(op))
 
     harness_path = uses_harness_driver(cfg.browser.driver) and is_harness_op(str(op))
 
@@ -801,6 +817,8 @@ async def execute_item(item_id: str, body: ExecuteBody) -> dict[str, Any]:
         raise HTTPException(status_code=501, detail="backend does not support execute")
     cfg = get_config()
     browser_before = _browser_results_for_run(body.run_id)
+    _execute_ops[body.run_id] = []
+    _last_probe_links_empty[body.run_id] = False
     await _execute_session_start(
         run_id=body.run_id,
         item_id=item_id,
@@ -868,6 +886,38 @@ async def execute_item(item_id: str, body: ExecuteBody) -> dict[str, Any]:
             "summary": (result or {}).get("summary", ""),
             "browser_ops": browser_after - browser_before,
         }
+        incomplete = execute_summary_incomplete_reason(str(evidence["summary"] or ""))
+        if not incomplete:
+            incomplete = empty_probe_links_only_cover(
+                ops_since_start=list(_execute_ops.get(body.run_id, [])),
+                last_probe_links_empty=bool(
+                    _last_probe_links_empty.get(body.run_id, False)
+                ),
+            )
+        if incomplete:
+            err = incomplete if incomplete.lower().startswith("partial:") else f"Partial: {incomplete}"
+            record(
+                "agent.execute_failed",
+                body.run_id,
+                cfg=cfg,
+                item_id=item_id,
+                error=err,
+            )
+            await _patch_work_item(
+                item_id,
+                status="failed",
+                run_id=body.run_id,
+                evidence=evidence,
+                last_error=err,
+            )
+            await _record_execute_memory(
+                run_id=body.run_id,
+                item=item,
+                outcome="failed",
+                summary=err,
+            )
+            http_exc = HTTPException(status_code=422, detail=err)
+            raise http_exc
         # Re-read item in case mint_item updated the board mid-flight.
         current = _work_items.get(item_id) or item
         blocked = parent_done_blocked_reason(current, _work_items)
@@ -1033,6 +1083,10 @@ async def extension_ws(ws: WebSocket) -> None:
                         _browser_result_counts[run_id] = (
                             _browser_result_counts.get(run_id, 0) + 1
                         )
+                    op_name = _command_ops.pop(cid or "", "")
+                    if op_name == "probe_links":
+                        links = result.get("links") or []
+                        _last_probe_links_empty[run_id] = len(links) == 0
                 cfg = get_config()
                 if cfg.observability.persist_screenshots and result.get("screenshot"):
                     path = persist_screenshot(
