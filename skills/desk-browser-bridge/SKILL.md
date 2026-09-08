@@ -3,16 +3,18 @@ name: desk-browser-bridge
 description: >-
   Virgil Desk browser bridge: desk-browser CLI, Path B extension Eyes/Hands
   (default) or harness CDP rollback, You/Agent/Waiting board, Accept/Deny proposals.
-version: 1.9.0
+version: 1.10.0
 metadata:
   hermes:
     tags: [virgil-desk, browser, handoff]
-    keywords: [mint_item, subtask]
+    keywords: [mint_item, subtask, auth_wall, soft_help]
 ---
 
 # Desk browser bridge
 
 Use when executing a **Virgil Desk** handoff via Host `POST /v1/browser` or the **`desk-browser`** CLI.
+
+**Primary model = DOM Eyes → `target_id` Hands.** URL open/construct is a **secondary workaround** (hostile/empty Eyes, human park) — not the default path.
 
 ## CLI (Hermes `terminal`)
 
@@ -41,6 +43,8 @@ desk-browser --run-id desk_abc --op mint_item --params '{
   "column": "you",
   "title": "Approve calendar invite"
 }'
+# closeTab requires the tab id returned from openTab
+desk-browser --run-id desk_abc --op closeTab --tab-id 99 --wait
 ```
 
 - **`--tab-id`** = agent tab from **Run agent** provision (`agent_tab_id`) — never automate `human_tab_id`.
@@ -61,9 +65,16 @@ See [`docs/BROWSER_LAYER.md`](../docs/BROWSER_LAYER.md).
 
 ## Tab rules
 
-- **`openTab`** — agent needs a **different URL** than the handoff page (extension). For You remainder with a URL, use `--params '{"placement":"human"}'` so the tab opens **outside** **Virgil · Agent** (visible in the strip, `active: false`).
+- **`openTab`** — agent needs a **different URL** than the handoff page (extension). For You remainder with a URL, use `--params '{"placement":"human"}'` so the tab opens **outside** **Virgil · Agent** (visible in the strip, `active: false`). Always use the returned **`tab_id`** for later `closeTab`.
 - **`duplicateTab`** — same page as human (extension).
+- **`closeTab`** — requires `--tab-id`; missing id is rejected (not a silent no-op).
 - Handoff uses a short-lived **ungrouped** scrape tab then closes it — **Virgil · Agent** is created only on **Run agent**.
+
+## Auth wall / empty Eyes
+
+- **Login / CAPTCHA / auth wall:** `mint_item` → **You** + `openTab placement=human` + stop thrashing (`Partial:`).
+- **Hostile/empty Eyes:** soft-help You via `mint_item` (keywords / draft / checklist toward the goal). Do not claim Observed success from blank scrape.
+- Prefer DOM Eyes first; URL construction only after Eyes fail.
 
 ## Observe–act–observe
 
@@ -84,9 +95,9 @@ Check `act_resolved.url_before` vs `url_after` when opening threads or navigatin
 - **Must open** the matching message/thread and re-observe body/URL before claiming progress.
 - **List / search snippets are not done.**
 - Prefer row `target_id`s. **Forbidden:** bare CSS `tr.zA` / `[role=row]`.
-- **Done** = work finished, **or** remainder parked (`mint_item` + `openTab placement=human` when URL), **or** `Partial:`. Host rejects bare “Observed …” / “Opened …”.
+- **Done** = work finished, **or** remainder parked (`mint_item` + `openTab placement=human` when URL), **or** `Partial:`. Host rejects bare “Observed …” / “Opened …”. Host also rejects “Reviewed …” after a failed `openTab`.
 - **Stop only when Done is met.** Turn ceiling is backup; ceiling without Done → `Partial:`.
-- After open, **follow relevant in-body links** (Drive/Docs/PandaDoc/jobs) or mint+park them. Empty `probe_links` ≠ links checked — re-observe or click targets. Never send/pay/post.
+- After open, **follow relevant in-body links** (Drive/Docs/PandaDoc/jobs) or mint+park them. Empty `probe_links` ≠ links checked — re-observe or click targets.
 
 ## Mid-flight subtasks
 
@@ -101,7 +112,8 @@ desk-browser --run-id RUN --op openTab --human-tab-id H --url 'https://…' \
 
 ## Forbidden
 
-- send email, submit payment, or post public content on agent path without human Accept
+- **LinkedIn send / connect / InMail**, public posts, payment submits
+- send email without human Accept (email **drafts** are allowed)
 - any browser op on `human_tab_id` (except snapshot at user gesture)
 - bare row CSS selectors (`tr.zA` / `[role=row]`) instead of `target_id`
 
@@ -117,7 +129,7 @@ Operator clicks **Run agent** on Agent column **root** items. Hermes uses `desk-
 
 ## Evidence
 
-`command_result` (host) may include screenshots; **`desk-browser` CLI strips base64** and fat target geometry before Hermes sees it.
+`command_result` (host) may include screenshots; **`desk-browser` CLI strips base64** and fat target geometry before Hermes sees it. Failed ops log `error` / `tab_id` / `url` in `desk_events.jsonl`.
 
 ## Budget
 

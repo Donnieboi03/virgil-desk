@@ -29,6 +29,7 @@ from .policy import policy_denied_reason
 from .execute_validation import (
     empty_probe_links_only_cover,
     execute_summary_incomplete_reason,
+    failed_open_tab_blocks_done,
     parent_done_blocked_reason,
 )
 from .screenshot_store import persist_handoff_screenshot, persist_screenshot
@@ -49,6 +50,7 @@ _memory_waiters: dict[str, asyncio.Future[dict[str, Any]]] = {}
 _browser_result_counts: dict[str, int] = {}
 _command_evidence_flags: dict[str, bool] = {}
 _execute_ops: dict[str, list[str]] = {}
+_failed_ops: dict[str, list[str]] = {}
 _command_ops: dict[str, str] = {}
 _last_probe_links_empty: dict[str, bool] = {}
 
@@ -440,6 +442,7 @@ def reset_state_for_tests() -> None:
     _browser_result_counts.clear()
     _command_evidence_flags.clear()
     _execute_ops.clear()
+    _failed_ops.clear()
     _command_ops.clear()
     _last_probe_links_empty.clear()
     _extension_ws = None
@@ -557,6 +560,12 @@ async def _dispatch_harness_and_record(command: dict[str, Any]) -> dict[str, Any
         if op == "probe_links":
             links = result.get("links") or []
             _last_probe_links_empty[run_id] = len(links) == 0
+    elif run_id and not result.get("ok"):
+        failed_op = str(op or result.get("op") or "")
+        if failed_op:
+            _failed_ops.setdefault(run_id, []).append(failed_op)
+        if cid:
+            _command_evidence_flags.pop(cid, None)
     if cfg.observability.persist_screenshots and result.get("screenshot"):
         path = persist_screenshot(run_id, cid, result["screenshot"])
         if path:
@@ -629,6 +638,8 @@ async def dispatch_browser_command(command: dict[str, Any]) -> None:
             _command_results[cid] = result
             _command_ops.pop(cid, None)
             _command_evidence_flags.pop(cid, None)
+        if run_id:
+            _failed_ops.setdefault(run_id, []).append("closeTab")
         fields = browser_command_result_fields(result, op="closeTab")
         record(
             "browser.command_result",
@@ -839,6 +850,7 @@ async def execute_item(item_id: str, body: ExecuteBody) -> dict[str, Any]:
     cfg = get_config()
     browser_before = _browser_results_for_run(body.run_id)
     _execute_ops[body.run_id] = []
+    _failed_ops[body.run_id] = []
     _last_probe_links_empty[body.run_id] = False
     await _execute_session_start(
         run_id=body.run_id,
@@ -914,6 +926,11 @@ async def execute_item(item_id: str, body: ExecuteBody) -> dict[str, Any]:
                 last_probe_links_empty=bool(
                     _last_probe_links_empty.get(body.run_id, False)
                 ),
+            )
+        if not incomplete:
+            incomplete = failed_open_tab_blocks_done(
+                failed_ops=list(_failed_ops.get(body.run_id, [])),
+                summary=str(evidence["summary"] or ""),
             )
         if incomplete:
             err = incomplete if incomplete.lower().startswith("partial:") else f"Partial: {incomplete}"
@@ -1114,6 +1131,13 @@ async def extension_ws(ws: WebSocket) -> None:
                     if op_popped == "probe_links":
                         links = result.get("links") or []
                         _last_probe_links_empty[run_id] = len(links) == 0
+                elif run_id:
+                    failed_op = str(op_name or result.get("op") or "")
+                    if failed_op:
+                        _failed_ops.setdefault(run_id, []).append(failed_op)
+                    if cid:
+                        _command_ops.pop(cid or "", None)
+                        _command_evidence_flags.pop(cid or "", None)
                 elif cid:
                     _command_ops.pop(cid or "", None)
                     _command_evidence_flags.pop(cid or "", None)

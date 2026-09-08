@@ -28,6 +28,10 @@ _OPEN_ONLY_SUMMARY_RE = re.compile(
     r"(?i)^\s*(observed|opened)\b",
 )
 
+_REVIEWED_OR_OPEN_CLAIM_RE = re.compile(
+    r"(?i)^\s*(reviewed|observed|opened)\b",
+)
+
 _EXPLICIT_DONE_CLAIM_RE = re.compile(
     r"(?i)\b("
     r"single[\s-]?closure"
@@ -103,6 +107,32 @@ def parent_done_blocked_reason(
     titles = ", ".join(str(k.get("title") or k.get("id")) for k in kids[:5])
     more = f" (+{len(kids) - 5} more)" if len(kids) > 5 else ""
     return f"open agent children remain: {titles}{more}"
+
+
+def failed_open_tab_blocks_done(
+    *,
+    failed_ops: list[str],
+    summary: str,
+) -> str | None:
+    """
+    Reject Reviewed/Opened/Observed success claims when openTab/duplicateTab failed
+    mid-run (unless Partial / parked / single-closure / minted).
+    """
+    if not any(op in ("openTab", "duplicateTab") for op in failed_ops):
+        return None
+    body = strip_max_iter_banner(summary or "")
+    if not body:
+        return None
+    if execute_summary_indicates_failure(body):
+        return None
+    if _EXPLICIT_DONE_CLAIM_RE.search(body):
+        return None
+    if _REVIEWED_OR_OPEN_CLAIM_RE.search(body):
+        return (
+            "openTab/duplicateTab failed mid-run — do not claim Reviewed/Opened; "
+            "Partial:, park You (mint_item), or retry"
+        )
+    return None
 
 
 def empty_probe_links_only_cover(

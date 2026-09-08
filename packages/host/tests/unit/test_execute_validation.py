@@ -74,6 +74,36 @@ def test_partial_not_flagged_incomplete():
     )
 
 
+def test_failed_open_tab_blocks_reviewed():
+    from desk_host.execute_validation import failed_open_tab_blocks_done
+
+    assert failed_open_tab_blocks_done(
+        failed_ops=["openTab"],
+        summary="Reviewed Gmail inbox for payment emails.",
+    )
+    assert (
+        failed_open_tab_blocks_done(
+            failed_ops=["openTab"],
+            summary="Partial: openTab failed; parked You with draft keywords",
+        )
+        is None
+    )
+    assert (
+        failed_open_tab_blocks_done(
+            failed_ops=["openTab"],
+            summary="Remainder parked for human with LinkedIn draft checklist.",
+        )
+        is None
+    )
+    assert (
+        failed_open_tab_blocks_done(
+            failed_ops=["click"],
+            summary="Reviewed thread body; Single closure: extracted deadline.",
+        )
+        is None
+    )
+
+
 def test_empty_probe_links_only_cover():
     assert empty_probe_links_only_cover(
         ops_since_start=["scrape", "observe", "click", "observe", "probe_links"],

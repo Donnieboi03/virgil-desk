@@ -8,6 +8,8 @@ Treat context as boxes — do not expect the full tool history to stay available
 - **Eyes** (latest `desk-browser` observe only): url, title, slim `interact_targets` (`id`/`ref`/`kind`/`label`/`frame_id`), optional `page_tree` on URL change, optional short excerpt (same URL → `text_omitted`). Screenshots are **omitted** from CLI JSON (`screenshot.omitted`). Prefer **`target_id`** from the latest observe — do not invent CSS selectors or raw `{x,y}` as the primary path.
 - **Hands** (latest act only): `act_resolved`, url before/after.
 
+**Primary model = DOM Eyes → `target_id` Hands.** Constructing/opening URLs is a **secondary workaround** when Eyes are empty/hostile or when parking a You tab — not the default operating model.
+
 Use notepad + recent executions for temporal context; do not re-do work already marked done in them. Prefer `item.hints` to search/open the target thread before free-form browsing.
 
 ## Success criteria (hard)
@@ -18,7 +20,7 @@ Use notepad + recent executions for temporal context; do not re-do work already 
 2. Human remainder is **parked** (`mint_item` to You/Waiting **and** `openTab` with `placement: human` when a URL exists), or
 3. Explicit one-line **`Partial:`** (blocked / cannot proceed).
 
-**Not done:** a one-line “Observed …” / “Opened …” after opening a thread. The host rejects open-only observation summaries.
+**Not done:** a one-line “Observed …” / “Opened …” after opening a thread. The host rejects open-only observation summaries. **Not done:** “Reviewed …” after a failed `openTab`/`duplicateTab`.
 
 For inbox / email / message-list work items:
 
@@ -27,6 +29,18 @@ For inbox / email / message-list work items:
 3. **If you cannot open the thread:** `Partial:` one-liner — do not claim success from the list.
 4. Prefer conversation-row `target_id`s. **Never** bare CSS like `tr.zA` / `[role=row]`.
 5. **Stop only when the Done bar above is met** — then one-line success summary and stop. Turn ceiling is backup only.
+
+## Auth wall / empty Eyes (human delegation)
+
+- **Login / CAPTCHA / auth wall:** stop thrashing. `mint_item` to **You** with a short title, `openTab` with `placement: human` to the wall URL when known, then **`Partial:`** or stop — do not spam observe/click.
+- **Hostile or empty Eyes** (inject returns blank, no targets, LinkedIn-class): still help the original goal — `mint_item` You with soft-help (keywords, draft text, checklist). Prefer **playbook over `mint_item`**, not a new host primitive. Do **not** invent success from empty scrape.
+- **URL open/construct** only as workaround after Eyes fail — not as the first move on a normal page.
+
+## Allowed vs forbidden actions
+
+- **Allowed:** email **drafts** (compose fields / draft save) when the task asks; search; open threads; expand panels; agent-safe reads.
+- **Forbidden on agent path:** **LinkedIn send / connect / InMail**, public posts, payment submits, sending email without human Accept — park You instead.
+- Still never automate `human_tab_id`.
 
 ## Mid-flight subtasks (mandatory when multi-closure)
 
@@ -60,8 +74,8 @@ After the thread/body is open, **follow relevant in-body links** (Drive, Docs, P
 1. Use **`desk-browser`** until Done (or `Partial:`).
 2. Never automate `human_tab_id`.
 3. **Observe–act–observe:** `observe` → act by `target_id` → verify `act_resolved` / URL when opening.
-4. **Forbidden:** send email, submit forms that pay/charge, or post public content — propose only.
-5. **Allowed:** search/navigation Enter, opening threads, expanding panels — `press_key` on fill or `key` op.
+4. **Forbidden:** LinkedIn send/connect, send email (without Accept), submit forms that pay/charge, or post public content — propose / park You only.
+5. **Allowed:** email drafts, search/navigation Enter, opening threads, expanding panels — `press_key` on fill or `key` op.
 6. **Extension driver (default / Path B):**
    ```bash
    desk-browser ... --op observe --wait
@@ -77,8 +91,9 @@ After the thread/body is open, **follow relevant in-body links** (Drive, Docs, P
    desk-browser --run-id RUN --op observe --human-tab-id HUMAN --tab-id AGENT --wait
    ```
 8. Minimize redundant `observe` — re-observe after navigation or when unsure.
-9. If **`stall_detected`** or repeated `used:none`, re-`observe` once; if still stuck → `Partial:`.
+9. If **`stall_detected`** or repeated `used:none`, re-`observe` once; if still stuck → `Partial:` or auth/empty-Eyes playbook.
 10. Host caps `hermes.execute_max_turns`. Prefer finishing when Done is met. Ceiling without Done → `Partial:`.
+11. **`closeTab` requires `--tab-id`** of the tab to close (use ids returned from `openTab`).
 
 ## Rollback
 
