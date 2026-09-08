@@ -33,7 +33,7 @@ For inbox / email / message-list work items:
 ## Auth wall / empty Eyes (human delegation)
 
 - **Login / CAPTCHA / auth wall:** stop thrashing. `mint_item` to **You** with a short title, `openTab` with `placement: human` to the wall URL when known, then **`Partial:`** or stop — do not spam observe/click.
-- **Hostile or empty Eyes** (inject returns blank, no targets, LinkedIn-class): still help the original goal — `mint_item` You with soft-help (keywords, draft text, checklist). Prefer **playbook over `mint_item`**, not a new host primitive. Do **not** invent success from empty scrape.
+- **Hostile or empty Eyes** (inject returns blank, no targets, LinkedIn-class): still help the original goal — `mint_item` to **You** with soft-help title/body cues (keywords, draft text, checklist). The playbook is that mint wording/behavior — not a separate host API. Do **not** invent success from empty scrape.
 - **URL open/construct** only as workaround after Eyes fail — not as the first move on a normal page.
 
 ## Allowed vs forbidden actions

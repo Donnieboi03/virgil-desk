@@ -28,10 +28,6 @@ _OPEN_ONLY_SUMMARY_RE = re.compile(
     r"(?i)^\s*(observed|opened)\b",
 )
 
-_REVIEWED_OR_OPEN_CLAIM_RE = re.compile(
-    r"(?i)^\s*(reviewed|observed|opened)\b",
-)
-
 _EXPLICIT_DONE_CLAIM_RE = re.compile(
     r"(?i)\b("
     r"single[\s-]?closure"
@@ -115,8 +111,8 @@ def failed_open_tab_blocks_done(
     summary: str,
 ) -> str | None:
     """
-    Reject Reviewed/Opened/Observed success claims when openTab/duplicateTab failed
-    mid-run (unless Partial / parked / single-closure / minted).
+    Reject success summaries when openTab/duplicateTab failed mid-run
+    (unless Partial / parked / single-closure / minted).
     """
     if not any(op in ("openTab", "duplicateTab") for op in failed_ops):
         return None
@@ -127,13 +123,9 @@ def failed_open_tab_blocks_done(
         return None
     if _EXPLICIT_DONE_CLAIM_RE.search(body):
         return None
-    if _REVIEWED_OR_OPEN_CLAIM_RE.search(body):
-        return (
-            "openTab/duplicateTab failed mid-run — do not claim Reviewed/Opened; "
-            "Partial:, park You (mint_item), or retry"
-        )
-    return None
-
+    return (
+        "openTab/duplicateTab failed mid-run — Partial:, park You (mint_item), or retry"
+    )
 
 def empty_probe_links_only_cover(
     *,

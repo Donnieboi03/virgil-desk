@@ -93,6 +93,15 @@ def fake_command_result(
             "url_before": url,
             "url_after": f"{url}#applied",
         }
+    elif op == "fill":
+        result["act_resolved"] = {
+            "op": "fill",
+            "requested": {"target_id": 3, "value": "ada@example.com"},
+            "used": "target_id",
+            "hit": {"ref": "t3", "tag": "input", "center": {"x": 80, "y": 40}},
+            "url_before": url,
+            "url_after": url,
+        }
     return result
 
 

@@ -33,6 +33,7 @@ const BUNDLE_FILE = "interactObserve.bundle.js";
 const HANDOFF_URLS_KEY = "virgil_desk_handoff_urls";
 
 let ws = null;
+let wsReconnectTimer = null;
 let hostUrl = DEFAULT_HOST;
 let deskConfig = {
   browser: {
@@ -97,6 +98,9 @@ chrome.storage.onChanged.addListener((changes, area) => {
   if (typeof next === "string" && next) {
     hostUrl = next;
     connectWs();
+  } else {
+    hostUrl = "";
+    closeWs({ reconnect: false });
   }
 });
 
@@ -353,7 +357,47 @@ async function savePanelMeta(partial) {
   chrome.runtime.sendMessage({ type: "panelMetaUpdated", meta }).catch(() => {});
 }
 
+function closeWs({ reconnect = false } = {}) {
+  if (wsReconnectTimer) {
+    clearTimeout(wsReconnectTimer);
+    wsReconnectTimer = null;
+  }
+  if (ws) {
+    try {
+      ws.onclose = null;
+      ws.onerror = null;
+      ws.onmessage = null;
+      ws.onopen = null;
+      ws.close();
+    } catch {
+      /* ignore */
+    }
+    ws = null;
+  }
+  wsConnected = false;
+  if (reconnect && hostUrl) {
+    wsReconnectTimer = setTimeout(connectWs, 3000);
+  }
+}
+
 function connectWs() {
+  if (wsReconnectTimer) {
+    clearTimeout(wsReconnectTimer);
+    wsReconnectTimer = null;
+  }
+  if (!hostUrl) {
+    closeWs({ reconnect: false });
+    return;
+  }
+  if (ws) {
+    try {
+      ws.onclose = null;
+      ws.close();
+    } catch {
+      /* ignore */
+    }
+    ws = null;
+  }
   try {
     ws = new WebSocket(wsUrl());
   } catch {
@@ -464,7 +508,8 @@ function connectWs() {
   ws.onclose = () => {
     wsConnected = false;
     chrome.runtime.sendMessage({ type: "connectionUpdated", wsConnected: false }).catch(() => {});
-    setTimeout(connectWs, 3000);
+    if (!hostUrl) return;
+    wsReconnectTimer = setTimeout(connectWs, 3000);
   };
 }
 
@@ -776,9 +821,42 @@ async function scrapeTab(tabId) {
   }
 }
 
-async function settleTabAfterOpen() {
+async function settleTabAfterOpen(tabId) {
   const ms = deskConfig.browser?.default_wait_ms ?? 500;
-  await new Promise((r) => setTimeout(r, ms));
+  if (tabId == null) {
+    await new Promise((r) => setTimeout(r, ms));
+    return;
+  }
+  try {
+    const tab = await chrome.tabs.get(tabId);
+    if (tab?.status === "complete") {
+      await new Promise((r) => setTimeout(r, Math.min(ms, 200)));
+      return;
+    }
+  } catch {
+    await new Promise((r) => setTimeout(r, ms));
+    return;
+  }
+  await new Promise((resolve) => {
+    const timeoutMs = Math.max(ms, 2000);
+    const timer = setTimeout(() => {
+      chrome.tabs.onUpdated.removeListener(onUpdated);
+      resolve();
+    }, timeoutMs);
+    function onUpdated(id, info) {
+      if (id === tabId && info.status === "complete") {
+        clearTimeout(timer);
+        chrome.tabs.onUpdated.removeListener(onUpdated);
+        resolve();
+      }
+    }
+    chrome.tabs.onUpdated.addListener(onUpdated);
+  });
+}
+
+/** Safe first-frame result from chrome.scripting.executeScript (may be empty). */
+function scriptInjectionResult(injected, fallback = null) {
+  return injected?.[0]?.result ?? fallback;
 }
 
 function scrollViewportRatio() {
@@ -831,15 +909,25 @@ async function injectInteractBundle(tabId, { allFrames = false } = {}) {
 }
 
 async function readViewportMeta(tabId) {
-  const [{ result }] = await chrome.scripting.executeScript({
-    target: { tabId },
-    func: () => ({
-      w: window.innerWidth,
-      h: window.innerHeight,
-      device_pixel_ratio: window.devicePixelRatio || 1,
-    }),
-  });
-  return result;
+  try {
+    const injected = await chrome.scripting.executeScript({
+      target: { tabId },
+      func: () => ({
+        w: window.innerWidth,
+        h: window.innerHeight,
+        device_pixel_ratio: window.devicePixelRatio || 1,
+      }),
+    });
+    return (
+      scriptInjectionResult(injected) || {
+        w: 0,
+        h: 0,
+        device_pixel_ratio: 1,
+      }
+    );
+  } catch {
+    return { w: 0, h: 0, device_pixel_ratio: 1 };
+  }
 }
 
 async function runPageObserve(tabId, opts) {
@@ -945,13 +1033,13 @@ async function runPageAct(tabId, op, params, targets, urlBefore) {
     Number.isFinite(frameId) && frameId > 0
       ? { tabId, frameIds: [frameId] }
       : { tabId };
-  const [{ result }] = await chrome.scripting.executeScript({
+  const injected = await chrome.scripting.executeScript({
     target,
     world: "MAIN",
     func: (operation, p, t, before) => globalThis.deskAct(operation, p, t, before),
     args: [op, params, targets, urlBefore],
   });
-  return result;
+  return scriptInjectionResult(injected) || { ok: false, error: "act inject returned null" };
 }
 
 async function runPageProbe(tabId, kind) {
@@ -1041,29 +1129,33 @@ async function screenshotTab(tabId) {
 }
 
 async function screenshotTabCanvas(tabId) {
-  const [{ result }] = await chrome.scripting.executeScript({
-    target: { tabId },
-    func: async () => {
-      const w = Math.min(document.documentElement.scrollWidth, 1280);
-      const h = Math.min(window.innerHeight, 1600);
-      const canvas = document.createElement("canvas");
-      canvas.width = w;
-      canvas.height = h;
-      const ctx = canvas.getContext("2d");
-      ctx.fillStyle = "#ffffff";
-      ctx.fillRect(0, 0, w, h);
-      const text = (document.body?.innerText || "").slice(0, 500);
-      ctx.fillStyle = "#111";
-      ctx.font = "14px sans-serif";
-      text.split("\n").slice(0, 40).forEach((line, i) => {
-        ctx.fillText(line.slice(0, 120), 8, 20 + i * 18);
-      });
-      const dataUrl = canvas.toDataURL("image/png");
-      const base64 = dataUrl.split(",")[1] || "";
-      return { mime: "image/png", base64, width: w, height: h };
-    },
-  });
-  return result;
+  try {
+    const injected = await chrome.scripting.executeScript({
+      target: { tabId },
+      func: async () => {
+        const w = Math.min(document.documentElement.scrollWidth, 1280);
+        const h = Math.min(window.innerHeight, 1600);
+        const canvas = document.createElement("canvas");
+        canvas.width = w;
+        canvas.height = h;
+        const ctx = canvas.getContext("2d");
+        ctx.fillStyle = "#ffffff";
+        ctx.fillRect(0, 0, w, h);
+        const text = (document.body?.innerText || "").slice(0, 500);
+        ctx.fillStyle = "#111";
+        ctx.font = "14px sans-serif";
+        text.split("\n").slice(0, 40).forEach((line, i) => {
+          ctx.fillText(line.slice(0, 120), 8, 20 + i * 18);
+        });
+        const dataUrl = canvas.toDataURL("image/png");
+        const base64 = dataUrl.split(",")[1] || "";
+        return { mime: "image/png", base64, width: w, height: h };
+      },
+    });
+    return scriptInjectionResult(injected);
+  } catch {
+    return null;
+  }
 }
 
 async function ensureTargetMapFresh(stored, runId, tabId, urlBeforeAct) {
@@ -1129,11 +1221,11 @@ async function runBrowserCommand(command) {
     if (command.op === "duplicateTab") {
       const resolved = await resolveAgentTab(command);
       tabId = resolved.tabId;
-      await settleTabAfterOpen();
+      await settleTabAfterOpen(tabId);
     } else if (command.op === "openTab") {
       const resolved = await resolveAgentTab({ ...command, op: "openTab" });
       tabId = resolved.tabId;
-      await settleTabAfterOpen();
+      await settleTabAfterOpen(tabId);
     }
 
     const block = policyBlock(command, tabId);
@@ -1364,7 +1456,7 @@ async function runBrowserCommand(command) {
             duration_ms: Date.now() - started,
           };
         }
-        const [{ result: clicked }] = await chrome.scripting.executeScript({
+        const injected = await chrome.scripting.executeScript({
           target: { tabId },
           func: (s) => {
             const el = document.querySelector(s);
@@ -1374,6 +1466,7 @@ async function runBrowserCommand(command) {
           },
           args: [params.selector],
         });
+        const clicked = scriptInjectionResult(injected, false);
         if (!clicked) {
           return {
             ...base,
@@ -1443,7 +1536,7 @@ async function runBrowserCommand(command) {
       } else if (params.selector) {
         const sel = params.selector;
         const val = params.value || "";
-        const [{ result: filled }] = await chrome.scripting.executeScript({
+        const injected = await chrome.scripting.executeScript({
           target: { tabId },
           func: (s, v) => {
             const el = document.querySelector(s);
@@ -1454,6 +1547,7 @@ async function runBrowserCommand(command) {
           },
           args: [sel, val],
         });
+        const filled = scriptInjectionResult(injected, false);
         if (!filled) {
           return {
             ...base,

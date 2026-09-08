@@ -81,6 +81,10 @@ def test_failed_open_tab_blocks_reviewed():
         failed_ops=["openTab"],
         summary="Reviewed Gmail inbox for payment emails.",
     )
+    assert failed_open_tab_blocks_done(
+        failed_ops=["openTab"],
+        summary="Finished extracting the deadline from the thread.",
+    )
     assert (
         failed_open_tab_blocks_done(
             failed_ops=["openTab"],

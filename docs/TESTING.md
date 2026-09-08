@@ -7,7 +7,7 @@
 | Host unit + integration | `npm run test:host` |
 | **E2E (mock extension)** | `npm run test:e2e` |
 | **Playwright (extension load + handoff smoke)** | `npm run test:playwright` |
-| **All** | `npm run test:all` |
+| **All** (incl. Playwright) | `npm run test:all` |
 
 ## Mock WebSocket E2E
 

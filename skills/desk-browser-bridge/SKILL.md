@@ -73,7 +73,7 @@ See [`docs/BROWSER_LAYER.md`](../docs/BROWSER_LAYER.md).
 ## Auth wall / empty Eyes
 
 - **Login / CAPTCHA / auth wall:** `mint_item` → **You** + `openTab placement=human` + stop thrashing (`Partial:`).
-- **Hostile/empty Eyes:** soft-help You via `mint_item` (keywords / draft / checklist toward the goal). Do not claim Observed success from blank scrape.
+- **Hostile/empty Eyes:** soft-help via `mint_item` → **You** (keywords / draft / checklist toward the goal). Playbook = that mint's wording — not a separate API. Do not claim Observed success from blank scrape.
 - Prefer DOM Eyes first; URL construction only after Eyes fail.
 
 ## Observe–act–observe
