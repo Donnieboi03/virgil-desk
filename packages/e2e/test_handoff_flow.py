@@ -279,3 +279,107 @@ def test_open_tab_placement_human_passthrough():
             assert pending["holder"][0]["status"] == 200
         finally:
             ext.close()
+
+
+def test_open_tab_result_includes_tab_id():
+    with TestClient(app) as client:
+        ext = MockExtensionSession(client)
+        try:
+            result = ext.handoff(
+                {
+                    "url": "https://example.com/job/1",
+                    "human_tab_id": 5,
+                    "window_id": 1,
+                }
+            )
+            run_id = result["run_id"]
+            pending = run_browser_wait(
+                client,
+                {
+                    "run_id": run_id,
+                    "op": "openTab",
+                    "url": "https://docs.example.com/doc",
+                    "human_tab_id": 5,
+                    "tab_id": 202,
+                },
+            )
+            handled = ext.respond_next_browser_command(run_id=run_id)
+            assert handled["result"].get("tab_id") == 202
+            pending["thread"].join(timeout=5)
+            assert pending["holder"][0]["json"]["result"]["tab_id"] == 202
+        finally:
+            ext.close()
+
+
+def test_failed_command_result_carries_error_fields(tmp_path, monkeypatch):
+    monkeypatch.setenv("DESK_LOG_DIR", str(tmp_path / "logs"))
+    from desk_host.observability import read_events
+
+    with TestClient(app) as client:
+        ext = MockExtensionSession(client)
+        try:
+            result = ext.handoff(
+                {
+                    "url": "https://mail.example.com/inbox",
+                    "human_tab_id": 5,
+                    "window_id": 1,
+                }
+            )
+            run_id = result["run_id"]
+            pending = run_browser_wait(
+                client,
+                {
+                    "run_id": run_id,
+                    "op": "scrape",
+                    "human_tab_id": 5,
+                    "tab_id": 202,
+                },
+            )
+            ext.respond_next_browser_command(
+                run_id=run_id,
+                op="scrape",
+                url="",
+                ok=False,
+                error="inject returned null",
+            )
+            pending["thread"].join(timeout=5)
+            body = pending["holder"][0]["json"]["result"]
+            assert body["ok"] is False
+            assert body.get("error")
+            rows = [
+                r
+                for r in read_events(run_id=run_id)
+                if r.get("kind") == "browser.command_result"
+            ]
+            assert rows[-1].get("error")
+            assert rows[-1].get("tab_id") == 202
+        finally:
+            ext.close()
+
+
+def test_close_tab_without_tab_id_rejected_e2e():
+    with TestClient(app) as client:
+        ext = MockExtensionSession(client)
+        try:
+            result = ext.handoff(
+                {
+                    "url": "https://example.com/job/1",
+                    "human_tab_id": 5,
+                    "window_id": 1,
+                }
+            )
+            run_id = result["run_id"]
+            pending = run_browser_wait(
+                client,
+                {
+                    "run_id": run_id,
+                    "op": "closeTab",
+                    "human_tab_id": 5,
+                },
+            )
+            pending["thread"].join(timeout=5)
+            body = pending["holder"][0]["json"]["result"]
+            assert body["ok"] is False
+            assert "closeTab requires tab_id" in body["error"]
+        finally:
+            ext.close()

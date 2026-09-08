@@ -15,7 +15,12 @@
 
 ## Playwright
 
-See [`packages/e2e/playwright/README.md`](../packages/e2e/playwright/README.md). Loads unpacked extension in headed Chromium and POSTs a REST handoff against a test Host on port 8799.
+See [`packages/e2e/playwright/README.md`](../packages/e2e/playwright/README.md). Loads unpacked extension in headed Chromium:
+
+- Smoke handoff (`example.com`)
+- Form fixture Eyes/Hands (`tests/manual/path_b_smoke.html`)
+- Public-page observe
+- Optional live Gmail/LinkedIn: `DESK_E2E_LIVE=1` (not CI)
 
 Local headed:
 

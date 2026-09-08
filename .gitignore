@@ -13,6 +13,7 @@ runs/
 .DS_Store
 packages/extension/dist/
 packages/e2e/playwright/.pw-user-data/
+packages/e2e/playwright/.pw-user-data-*/
 packages/e2e/playwright/node_modules/
 packages/e2e/playwright/test-results/
 *.egg-info/

@@ -91,6 +91,15 @@ chrome.storage.sync.get(["hostUrl"], (data) => {
   connectWs();
 });
 
+chrome.storage.onChanged.addListener((changes, area) => {
+  if (area !== "sync" || !changes.hostUrl) return;
+  const next = changes.hostUrl.newValue;
+  if (typeof next === "string" && next) {
+    hostUrl = next;
+    connectWs();
+  }
+});
+
 chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
   if (msg.type === "getPanelMeta") {
     chrome.storage.local.get(META_KEY).then((data) => sendResponse(data[META_KEY] || {}));

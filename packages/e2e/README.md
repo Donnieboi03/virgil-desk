@@ -15,6 +15,7 @@ Coverage:
 5. Handoff **without** `agent_tab_id` still decomposes (defer tabs until Run agent / PATCH)
 6. `openTab` with `params.placement=human` forwarded to the extension
 7. Host integration: `mint_item` board_patch + parent done blocked while agent children open (see `packages/host/tests/integration/test_execute_agent.py`)
+8. `openTab` result includes `tab_id`; failed scrape logs `error`/`tab_id`; `closeTab` without `tab_id` rejected
 
 Helper: `packages/host/tests/helpers/mock_extension.py`
 
