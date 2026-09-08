@@ -146,7 +146,7 @@ async def test_execute_uses_execute_model_and_hooks_off(monkeypatch):
     assert captured["accept_hooks"] is False
     assert cfg.hermes.execute_accept_hooks is False
     assert captured["max_turns"] == cfg.hermes.execute_max_turns
-    assert cfg.hermes.execute_max_turns == 20
+    assert cfg.hermes.execute_max_turns == 40
 
 
 @pytest.mark.asyncio
@@ -244,3 +244,13 @@ def test_format_hermes_failure_prefers_api_stderr():
 def test_format_hermes_summary_drops_session_only():
     assert format_hermes_summary("session_id: abc\n", 200) == ""
     assert format_hermes_summary("Done.\nsession_id: abc\n", 200) == "Done."
+
+
+def test_format_hermes_summary_strips_max_iter_banner():
+    raw = (
+        "⚠️  Reached maximum iterations (40). Requesting summary...\n"
+        "Reviewed thread body with cash on hand details."
+    )
+    assert format_hermes_summary(raw, 200) == (
+        "Reviewed thread body with cash on hand details."
+    )

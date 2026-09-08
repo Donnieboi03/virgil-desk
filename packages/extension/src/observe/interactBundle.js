@@ -274,7 +274,7 @@ export function targetSortKeyFromTarget(t) {
 }
 
 export function deskObserve(opts = {}) {
-  const maxTargets = opts.maxTargets ?? 80;
+  const maxTargets = opts.maxTargets ?? 40;
   const annotate = opts.annotate !== false;
   let interact_targets = [];
   try {
@@ -647,7 +647,7 @@ function axStructural(el) {
 /** Compact accessibility-ish tree for Eyes (URL-change only). */
 export function deskPageTree(opts = {}) {
   const maxNodes = opts.maxNodes ?? 400;
-  const maxChars = opts.maxChars ?? 8000;
+  const maxChars = opts.maxChars ?? 2000;
   let nodeCount = 0;
   const lines = [`Page: ${document.title}`, `URL: ${location.href}`, ""];
 

@@ -37,19 +37,19 @@ let deskConfig = {
   browser: {
     scrape_text_max_chars: 16000,
     scrape_links_max: 200,
-    scrape_excerpt_max_chars: 12000,
+    scrape_excerpt_max_chars: 4000,
     handoff_excerpt_max_chars: 12000,
     handoff_scroll_loops: 2,
     handoff_scroll_viewport_ratio: 0.85,
     screenshot_mode: "captureVisibleTab",
     default_wait_ms: 500,
-    interact_targets_max: 80,
+    interact_targets_max: 40,
     observe_annotate_default: true,
     act_stall_max: 3,
-    observe_followup_excerpt_max_chars: 4000,
+    observe_followup_excerpt_max_chars: 2000,
     observe_skip_screenshot_default: true,
     observe_all_frames: true,
-    page_tree_max_chars: 8000,
+    page_tree_max_chars: 2000,
     page_tree_max_nodes: 400,
   },
   memory: {
@@ -716,7 +716,7 @@ async function runPageObserve(tabId, opts) {
     func: (o) => globalThis.deskObserve(o),
     args: [opts],
   });
-  const maxTargets = opts.maxTargets ?? 80;
+  const maxTargets = opts.maxTargets ?? 40;
   const collected = [];
   const scroll_containers = [];
   let primary = results?.[0]?.result || {};
@@ -758,7 +758,7 @@ async function runPageTree(tabId, { includeTree }) {
   if (!includeTree) return null;
   const allFrames = observeAllFrames();
   await injectInteractBundle(tabId, { allFrames });
-  const maxChars = deskConfig.browser?.page_tree_max_chars ?? 8000;
+  const maxChars = deskConfig.browser?.page_tree_max_chars ?? 2000;
   const maxNodes = deskConfig.browser?.page_tree_max_nodes ?? 400;
   const results = await chrome.scripting.executeScript({
     target: allFrames ? { tabId, allFrames: true } : { tabId },
@@ -948,9 +948,9 @@ async function ensureTargetMapFresh(stored, runId, tabId, urlBeforeAct) {
 }
 
 function applyExcerptPolicy(runId, tabId, url, rawText) {
-  const fullMax = deskConfig.browser?.scrape_excerpt_max_chars ?? 8000;
+  const fullMax = deskConfig.browser?.scrape_excerpt_max_chars ?? 4000;
   const followupMax =
-    deskConfig.browser?.observe_followup_excerpt_max_chars ?? 4000;
+    deskConfig.browser?.observe_followup_excerpt_max_chars ?? 2000;
   const decided = decideExcerpt({
     url: url || "",
     text: rawText || "",
@@ -1005,7 +1005,7 @@ async function runBrowserCommand(command) {
     }
 
     if (command.op === "observe") {
-      const maxTargets = deskConfig.browser?.interact_targets_max ?? 80;
+      const maxTargets = deskConfig.browser?.interact_targets_max ?? 40;
       const annotate =
         command.params?.annotate ??
         deskConfig.browser?.observe_annotate_default ??

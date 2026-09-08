@@ -49,7 +49,7 @@ Optional body field: `skip_screenshot` (Path B observe defaults true via `observ
 
 Required: `command_id`, `ok`, `duration_ms`. **`observe`** adds slim `interact_targets`, optional `page_tree` (URL change), `viewport`, `device_pixel_ratio`. Mutating ops add `act_resolved`; post-act screenshots are skipped when Path B skip-screenshot default is on.
 
-Same-URL follow-up `observe` may set `text_omitted: true` and omit `page_tree` while keeping targets; URL changes get a capped follow-up excerpt (`browser.observe_followup_excerpt_max_chars`).
+Same-URL follow-up `observe` may set `text_omitted: true` and omit `page_tree` while keeping targets; URL changes get a capped follow-up excerpt (`browser.observe_followup_excerpt_max_chars`, default 2000). Full observe excerpt defaults to `browser.scrape_excerpt_max_chars` (4000); `page_tree` defaults to 2000 chars.
 
 **`desk-browser` CLI** prints a thin Eyes/Hands envelope: screenshot **base64 stripped**; target geometry (`text`/`rect`/`center`) stripped to `{id,ref,kind,label,frame_id}`.
 
@@ -57,7 +57,7 @@ Same-URL follow-up `observe` may set `text_omitted: true` and omit `page_tree` w
 
 - Decompose: `hermes.decompose_model` (default `google/gemini-3.1-flash-lite`); no `--accept-hooks`.
 - Execute: `hermes.execute_model` (default `google/gemini-3.7-flash`); `hermes.execute_accept_hooks: false` (single-agent `terminal` + `skills` + desk-browser — no compound-topology hooks).
-- Execute tool-loop cap: `hermes.execute_max_turns` (default `20`) → Hermes `--max-turns` (decompose does not set it).
+- Execute tool-loop cap: `hermes.execute_max_turns` (default `40`) → Hermes `--max-turns` (decompose does not set it).
 
 ## WorkItem fields (runtime)
 

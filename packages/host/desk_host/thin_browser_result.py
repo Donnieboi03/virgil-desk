@@ -7,6 +7,10 @@ from typing import Any
 
 # Hermes Eyes: keep act handles only (coords stay in extension targetMap).
 _TARGET_KEEP = frozenset({"id", "ref", "kind", "label", "frame_id"})
+# Nested observe keeps metadata only — targets/tree/excerpt live at top-level.
+_OBSERVE_META_KEEP = frozenset(
+    {"url", "title", "text_omitted", "excerpt_note", "viewport", "device_pixel_ratio"}
+)
 
 
 def _thin_screenshot(shot: Any) -> dict[str, Any] | None:
@@ -47,6 +51,19 @@ def _thin_scroll_containers(containers: Any) -> list[dict[str, Any]]:
     return out
 
 
+def _thin_nested_observe(observe: Any) -> dict[str, Any] | None:
+    if not isinstance(observe, dict):
+        return None
+    out: dict[str, Any] = {
+        k: observe[k] for k in _OBSERVE_META_KEEP if k in observe and observe[k] is not None
+    }
+    if "screenshot" in observe:
+        out["screenshot"] = _thin_screenshot(observe.get("screenshot")) or {
+            "omitted": True
+        }
+    return out
+
+
 def _thin_result_body(result: dict[str, Any]) -> dict[str, Any]:
     """Strip screenshot base64 and fat target geometry; keep Eyes/Hands Hermes needs."""
     thinned = deepcopy(result)
@@ -69,22 +86,12 @@ def _thin_result_body(result: dict[str, Any]) -> dict[str, Any]:
             thinned.get("scroll_containers")
         )
 
-    observe = thinned.get("observe")
-    if isinstance(observe, dict):
-        observe = dict(observe)
-        if "screenshot" in observe:
-            observe["screenshot"] = _thin_screenshot(observe.get("screenshot")) or {
-                "omitted": True
-            }
-        if "interact_targets" in observe:
-            observe["interact_targets"] = _thin_interact_targets(
-                observe.get("interact_targets")
-            )
-        if "scroll_containers" in observe:
-            observe["scroll_containers"] = _thin_scroll_containers(
-                observe.get("scroll_containers")
-            )
-        thinned["observe"] = observe
+    if "observe" in thinned:
+        nested = _thin_nested_observe(thinned.get("observe"))
+        if nested is not None:
+            thinned["observe"] = nested
+        else:
+            thinned.pop("observe", None)
 
     return thinned
 
@@ -95,6 +102,9 @@ def thin_browser_response(payload: dict[str, Any]) -> dict[str, Any]:
 
     Does not mutate the original. Extension/host evidence paths are unchanged;
     only CLI stdout should use this.
+
+    Drops nested ``observe.interact_targets`` / ``page_tree`` / excerpt copies when
+    the same fields exist at top-level (avoids ~2× Eyes token burn).
     """
     out = deepcopy(payload)
     result = out.get("result")

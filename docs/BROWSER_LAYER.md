@@ -17,8 +17,8 @@ Three Eyes channels (no vision by default):
 
 | Channel | When | Hermes sees |
 |---------|------|-------------|
-| Slim WebMarker targets | every `observe` | `{id, ref, kind, label, frame_id?}` (max 80; conversation rows prioritized) |
-| AX `page_tree` | URL change only | capped role/label tree (open shadow + allFrames) |
+| Slim WebMarker targets | every `observe` | `{id, ref, kind, label, frame_id?}` (max 40; conversation rows prioritized) |
+| AX `page_tree` | URL change only | capped role/label tree (≤2k chars; open shadow + allFrames) |
 | Probes | on demand | `probe_form` / `probe_links` / `probe_table` |
 
 - Hands: **`target_id`** only (coords kept in extension `targetMap`, stripped from CLI).

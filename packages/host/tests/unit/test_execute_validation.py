@@ -1,6 +1,9 @@
 """Execute summary failure detection."""
 
-from desk_host.execute_validation import execute_summary_indicates_failure
+from desk_host.execute_validation import (
+    execute_summary_indicates_failure,
+    strip_max_iter_banner,
+)
 
 
 def test_detects_timeout_denying_command():
@@ -12,10 +15,28 @@ def test_detects_policy_blocked():
     assert execute_summary_indicates_failure("blocked due to user policy restrictions")
 
 
-def test_detects_max_iterations_and_partial():
-    assert execute_summary_indicates_failure("Reached maximum iterations")
-    assert execute_summary_indicates_failure("Partial: searched inbox but could not open thread")
+def test_detects_partial_not_max_iterations():
+    assert not execute_summary_indicates_failure("Reached maximum iterations")
+    assert not execute_summary_indicates_failure(
+        "⚠️  Reached maximum iterations (20). Requesting summary...\n"
+        "Reviewed Engevity August 2026 Monthly Update from Deilen Davis."
+    )
+    assert execute_summary_indicates_failure(
+        "Partial: searched inbox but could not open thread"
+    )
+
+
+def test_strip_max_iter_banner():
+    raw = (
+        "⚠️  Reached maximum iterations (20). Requesting summary...\n"
+        "Reviewed Engevity August 2026 Monthly Update from Deilen Davis."
+    )
+    assert strip_max_iter_banner(raw) == (
+        "Reviewed Engevity August 2026 Monthly Update from Deilen Davis."
+    )
 
 
 def test_accepts_normal_summary():
-    assert not execute_summary_indicates_failure("Reviewed inbox scrape; Cursor payment email visible.")
+    assert not execute_summary_indicates_failure(
+        "Reviewed inbox scrape; Cursor payment email visible."
+    )

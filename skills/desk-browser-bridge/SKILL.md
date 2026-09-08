@@ -3,7 +3,7 @@ name: desk-browser-bridge
 description: >-
   Virgil Desk browser bridge: desk-browser CLI, Path B extension Eyes/Hands
   (default) or harness CDP rollback, You/Agent/Waiting board, Accept/Deny proposals.
-version: 1.6.0
+version: 1.7.0
 metadata:
   hermes:
     tags: [virgil-desk, browser, handoff]
@@ -77,6 +77,8 @@ Check `act_resolved.url_before` vs `url_after` when opening threads or navigatin
 - **Must open** the matching message/thread (row `target_id` whose label matches sender/subject) and re-observe body/URL before summarizing.
 - **List or search snippets are not done** — never finish from inbox preview alone.
 - Prefer row targets with sender/subject in `label`. **Forbidden:** bare CSS `tr.zA`, `tr.zE`, or `[role=row]` (ambiguous; wrong-row risk). Extension rejects those selectors.
+- **Stop when done** — after open + body (or task complete), one-line summary and stop; do not burn remaining turns. Turn ceiling is backup only.
+- After the thread is open, **may** follow relevant in-body links (Drive/docs/attachments); summarize; not an exhaustive crawl. Still forbid send/pay/public post.
 - Tool budget exhausted without opening → one-line `Partial: …` (not a success claim).
 
 ## Forbidden
@@ -101,4 +103,4 @@ Operator clicks **Run agent** on Agent column items. Hermes uses `desk-browser` 
 
 ## Budget
 
-Host caps `browser.screenshot_max_per_run` per `run_id`. Execute also passes Hermes `--max-turns` from `hermes.execute_max_turns` (default 20) — when hit, emit a one-line `Partial:` summary and stop. If the provider aborts/stalls mid-turn, stop with `Partial:` rather than thrashing observes.
+Host caps `browser.screenshot_max_per_run` per `run_id`. Execute also passes Hermes `--max-turns` from `hermes.execute_max_turns` (default 40) — prefer self-stop when criteria are met. If the ceiling is hit without opening/reading, emit a one-line `Partial:` summary and stop. If the provider aborts/stalls mid-turn, stop with `Partial:` rather than thrashing observes.

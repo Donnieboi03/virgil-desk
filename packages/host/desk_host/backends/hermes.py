@@ -15,7 +15,10 @@ from ..backends import new_run_id
 from ..config import load_config
 from ..decompose_parser import DecomposeError, parse_decompose_json
 from ..observability import record
-from ..execute_validation import execute_summary_indicates_failure
+from ..execute_validation import (
+    execute_summary_indicates_failure,
+    strip_max_iter_banner,
+)
 from ..prompt_render import render_prompt
 from ..screenshot_store import persist_handoff_screenshot
 
@@ -44,7 +47,7 @@ def strip_session_id_noise(text: str) -> str:
 
 
 def format_hermes_summary(text: str, max_chars: int) -> str:
-    cleaned = strip_session_id_noise(text)
+    cleaned = strip_max_iter_banner(strip_session_id_noise(text))
     if not cleaned:
         return ""
     return cleaned[:max_chars]

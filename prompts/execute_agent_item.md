@@ -18,6 +18,7 @@ For inbox / email / message-list work items:
 2. **List / search preview is not done.** Inbox rows, search result lines, or snippet text alone must not be treated as the final answer.
 3. **If you cannot open the thread** (wrong row, no matching target, stall, or tool budget exhausted): reply with a one-line **partial** summary starting with `Partial:` — do not claim success from the list.
 4. Prefer conversation-row `target_id`s (labels with sender/subject). **Never** use bare CSS like `tr.zA` / `[role=row]` — those hit the wrong row.
+5. **Stop when done.** After open + body (or non-list task complete), reply with a one-line success summary and **stop immediately** — do not burn remaining tool turns. The host turn ceiling is a backup only.
 
 ## Rules
 
@@ -41,10 +42,10 @@ For inbox / email / message-list work items:
    desk-browser --run-id RUN --op observe --human-tab-id HUMAN --tab-id AGENT --wait
    ```
 8. Minimize redundant `observe` calls — re-observe after navigation or when unsure of viewport, not after every act.
-9. Stay on the agent work surface; do not follow off-site links for inbox triage.
-10. If a command returns **`stall_detected`** or repeated `used:none`, re-`observe` once; if still stuck, stop and reply with a one-line partial summary.
-11. Host caps tool-calling iterations (`hermes.execute_max_turns`). When the tool budget is exhausted or you cannot finish, reply with a **one-line `Partial:` summary** and stop — no more tools.
-12. When done after opening the thread (or non-list tasks), reply with a one-line summary of what you observed (plain text).
+9. **After the thread is open**, you may opportunistically follow **relevant** in-body links (Drive, Docs, calendar, same-task attachments), summarize what you find, then stop. Do not crawl every link. Stay task-focused; still never send/pay/post.
+10. If a command returns **`stall_detected`** or repeated `used:none`, re-`observe` once; if still stuck, stop and reply with a one-line `Partial:` summary.
+11. Host caps tool-calling iterations (`hermes.execute_max_turns`). Prefer finishing early. If the ceiling is hit without meeting success criteria, reply with a **one-line `Partial:` summary** and stop — no more tools.
+12. When done after opening the thread (or non-list tasks), reply with a one-line summary of what you observed (plain text) and stop.
 
 ## Rollback
 

@@ -85,3 +85,57 @@ def test_thins_nested_observe_screenshot():
     out = thin_browser_response(payload)
     assert out["result"]["observe"]["screenshot"]["omitted"] is True
     assert "base64" not in out["result"]["observe"]["screenshot"]
+    assert "text_excerpt" not in out["result"]["observe"]
+
+
+def test_dedupes_nested_observe_eyes_fields():
+    payload = {
+        "ok": True,
+        "result": {
+            "ok": True,
+            "url": "https://mail.example/inbox",
+            "title": "Inbox",
+            "scrape_excerpt": "body",
+            "page_tree": "[main] inbox",
+            "interact_targets": [
+                {"id": 1, "ref": "t1", "kind": "clickable", "label": "Row A", "frame_id": 0}
+            ],
+            "scroll_containers": [
+                {"id": 1, "ref": "s1", "label": "list", "scrollHeight": 10, "clientHeight": 5}
+            ],
+            "observe": {
+                "url": "https://mail.example/inbox",
+                "title": "Inbox",
+                "text_excerpt": "body",
+                "text_omitted": False,
+                "excerpt_note": None,
+                "page_tree": "[main] inbox DUPLICATE",
+                "interact_targets": [
+                    {
+                        "id": 1,
+                        "ref": "t1",
+                        "kind": "clickable",
+                        "label": "Row A",
+                        "text": "fat",
+                        "rect": {"x": 0},
+                        "frame_id": 0,
+                    }
+                ],
+                "scroll_containers": [{"id": 1, "ref": "s1", "label": "list"}],
+                "viewport": {"w": 100, "h": 200},
+            },
+        },
+    }
+    out = thin_browser_response(payload)
+    result = out["result"]
+    assert result["interact_targets"][0]["label"] == "Row A"
+    assert result["scrape_excerpt"] == "body"
+    assert result["page_tree"] == "[main] inbox"
+    obs = result["observe"]
+    assert obs["url"] == "https://mail.example/inbox"
+    assert obs["title"] == "Inbox"
+    assert obs["viewport"] == {"w": 100, "h": 200}
+    assert "interact_targets" not in obs
+    assert "scroll_containers" not in obs
+    assert "page_tree" not in obs
+    assert "text_excerpt" not in obs

@@ -13,10 +13,22 @@ EXECUTE_FAILURE_RE = re.compile(
     r"|I have paused"
     r"|cannot (?:proceed|run|execute)"
     r"|was blocked"
-    r"|reached maximum iterations?"
-    r"|maximum iterations? reached"
     r"|^\s*partial\s*:)",
 )
+
+# Hermes prepends this when --max-turns is hit; not a task failure by itself.
+_MAX_ITER_BANNER = re.compile(
+    r"(?im)"
+    r"^\s*(?:⚠️\s*)?Reached maximum iterations(?:\s*\(\d+\))?[^\n]*\n?"
+    r"(?:Requesting summary[^\n]*\n?)?",
+)
+
+
+def strip_max_iter_banner(text: str) -> str:
+    """Drop Hermes max-turns wrap-up banner; keep the real summary body."""
+    if not text:
+        return ""
+    return _MAX_ITER_BANNER.sub("", text).strip()
 
 
 def execute_summary_indicates_failure(text: str) -> bool:
