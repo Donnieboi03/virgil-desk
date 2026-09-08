@@ -217,3 +217,43 @@ def test_ws_execute_cleanup_done_recorded(tmp_path, monkeypatch):
             assert rows[0]["measure"]["closed_tab_count"] == 2
         finally:
             ext.close()
+
+
+def test_ws_close_tab_requires_tab_id(tmp_path, monkeypatch):
+    monkeypatch.setenv("DESK_LOG_DIR", str(tmp_path / "logs"))
+    from desk_host.observability import read_events
+
+    with TestClient(app) as client:
+        ext = MockExtensionSession(client)
+        try:
+            result = ext.handoff(
+                {
+                    "url": "https://example.com/job/1",
+                    "human_tab_id": 101,
+                    "window_id": 1,
+                }
+            )
+            run_id = result["run_id"]
+            pending = run_browser_wait(
+                client,
+                {
+                    "run_id": run_id,
+                    "op": "closeTab",
+                    "human_tab_id": 101,
+                },
+            )
+            # Host rejects without forwarding — do not call respond_next
+            pending["thread"].join(timeout=5)
+            assert pending["holder"][0]["status"] == 200
+            body = pending["holder"][0]["json"]["result"]
+            assert body["ok"] is False
+            assert "closeTab requires tab_id" in (body.get("error") or "")
+            rows = [
+                r
+                for r in read_events(run_id=run_id)
+                if r.get("kind") == "browser.command_result"
+            ]
+            assert rows[-1]["flags"]["ok"] is False
+            assert rows[-1].get("op") == "closeTab"
+        finally:
+            ext.close()

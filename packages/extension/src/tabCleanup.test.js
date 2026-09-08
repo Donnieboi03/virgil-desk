@@ -29,4 +29,24 @@ describe("tabsToCloseForItem", () => {
     };
     expect(tabsToCloseForItem(pair, "agent_0", 1, 10).sort()).toEqual([10, 20]);
   });
+
+  it("excludes parked ids even when listed in spawned", () => {
+    const pair = {
+      humanTabId: 1,
+      items: { agent_0: 10 },
+      spawnedByItem: { agent_0: [20, 30] },
+      humanParkedByItem: { agent_0: [30] },
+    };
+    expect(tabsToCloseForItem(pair, "agent_0", 1, 10).sort()).toEqual([10, 20]);
+  });
+
+  it("excludes parked tabs from sibling items", () => {
+    const pair = {
+      humanTabId: 1,
+      items: { agent_0: 10 },
+      spawnedByItem: { agent_0: [20] },
+      humanParkedByItem: { agent_1: [20] },
+    };
+    expect(tabsToCloseForItem(pair, "agent_0", 1, 10)).toEqual([10]);
+  });
 });

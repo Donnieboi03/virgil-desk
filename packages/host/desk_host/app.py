@@ -617,6 +617,33 @@ async def dispatch_browser_command(command: dict[str, Any]) -> None:
         )
         raise PermissionError(reason)
 
+    if op == "closeTab" and command.get("tab_id") is None:
+        result = {
+            "command_id": cid,
+            "ok": False,
+            "error": "closeTab requires tab_id",
+            "duration_ms": 0,
+            "op": "closeTab",
+        }
+        if cid:
+            _command_results[cid] = result
+            _command_ops.pop(cid, None)
+            _command_evidence_flags.pop(cid, None)
+        fields = browser_command_result_fields(result, op="closeTab")
+        record(
+            "browser.command_result",
+            run_id,
+            cfg=cfg,
+            include_limits=False,
+            measure=fields["measure"],
+            flags=fields["flags"],
+            **fields["detail"],
+        )
+        waiter = _command_waiters.get(cid or "")
+        if waiter and not waiter.done():
+            waiter.set_result(result)
+        return
+
     driver = "harness" if harness_path else "extension"
     record(
         "browser.command",

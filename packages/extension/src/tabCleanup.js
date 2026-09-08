@@ -3,7 +3,7 @@
  */
 
 /**
- * @param {{ humanTabId?: number, agentTabId?: number, items?: Record<string, number>, spawnedByItem?: Record<string, number[]> }} runPair
+ * @param {{ humanTabId?: number, agentTabId?: number, items?: Record<string, number>, spawnedByItem?: Record<string, number[]>, humanParkedByItem?: Record<string, number[]> }} runPair
  * @param {string} itemId
  * @param {number|null|undefined} humanTabId
  * @param {number|null|undefined} agentTabIdFallback
@@ -20,5 +20,11 @@ export function tabsToCloseForItem(runPair, itemId, humanTabId, agentTabIdFallba
   }
   const human = humanTabId != null ? Number(humanTabId) : runPair?.humanTabId;
   if (human != null) ids.delete(Number(human));
+  const parkedByItem = runPair?.humanParkedByItem || {};
+  for (const list of Object.values(parkedByItem)) {
+    for (const id of list || []) {
+      if (id != null) ids.delete(Number(id));
+    }
+  }
   return [...ids].filter((id) => Number.isFinite(id) && id > 0);
 }

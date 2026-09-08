@@ -1541,12 +1541,43 @@ async function runBrowserCommand(command) {
       return out;
     }
 
-    if (command.op === "closeTab" && tabId) {
+    if (command.op === "closeTab") {
+      if (tabId == null || tabId === "") {
+        return {
+          ...base,
+          ok: false,
+          error: "closeTab requires tab_id",
+          duration_ms: Date.now() - started,
+        };
+      }
       const block = policyBlock(command, tabId);
       if (block) {
         return { ...base, ok: false, error: block, duration_ms: Date.now() - started };
       }
       await chrome.tabs.remove(tabId);
+      const runId = command.run_id;
+      if (runId) {
+        const data = await chrome.storage.session.get(PAIRS_KEY);
+        const pairs = data[PAIRS_KEY] || {};
+        const pair = pairs[runId];
+        if (pair) {
+          if (pair.agentTabId === tabId) delete pair.agentTabId;
+          if (pair.items) {
+            for (const [iid, tid] of Object.entries(pair.items)) {
+              if (Number(tid) === Number(tabId)) delete pair.items[iid];
+            }
+          }
+          if (pair.spawnedByItem) {
+            for (const [iid, list] of Object.entries(pair.spawnedByItem)) {
+              pair.spawnedByItem[iid] = (list || []).filter(
+                (id) => Number(id) !== Number(tabId),
+              );
+            }
+          }
+          await chrome.storage.session.set({ [PAIRS_KEY]: pairs });
+        }
+      }
+      clearMapsForTab(tabId);
       return { ...base, tab_id: tabId, duration_ms: Date.now() - started };
     }
 
