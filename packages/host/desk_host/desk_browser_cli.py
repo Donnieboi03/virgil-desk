@@ -12,6 +12,17 @@ import urllib.request
 from desk_host.thin_browser_result import thin_browser_response
 
 
+def _post_json(url: str, body: dict, timeout: float) -> dict:
+    req = urllib.request.Request(
+        url,
+        data=json.dumps(body).encode("utf-8"),
+        headers={"Content-Type": "application/json"},
+        method="POST",
+    )
+    with urllib.request.urlopen(req, timeout=timeout) as resp:
+        return json.loads(resp.read().decode("utf-8"))
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description="Virgil Desk browser bridge CLI")
     parser.add_argument("--run-id", required=True)
@@ -40,6 +51,42 @@ def main() -> int:
         print("Invalid --params JSON", file=sys.stderr)
         return 2
 
+    # Mid-flight board mint (not a browser op).
+    if args.op == "mint_item":
+        parent_id = params.get("parent_id")
+        title = params.get("title")
+        column = params.get("column")
+        if not parent_id or not title or not column:
+            print(
+                "mint_item requires --params with parent_id, column, title",
+                file=sys.stderr,
+            )
+            return 2
+        body = {
+            "run_id": args.run_id,
+            "parent_id": parent_id,
+            "column": column,
+            "title": title,
+            "status": params.get("status") or "proposed",
+        }
+        if params.get("hints"):
+            body["hints"] = params["hints"]
+        if params.get("source"):
+            body["source"] = params["source"]
+        elif args.url:
+            body["source"] = {"kind": "handoff", "url": args.url}
+        try:
+            out = _post_json(f"{base}/v1/items/mint", body, args.timeout + 5)
+        except urllib.error.HTTPError as exc:
+            err = exc.read().decode("utf-8", errors="replace")
+            print(err or exc.reason, file=sys.stderr)
+            return 1
+        except urllib.error.URLError as exc:
+            print(str(exc.reason), file=sys.stderr)
+            return 1
+        print(json.dumps(out, indent=2))
+        return 0 if out.get("ok", True) else 1
+
     body: dict = {
         "run_id": args.run_id,
         "op": args.op,
@@ -59,15 +106,8 @@ def main() -> int:
     if args.skip_screenshot:
         body["skip_screenshot"] = True
 
-    req = urllib.request.Request(
-        f"{base}/v1/browser",
-        data=json.dumps(body).encode("utf-8"),
-        headers={"Content-Type": "application/json"},
-        method="POST",
-    )
     try:
-        with urllib.request.urlopen(req, timeout=args.timeout + 5) as resp:
-            out = json.loads(resp.read().decode("utf-8"))
+        out = _post_json(f"{base}/v1/browser", body, args.timeout + 5)
     except urllib.error.HTTPError as exc:
         err = exc.read().decode("utf-8", errors="replace")
         print(err or exc.reason, file=sys.stderr)

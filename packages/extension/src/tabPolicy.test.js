@@ -1,8 +1,10 @@
 import { describe, expect, it } from "vitest";
 import {
   applyBoardPatch,
+  childrenOf,
   chooseNavigationOp,
   policyBlock,
+  selectBoardRoots,
 } from "./tabPolicy.js";
 
 describe("chooseNavigationOp", () => {
@@ -55,5 +57,23 @@ describe("applyBoardPatch", () => {
     const out = applyBoardPatch(board, [{ op: "clear" }, { op: "add", item }]);
     expect(out.you).toHaveLength(0);
     expect(out.agent).toHaveLength(1);
+  });
+
+  it("keeps parent/child relationship helpers", () => {
+    const board = { you: [], agent: [], waiting: [] };
+    const parent = { id: "p1", column: "agent", title: "Parent" };
+    const child = {
+      id: "c1",
+      column: "agent",
+      title: "Child",
+      parent_id: "p1",
+      kind: "subtask",
+    };
+    const out = applyBoardPatch(board, [
+      { op: "add", item: parent },
+      { op: "add", item: child },
+    ]);
+    expect(selectBoardRoots(out.agent).map((i) => i.id)).toEqual(["p1"]);
+    expect(childrenOf(out.agent, "p1").map((i) => i.id)).toEqual(["c1"]);
   });
 });

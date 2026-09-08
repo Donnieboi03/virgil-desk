@@ -301,3 +301,78 @@ def test_complete_you_item():
             assert patch["ops"][0]["item"]["status"] == "done"
         finally:
             ext.close()
+
+
+
+def test_mint_item_board_patch_and_parent_done_blocked(monkeypatch):
+    """mint_item adds child; parent execute stays running while agent child open."""
+    async def quick_execute(_self, item: dict[str, Any], ctx: dict[str, Any]) -> dict[str, Any]:
+        from desk_host.app import dispatch_browser_command_and_wait
+
+        await dispatch_browser_command_and_wait(
+            {
+                "run_id": ctx["run_id"],
+                "op": "scrape",
+                "human_tab_id": ctx.get("human_tab_id"),
+                "tab_id": ctx.get("agent_tab_id") or 2,
+                "count_evidence": True,
+            }
+        )
+        return {"summary": f"worked on {item.get('title')}", "exit_code": 0}
+
+    monkeypatch.setattr(MockBackend, "execute_item", quick_execute)
+    with TestClient(app) as client:
+        ext = MockExtensionSession(client)
+        try:
+            result = ext.handoff(
+                {
+                    "url": "https://example.com/inbox",
+                    "human_tab_id": 1,
+                    "agent_tab_id": 2,
+                    "window_id": 1,
+                }
+            )
+            run_id = result["run_id"]
+            agent = [i for i in result["items"] if i["column"] == "agent"][0]
+            mint = client.post(
+                "/v1/items/mint",
+                json={
+                    "run_id": run_id,
+                    "parent_id": agent["id"],
+                    "column": "agent",
+                    "title": "Open nested Drive doc",
+                },
+            )
+            assert mint.status_code == 200, mint.text
+            child = mint.json()["item"]
+            assert child["parent_id"] == agent["id"]
+            assert child["kind"] == "subtask"
+            patch = ext.ws.receive_json()
+            assert patch["type"] == "board_patch"
+            assert patch["ops"][0]["item"]["id"] == child["id"]
+
+            holder: list = []
+
+            def _execute():
+                holder.append(
+                    client.post(
+                        f"/v1/items/{agent['id']}/execute",
+                        json={"run_id": run_id},
+                    )
+                )
+
+            thread = threading.Thread(target=_execute, daemon=True)
+            thread.start()
+            ext.begin_execute()
+            ext.respond_next_browser_command(run_id=run_id, op="scrape")
+            finished = ext.finish_execute_messages()
+            updated = finished["board_patch"]["ops"][0]["item"]
+            assert updated["status"] == "running"
+            assert "open agent children" in (updated.get("last_error") or "")
+            thread.join(timeout=5)
+            assert holder[0].status_code == 200
+            body = holder[0].json()
+            assert body["status"] == "running"
+            assert body["ok"] is False
+        finally:
+            ext.close()

@@ -25,6 +25,19 @@ export function policyBlock(command, tabId) {
   return null;
 }
 
+/** Root items: no parent_id. */
+export function selectBoardRoots(items) {
+  return (items || []).filter((i) => !i.parent_id);
+}
+
+export function childrenOf(items, parentId) {
+  return (items || []).filter((i) => i.parent_id === parentId);
+}
+
+export function allBoardItems(board) {
+  return [...(board.you || []), ...(board.agent || []), ...(board.waiting || [])];
+}
+
 export function applyBoardPatch(board, ops) {
   const next = {
     you: [...(board.you || [])],
@@ -40,9 +53,10 @@ export function applyBoardPatch(board, ops) {
       next[patch.item.column].push(patch.item);
     } else if (patch.op === "update") {
       const col = patch.item.column;
-      next[col] = next[col].map((item) =>
-        item.id === patch.item.id ? patch.item : item,
-      );
+      for (const c of ["you", "agent", "waiting"]) {
+        next[c] = next[c].filter((item) => item.id !== patch.item.id);
+      }
+      next[col].push(patch.item);
     } else if (patch.op === "remove") {
       for (const col of ["you", "agent", "waiting"]) {
         next[col] = next[col].filter((item) => item.id !== patch.id);

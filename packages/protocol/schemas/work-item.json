@@ -8,6 +8,8 @@
     "column": { "enum": ["you", "agent", "waiting"] },
     "title": { "type": "string" },
     "status": { "enum": ["proposed", "running", "done", "failed", "denied"] },
+    "parent_id": { "type": "string" },
+    "kind": { "enum": ["parent", "subtask"], "default": "parent" },
     "source": {
       "type": "object",
       "required": ["kind"],

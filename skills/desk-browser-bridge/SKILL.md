@@ -3,10 +3,11 @@ name: desk-browser-bridge
 description: >-
   Virgil Desk browser bridge: desk-browser CLI, Path B extension Eyes/Hands
   (default) or harness CDP rollback, You/Agent/Waiting board, Accept/Deny proposals.
-version: 1.7.0
+version: 1.8.0
 metadata:
   hermes:
     tags: [virgil-desk, browser, handoff]
+    keywords: [mint_item, subtask]
 ---
 
 # Desk browser bridge
@@ -34,9 +35,15 @@ desk-browser --run-id desk_abc --op key --human-tab-id 1 --tab-id 2 \
 # Optional probes (lazy Eyes)
 desk-browser --run-id desk_abc --op probe_links --human-tab-id 1 --tab-id 2 --wait
 desk-browser --run-id desk_abc --op probe_form --human-tab-id 1 --tab-id 2 --wait
+# Mid-flight subtask (board mint — not a browser op)
+desk-browser --run-id desk_abc --op mint_item --params '{
+  "parent_id": "PARENT_ID",
+  "column": "you",
+  "title": "Approve calendar invite"
+}'
 ```
 
-- **`--tab-id`** = agent tab from handoff (`agent_tab_id`) — never automate `human_tab_id`.
+- **`--tab-id`** = agent tab from **Run agent** provision (`agent_tab_id`) — never automate `human_tab_id`.
 - **`--wait`** blocks until host returns `command_result` (extension or harness).
 - **Extension driver (default / Path B):** no remote-debugging required for execute; extension WS required.
 - Rollback: `browser.driver: harness` (or `DESK_BROWSER_DRIVER=harness`) uses CDP `{x,y}` / `selector`.
@@ -54,9 +61,9 @@ See [`docs/BROWSER_LAYER.md`](../docs/BROWSER_LAYER.md).
 
 ## Tab rules
 
-- **`openTab`** — agent needs a **different URL** than the handoff page (extension).
+- **`openTab`** — agent needs a **different URL** than the handoff page (extension). Use `placement: "human"` when parking a You remainder outside **Virgil · Agent**.
 - **`duplicateTab`** — same page as human (extension).
-- Handoff duplicates first — decompose snapshot comes from the agent tab (excerpt + screenshot).
+- Handoff uses a short-lived scrape tab then closes it; **Run agent** provisions the item collage.
 
 ## Observe–act–observe
 
@@ -77,9 +84,14 @@ Check `act_resolved.url_before` vs `url_after` when opening threads or navigatin
 - **Must open** the matching message/thread (row `target_id` whose label matches sender/subject) and re-observe body/URL before summarizing.
 - **List or search snippets are not done** — never finish from inbox preview alone.
 - Prefer row targets with sender/subject in `label`. **Forbidden:** bare CSS `tr.zA`, `tr.zE`, or `[role=row]` (ambiguous; wrong-row risk). Extension rejects those selectors.
-- **Stop when done** — after open + body (or task complete), one-line summary and stop; do not burn remaining turns. Turn ceiling is backup only.
+- **Done = work finished or parked** — not a one-line “Observed …” alone. Mint You/Waiting children for human remainder; keep pursuing agent-safe children.
+- **Stop when done** — after open + body (or task complete / remainder parked), one-line summary and stop; do not burn remaining turns. Turn ceiling is backup only.
 - After the thread is open, **may** follow relevant in-body links (Drive/docs/attachments); summarize; not an exhaustive crawl. Still forbid send/pay/public post.
 - Tool budget exhausted without opening → one-line `Partial: …` (not a success claim).
+
+## Mid-flight subtasks
+
+When evidence reveals multiple closures, mint with `--op mint_item` (`parent_id`, `column`, `title`). Host blocks parent `done` while agent children are still `proposed`/`running`.
 
 ## Forbidden
 
@@ -95,7 +107,7 @@ Calendar / drafts → **Accept** or **Deny** via Host; no auto-commit.
 
 ## Agent execution
 
-Operator clicks **Run agent** on Agent column items. Hermes uses `desk-browser` + this skill during execute.
+Operator clicks **Run agent** on Agent column **root** items. Hermes uses `desk-browser` + this skill during execute.
 
 ## Evidence
 

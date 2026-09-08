@@ -40,6 +40,8 @@ export interface WorkItem {
     ref?: string;
   };
   status: WorkItemStatus;
+  parent_id?: string;
+  kind?: "parent" | "subtask";
   evidence?: WorkItemEvidence;
   proposals?: Proposal[];
   hints?: WorkItemHints;
@@ -247,6 +249,21 @@ export function emptyBoard(): BoardState {
   return { you: [], agent: [], waiting: [] };
 }
 
+/** Root items: no parent_id (parents and flat handoff items). */
+export function selectBoardRoots(items: WorkItem[]): WorkItem[] {
+  return items.filter((i) => !i.parent_id);
+}
+
+/** Children of a parent across the board. */
+export function childrenOf(items: WorkItem[], parentId: string): WorkItem[] {
+  return items.filter((i) => i.parent_id === parentId);
+}
+
+/** Flatten all columns into one list. */
+export function allBoardItems(board: BoardState): WorkItem[] {
+  return [...board.you, ...board.agent, ...board.waiting];
+}
+
 export function applyBoardPatch(
   board: BoardState,
   ops: BoardPatchOp[],
@@ -266,9 +283,11 @@ export function applyBoardPatch(
       next[col] = [...next[col], patch.item];
     } else if (patch.op === "update") {
       const col = patch.item.column;
-      next[col] = next[col].map((i) =>
-        i.id === patch.item.id ? patch.item : i,
-      );
+      // Remove from any column first so column moves work.
+      for (const c of ["you", "agent", "waiting"] as Column[]) {
+        next[c] = next[c].filter((i) => i.id !== patch.item.id);
+      }
+      next[col] = [...next[col], patch.item];
     } else if (patch.op === "remove") {
       for (const col of ["you", "agent", "waiting"] as Column[]) {
         next[col] = next[col].filter((i) => i.id !== patch.id);

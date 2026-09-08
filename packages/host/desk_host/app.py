@@ -26,6 +26,7 @@ from .memory import format_for_execute
 from .navigation import normalize_browser_command
 from .observability import measure_from_snapshot, record
 from .policy import policy_denied_reason
+from .execute_validation import parent_done_blocked_reason
 from .screenshot_store import persist_handoff_screenshot, persist_screenshot
 
 # In-memory proposal + extension connection state
@@ -90,6 +91,16 @@ class ExecuteBody(BaseModel):
 class ItemMetaBody(BaseModel):
     run_id: str
     agent_tab_id: int
+
+
+class MintItemBody(BaseModel):
+    run_id: str
+    parent_id: str
+    column: str
+    title: str
+    status: str = "proposed"
+    hints: dict[str, Any] | None = None
+    source: dict[str, Any] | None = None
 
 
 class CompleteBody(BaseModel):
@@ -683,6 +694,67 @@ async def patch_item_meta(item_id: str, body: ItemMetaBody) -> dict[str, Any]:
     return {"ok": True, "item": updated}
 
 
+@app.post("/v1/items/mint")
+async def mint_item(body: MintItemBody) -> dict[str, Any]:
+    """Mid-flight subtask mint — Hermes via desk-browser --op mint_item."""
+    if body.column not in ("you", "agent", "waiting"):
+        raise HTTPException(status_code=400, detail="column must be you|agent|waiting")
+    parent = _work_items.get(body.parent_id)
+    if not parent:
+        raise HTTPException(status_code=404, detail="parent work item not found")
+    if parent.get("run_id") and parent.get("run_id") != body.run_id:
+        raise HTTPException(status_code=400, detail="parent run_id mismatch")
+    try:
+        _require_extension()
+    except ExtensionNotConnectedError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+
+    short = uuid.uuid4().hex[:8]
+    item_id = f"{body.parent_id}_sub_{short}"
+    source = body.source or dict(parent.get("source") or {"kind": "handoff"})
+    if body.source and body.source.get("url"):
+        source = {**source, "url": body.source["url"]}
+    item: dict[str, Any] = {
+        "id": item_id,
+        "column": body.column,
+        "title": body.title[:200],
+        "status": body.status if body.status in ("proposed", "running") else "proposed",
+        "kind": "subtask",
+        "parent_id": body.parent_id,
+        "source": source,
+        "run_id": body.run_id,
+        "human_tab_id": parent.get("human_tab_id"),
+        "proposals": [],
+    }
+    if body.hints:
+        item["hints"] = body.hints
+    # Agent subtasks share the parent's agent tab when present (no new collage).
+    if body.column == "agent" and parent.get("agent_tab_id") is not None:
+        item["agent_tab_id"] = parent["agent_tab_id"]
+
+    _work_items[item_id] = item
+    patch_id = uuid.uuid4().hex
+    try:
+        await _send_board_patch(
+            body.run_id,
+            patch_id,
+            [{"op": "add", "item": item}],
+            required=True,
+        )
+    except ExtensionNotConnectedError as exc:
+        _work_items.pop(item_id, None)
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    record(
+        "item.minted",
+        body.run_id,
+        cfg=get_config(),
+        item_id=item_id,
+        parent_id=body.parent_id,
+        column=body.column,
+    )
+    return {"ok": True, "item": item}
+
+
 @app.post("/v1/items/{item_id}/execute")
 async def execute_item(item_id: str, body: ExecuteBody) -> dict[str, Any]:
     item = _work_items.get(item_id)
@@ -783,6 +855,37 @@ async def execute_item(item_id: str, body: ExecuteBody) -> dict[str, Any]:
             "summary": (result or {}).get("summary", ""),
             "browser_ops": browser_after - browser_before,
         }
+        # Re-read item in case mint_item updated the board mid-flight.
+        current = _work_items.get(item_id) or item
+        blocked = parent_done_blocked_reason(current, _work_items)
+        if blocked:
+            await _patch_work_item(
+                item_id,
+                status="running",
+                run_id=body.run_id,
+                evidence=evidence,
+                last_error=blocked,
+            )
+            await _record_execute_memory(
+                run_id=body.run_id,
+                item=current,
+                outcome="running",
+                summary=f"{evidence['summary']} ({blocked})",
+            )
+            record(
+                "agent.execute_blocked_children",
+                body.run_id,
+                cfg=cfg,
+                item_id=item_id,
+                error=blocked,
+            )
+            return {
+                "ok": False,
+                "work_item_id": item_id,
+                "status": "running",
+                "blocked": blocked,
+                "result": result,
+            }
         await _patch_work_item(
             item_id,
             status="done",

@@ -61,4 +61,4 @@ Same-URL follow-up `observe` may set `text_omitted: true` and omit `page_tree` w
 
 ## WorkItem fields (runtime)
 
-Items carry `run_id`, optional `agent_tab_id` / `human_tab_id`, optional **`hints`** (`search_query`, `sender`, `subject_contains`), `evidence` after execute, and `last_error` on failure (Hermes failures prefer stderr / API snippets over a bare `session_id` line). Decompose coerces agent status to `proposed` (execute owns `done`).
+Items carry `run_id`, optional `agent_tab_id` / `human_tab_id`, optional **`hints`** (`search_query`, `sender`, `subject_contains`), optional **`parent_id`** / **`kind`** (`parent` | `subtask`) for mid-flight children, `evidence` after execute, and `last_error` on failure (Hermes failures prefer stderr / API snippets over a bare `session_id` line). Decompose coerces agent status to `proposed` (execute owns `done`). Host **`POST /v1/items/mint`** (CLI: `desk-browser --op mint_item`) adds children; parent `done` is blocked while agent children are `proposed`/`running`.

@@ -44,3 +44,42 @@ def test_desk_browser_builds_scrape_post():
         assert body["op"] == "scrape"
         assert body["handoff_url"] == "https://example.com/page"
         assert body["wait"] is True
+
+
+def test_desk_browser_mint_item_posts_mint_endpoint():
+    with patch("urllib.request.urlopen") as urlopen:
+        resp = MagicMock()
+        resp.read.return_value = json.dumps(
+            {"ok": True, "item": {"id": "p_sub_1", "parent_id": "p"}}
+        ).encode()
+        resp.__enter__ = MagicMock(return_value=resp)
+        resp.__exit__ = MagicMock(return_value=False)
+        urlopen.return_value = resp
+
+        old_argv = sys.argv
+        sys.argv = [
+            "desk-browser",
+            "--run-id",
+            "desk_mint",
+            "--op",
+            "mint_item",
+            "--params",
+            json.dumps(
+                {
+                    "parent_id": "parent_1",
+                    "column": "you",
+                    "title": "Human remainder",
+                }
+            ),
+        ]
+        try:
+            assert main() == 0
+        finally:
+            sys.argv = old_argv
+
+        req = urlopen.call_args[0][0]
+        assert req.full_url.endswith("/v1/items/mint")
+        body = json.loads(req.data.decode())
+        assert body["parent_id"] == "parent_1"
+        assert body["column"] == "you"
+        assert body["title"] == "Human remainder"
