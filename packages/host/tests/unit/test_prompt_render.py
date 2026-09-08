@@ -26,3 +26,15 @@ def test_prompt_template_vars_match_config():
     assert vars_["decompose_items_max"] == str(cfg.prompts.decompose_items_max)
     assert vars_["handoff_excerpt_max_chars"] == str(cfg.browser.handoff_excerpt_max_chars)
     assert not any(re.search(r"\{\{", v) for v in vars_.values())
+
+
+def test_execute_prompt_dom_primary_playbooks():
+    from pathlib import Path
+
+    root = Path(__file__).resolve().parents[4]
+    text = (root / "prompts" / "execute_agent_item.md").read_text(encoding="utf-8")
+    assert "DOM Eyes" in text
+    assert "secondary workaround" in text
+    assert "Auth wall" in text or "auth wall" in text.lower()
+    assert "LinkedIn send" in text
+    assert "email **drafts**" in text or "email drafts" in text.lower()

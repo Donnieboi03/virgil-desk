@@ -34,13 +34,15 @@ Run once with a real tab ([`packages/e2e/README.md`](../packages/e2e/README.md))
 1. Handoff scrapes via a short-lived agent duplicate, then closes it — board cards without open agent tabs until **Run agent**
 2. Different URL → `openTab` in **Virgil · Agent** group (default `placement: agent`)
 3. Same page work → `duplicateTab`; human tab untouched
-4. Post-click `command_result` includes scrape + screenshot
+4. Post-act `command_result` includes `tab_id` / `url` / optional scrape excerpt; Path B **observe** defaults to **no** screenshot (`skip_screenshot`)
 5. **Run agent** on one Agent **root** → provisions that item’s tab only → `browser.command` events in log
 6. Mid-flight children: accordion under parent; You/Waiting show minted remainder (`from:` meta)
 7. Human remainder URL → `openTab` with `placement: human` (tab outside **Virgil · Agent**, not focused)
-8. **Accept** on a Waiting calendar proposal
-9. **Mark done** on a You item
-10. Reload Chrome — board persists (`storage.local`)
+8. Auth wall / empty Eyes → You mint + soft-help; do not thrash observe
+9. **Accept** on a Waiting calendar proposal
+10. **Mark done** on a You item
+11. Reload Chrome — board persists (`storage.local`)
+12. Failed ops show `error` / `tab_id` / `url` in `desk-events --summary`
 
 ## Hub Q-mapping (Desk)
 

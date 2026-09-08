@@ -45,6 +45,17 @@ Confirm attach: `BU_NAME=virgil-desk browser-harness --doctor` **without** point
 
 Prefer **`observe`**. Handoff may still capture a PNG for decompose.
 
+## Soft site tiers (expectation, not hard gates)
+
+| Tier | Examples | Path B expectation |
+|------|----------|-------------------|
+| **A** | Docs, ordinary SaaS | DOM Eyes/Hands reliable |
+| **B** | Gmail-class SPA | Friction OK; follow threads via `target_id`; drafts OK |
+| **C** | LinkedIn-class anti-bot | Soft-help You (keywords/draft); **no** agent send/connect; URL may be workaround only |
+| **D** | `chrome://`, extension pages | Inject impossible — park / Partial |
+
+Forums: expect soft **A/B** until proven otherwise — do not hard-code forum tiers.
+
 ## Hand off
 
 1. Extension mints `run_id`, **duplicateTab** as an **ungrouped** short-lived scrape tab (no Virgil · Agent yet)
