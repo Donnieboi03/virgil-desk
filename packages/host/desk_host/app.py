@@ -265,9 +265,10 @@ async def _execute_cleanup(
     item_id: str,
     agent_tab_id: Any,
     human_tab_id: Any,
+    preserve_tabs: bool = False,
 ) -> None:
     cfg = get_config()
-    if uses_harness_driver(cfg.browser.driver):
+    if uses_harness_driver(cfg.browser.driver) and not preserve_tabs:
         try:
             await asyncio.to_thread(
                 harness_release_run,
@@ -278,6 +279,17 @@ async def _execute_cleanup(
             )
         except Exception:
             pass
+    if preserve_tabs:
+        # End execute session without closing tabs (parent still running with children).
+        await _send_to_extension(
+            {
+                "type": "execute_session",
+                "active": False,
+                "run_id": run_id,
+                "item_id": item_id,
+            }
+        )
+        return
     await _send_to_extension(
         {
             "type": "execute_cleanup",
@@ -798,6 +810,7 @@ async def execute_item(item_id: str, body: ExecuteBody) -> dict[str, Any]:
     )
     record("agent.execute_started", body.run_id, cfg=cfg, item_id=item_id)
     http_exc: HTTPException | None = None
+    preserve_tabs = False
     try:
         try:
             result = await execute_fn(item, ctx)
@@ -859,6 +872,7 @@ async def execute_item(item_id: str, body: ExecuteBody) -> dict[str, Any]:
         current = _work_items.get(item_id) or item
         blocked = parent_done_blocked_reason(current, _work_items)
         if blocked:
+            preserve_tabs = True
             await _patch_work_item(
                 item_id,
                 status="running",
@@ -923,6 +937,7 @@ async def execute_item(item_id: str, body: ExecuteBody) -> dict[str, Any]:
             item_id=item_id,
             agent_tab_id=ctx.get("agent_tab_id"),
             human_tab_id=ctx.get("human_tab_id"),
+            preserve_tabs=preserve_tabs,
         )
 
 

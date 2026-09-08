@@ -19,4 +19,14 @@ describe("tabsToCloseForItem", () => {
     const pair = { humanTabId: 7, items: { a: 7 } };
     expect(tabsToCloseForItem(pair, "a", 7, 7)).toEqual([]);
   });
+
+  it("does not close humanParkedByItem tabs", () => {
+    const pair = {
+      humanTabId: 1,
+      items: { agent_0: 10 },
+      spawnedByItem: { agent_0: [20] },
+      humanParkedByItem: { agent_0: [30] },
+    };
+    expect(tabsToCloseForItem(pair, "agent_0", 1, 10).sort()).toEqual([10, 20]);
+  });
 });

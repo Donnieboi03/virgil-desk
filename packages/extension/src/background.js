@@ -202,6 +202,18 @@ async function trackSpawnedTab(runId, itemId, tabId) {
   await chrome.storage.session.set({ [PAIRS_KEY]: pairs });
 }
 
+/** Park human remainder tabs outside agent cleanup (not closed on execute_cleanup). */
+async function trackHumanParkedTab(runId, itemId, tabId) {
+  const data = await chrome.storage.session.get(PAIRS_KEY);
+  const pairs = data[PAIRS_KEY] || {};
+  if (!pairs[runId]) pairs[runId] = { items: {}, humanParkedByItem: {} };
+  if (!pairs[runId].humanParkedByItem) pairs[runId].humanParkedByItem = {};
+  const list = pairs[runId].humanParkedByItem[itemId] || [];
+  if (!list.includes(tabId)) list.push(tabId);
+  pairs[runId].humanParkedByItem[itemId] = list;
+  await chrome.storage.session.set({ [PAIRS_KEY]: pairs });
+}
+
 async function maybeQuarantineSpawn(tabId, url) {
   if (!activeExecute) return;
   const openerPending = pendingSpawnTabs.get(tabId);
@@ -642,12 +654,13 @@ async function resolveAgentTab(command) {
       windowId,
     });
     if (activeExecute?.itemId && runId) {
-      await trackSpawnedTab(runId, activeExecute.itemId, tab.id);
+      await trackHumanParkedTab(runId, activeExecute.itemId, tab.id);
     }
     return { tabId: tab.id, tabMode: "create", placement: "human" };
   }
 
-  if (pairs[runId]?.agentTabId) {
+  // openTab always creates (or navigates a new tab) — never reuse collage without loading url.
+  if (command.op !== "openTab" && pairs[runId]?.agentTabId) {
     return { tabId: pairs[runId].agentTabId, tabMode: "reuse" };
   }
   if (command.op === "duplicateTab") {
@@ -659,11 +672,13 @@ async function resolveAgentTab(command) {
       humanTabId: command.human_tab_id,
       agentTabId: dup.id,
       items: pairs[runId]?.items || {},
+      spawnedByItem: pairs[runId]?.spawnedByItem || {},
+      humanParkedByItem: pairs[runId]?.humanParkedByItem || {},
     };
     await chrome.storage.session.set({ [PAIRS_KEY]: pairs });
     return { tabId: dup.id, tabMode: "duplicate", placement: "agent" };
   }
-  if (command.op === "openTab" || (command.op === "openTab" && command.url)) {
+  if (command.op === "openTab") {
     const human = command.human_tab_id
       ? await chrome.tabs.get(command.human_tab_id)
       : null;
@@ -674,11 +689,24 @@ async function resolveAgentTab(command) {
       windowId,
     });
     await ensureAgentGroup(tab.id, tab.windowId);
-    pairs[runId] = {
-      humanTabId: command.human_tab_id,
-      agentTabId: tab.id,
-      items: pairs[runId]?.items || {},
-    };
+    if (!pairs[runId]) {
+      pairs[runId] = {
+        humanTabId: command.human_tab_id,
+        items: {},
+        spawnedByItem: {},
+        humanParkedByItem: {},
+      };
+    }
+    if (!pairs[runId].agentTabId) {
+      pairs[runId].agentTabId = tab.id;
+      if (activeExecute?.itemId) {
+        if (!pairs[runId].items) pairs[runId].items = {};
+        pairs[runId].items[activeExecute.itemId] = tab.id;
+      }
+    } else if (activeExecute?.itemId) {
+      await trackSpawnedTab(runId, activeExecute.itemId, tab.id);
+    }
+    pairs[runId].humanTabId = pairs[runId].humanTabId || command.human_tab_id;
     await chrome.storage.session.set({ [PAIRS_KEY]: pairs });
     return { tabId: tab.id, tabMode: "create", placement: "agent" };
   }

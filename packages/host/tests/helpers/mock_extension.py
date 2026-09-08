@@ -136,12 +136,16 @@ class MockExtensionSession:
         self.receive_execute_session()
 
     def finish_execute_messages(self) -> dict[str, Any]:
-        """Drain board_patch → memory_patch → execute_cleanup (success or fail)."""
+        """Drain board_patch → memory_patch → execute_cleanup (or soft session end)."""
         patch = self.ws.receive_json()
         assert patch["type"] == "board_patch", patch
         self.receive_memory_patch()
-        cleanup = self.receive_execute_cleanup()
-        return {"board_patch": patch, "cleanup": cleanup}
+        end = self.ws.receive_json()
+        assert end["type"] in ("execute_cleanup", "execute_session"), end
+        if end["type"] == "execute_session":
+            assert end.get("active") is False
+        self.messages.append(end)
+        return {"board_patch": patch, "cleanup": end}
 
     def receive_execute_session(self) -> dict[str, Any]:
         msg = self.ws.receive_json()

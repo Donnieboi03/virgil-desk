@@ -369,6 +369,8 @@ def test_mint_item_board_patch_and_parent_done_blocked(monkeypatch):
             updated = finished["board_patch"]["ops"][0]["item"]
             assert updated["status"] == "running"
             assert "open agent children" in (updated.get("last_error") or "")
+            assert finished["cleanup"]["type"] == "execute_session"
+            assert finished["cleanup"].get("active") is False
             thread.join(timeout=5)
             assert holder[0].status_code == 200
             body = holder[0].json()
