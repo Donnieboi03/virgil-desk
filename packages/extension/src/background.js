@@ -80,36 +80,69 @@ let excerptBaselineMap = new Map();
 const pendingSpawnTabs = new Map();
 
 const META_KEY = "virgil_desk_panel_meta";
+const WS_KEEPALIVE_ALARM = "desk-ws-keepalive";
+/** Chrome min alarm period is ~30s (Chrome 120+); keep SW + WS warm. */
+const WS_KEEPALIVE_PERIOD_MIN = 0.5;
+const PANEL_PORT = "virgil-desk-panel";
+
+/** @type {Set<chrome.runtime.Port>} */
+const panelPorts = new Set();
+
+function resolveHostUrl(raw) {
+  if (typeof raw === "string" && raw.trim()) return raw.trim().replace(/\/$/, "");
+  return DEFAULT_HOST;
+}
+
+function ensureWsKeepaliveAlarm() {
+  chrome.alarms.create(WS_KEEPALIVE_ALARM, { periodInMinutes: WS_KEEPALIVE_PERIOD_MIN });
+}
+
+function bootExtension() {
+  chrome.sidePanel.setPanelBehavior({ openPanelOnActionClick: true }).catch(() => {});
+  ensureWsKeepaliveAlarm();
+  connectWs();
+}
 
 chrome.runtime.onInstalled.addListener(() => {
-  chrome.sidePanel.setPanelBehavior({ openPanelOnActionClick: true });
-  chrome.alarms.create("desk-ws-keepalive", { periodInMinutes: 1 });
+  bootExtension();
+});
+
+chrome.runtime.onStartup.addListener(() => {
+  bootExtension();
 });
 
 chrome.alarms.onAlarm.addListener((alarm) => {
-  if (alarm.name !== "desk-ws-keepalive") return;
+  if (alarm.name !== WS_KEEPALIVE_ALARM) return;
   if (ws?.readyState === WebSocket.OPEN) {
-    ws.send(JSON.stringify({ type: "ping" }));
+    try {
+      ws.send(JSON.stringify({ type: "ping" }));
+    } catch {
+      connectWs();
+    }
   } else {
     connectWs();
   }
 });
 
+chrome.runtime.onConnect.addListener((port) => {
+  if (port.name !== PANEL_PORT) return;
+  panelPorts.add(port);
+  connectWs();
+  port.onDisconnect.addListener(() => {
+    panelPorts.delete(port);
+  });
+});
+
 chrome.storage.sync.get(["hostUrl"], (data) => {
-  if (data.hostUrl) hostUrl = data.hostUrl;
+  hostUrl = resolveHostUrl(data.hostUrl);
+  ensureWsKeepaliveAlarm();
   connectWs();
 });
 
 chrome.storage.onChanged.addListener((changes, area) => {
   if (area !== "sync" || !changes.hostUrl) return;
-  const next = changes.hostUrl.newValue;
-  if (typeof next === "string" && next) {
-    hostUrl = next;
-    connectWs();
-  } else {
-    hostUrl = "";
-    closeWs({ reconnect: false });
-  }
+  hostUrl = resolveHostUrl(changes.hostUrl.newValue);
+  connectWs();
 });
 
 chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
@@ -118,10 +151,25 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
     return true;
   }
   if (msg.type === "getHealth") {
-    fetch(`${hostUrl}/v1/health`)
+    const url = hostUrl || DEFAULT_HOST;
+    fetch(`${url}/v1/health`)
       .then((r) => r.json())
-      .then((health) => sendResponse({ ok: true, health, wsConnected }))
-      .catch((err) => sendResponse({ ok: false, error: String(err), wsConnected }));
+      .then((health) =>
+        sendResponse({
+          ok: true,
+          health,
+          wsConnected: Boolean(wsConnected && ws?.readyState === WebSocket.OPEN),
+          hostUrl: url,
+        }),
+      )
+      .catch((err) =>
+        sendResponse({
+          ok: false,
+          error: String(err),
+          wsConnected: Boolean(wsConnected && ws?.readyState === WebSocket.OPEN),
+          hostUrl: url,
+        }),
+      );
     return true;
   }
   if (msg.type === "getBoard") {
@@ -129,8 +177,16 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
     return true;
   }
   if (msg.type === "reconnectWs") {
-    connectWs();
-    sendResponse({ ok: true, wsConnected: ws?.readyState === WebSocket.OPEN });
+    ensureWsReady()
+      .then((err) =>
+        sendResponse({
+          ok: !err,
+          wsConnected: Boolean(wsConnected && ws?.readyState === WebSocket.OPEN),
+          error: err || undefined,
+          hostUrl,
+        }),
+      )
+      .catch((err) => sendResponse({ ok: false, wsConnected: false, error: String(err) }));
     return true;
   }
   if (msg.type === "handoffTab") {
@@ -384,7 +440,7 @@ function closeWs({ reconnect = false } = {}) {
   }
   wsConnected = false;
   if (reconnect && hostUrl) {
-    wsReconnectTimer = setTimeout(connectWs, 3000);
+    wsReconnectTimer = setTimeout(connectWs, 1000);
   }
 }
 
@@ -393,13 +449,19 @@ function connectWs() {
     clearTimeout(wsReconnectTimer);
     wsReconnectTimer = null;
   }
+  hostUrl = resolveHostUrl(hostUrl);
   if (!hostUrl) {
     closeWs({ reconnect: false });
+    return;
+  }
+  // Already live or handshake in flight — do not tear down.
+  if (ws?.readyState === WebSocket.OPEN || ws?.readyState === WebSocket.CONNECTING) {
     return;
   }
   if (ws) {
     try {
       ws.onclose = null;
+      ws.onerror = null;
       ws.close();
     } catch {
       /* ignore */
@@ -410,12 +472,22 @@ function connectWs() {
     ws = new WebSocket(wsUrl());
   } catch {
     wsConnected = false;
+    wsReconnectTimer = setTimeout(connectWs, 1000);
     return;
   }
   ws.onopen = () => {
     wsConnected = true;
+    ensureWsKeepaliveAlarm();
     fetchDeskConfig();
-    ws.send(JSON.stringify({ type: "register", extension_version: "0.1.0" }));
+    try {
+      ws.send(JSON.stringify({ type: "register", extension_version: "0.1.0" }));
+    } catch {
+      /* ignore */
+    }
+    chrome.runtime.sendMessage({ type: "connectionUpdated", wsConnected: true }).catch(() => {});
+  };
+  ws.onerror = () => {
+    // onclose will follow; schedule reconnect there.
   };
   ws.onmessage = async (ev) => {
     const msg = JSON.parse(ev.data);
@@ -515,9 +587,10 @@ function connectWs() {
   };
   ws.onclose = () => {
     wsConnected = false;
+    ws = null;
     chrome.runtime.sendMessage({ type: "connectionUpdated", wsConnected: false }).catch(() => {});
     if (!hostUrl) return;
-    wsReconnectTimer = setTimeout(connectWs, 3000);
+    wsReconnectTimer = setTimeout(connectWs, 1000);
   };
 }
 
@@ -1979,13 +2052,17 @@ async function ensureWsReady() {
     return null;
   }
   connectWs();
-  for (let i = 0; i < 24; i++) {
+  for (let i = 0; i < 40; i++) {
     await new Promise((r) => setTimeout(r, 250));
     if (wsConnected && ws?.readyState === WebSocket.OPEN) {
       return null;
     }
+    // If handshake died mid-wait, kick again.
+    if (!ws || ws.readyState === WebSocket.CLOSED || ws.readyState === WebSocket.CLOSING) {
+      connectWs();
+    }
   }
-  return "WS disconnected — reload extension or wait for reconnect";
+  return "WS disconnected — open Virgil Desk side panel and wait, or reload extension";
 }
 
 async function runAgentItem({ itemId, runId }) {

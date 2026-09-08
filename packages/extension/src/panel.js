@@ -353,15 +353,16 @@ function updateActionButtons() {
 }
 
 async function refreshStatus() {
+  // Wake SW + wait for WS before reading health flags.
+  const reconnect = await chrome.runtime.sendMessage({ type: "reconnectWs" }).catch(() => null);
   const health = await chrome.runtime.sendMessage({ type: "getHealth" });
   const hostEl = document.getElementById("host-status");
   const wsEl = document.getElementById("ws-status");
   const backendEl = document.getElementById("backend-status");
-  panelWsConnected = Boolean(health.wsConnected);
-  if (health.ok && !health.wsConnected) {
-    chrome.runtime.sendMessage({ type: "reconnectWs" }).catch(() => {});
-  }
-  if (health.ok) {
+  panelWsConnected = Boolean(
+    health?.wsConnected || reconnect?.wsConnected,
+  );
+  if (health?.ok) {
     hostEl.textContent = "Host OK";
     hostEl.className = "ok";
     backendEl.textContent = `backend: ${health.health?.agent_backend || "?"}`;
@@ -370,8 +371,8 @@ async function refreshStatus() {
     hostEl.className = "bad";
     backendEl.textContent = "";
   }
-  wsEl.textContent = health.wsConnected ? "WS connected" : "WS disconnected";
-  wsEl.className = health.wsConnected ? "ok" : "bad";
+  wsEl.textContent = panelWsConnected ? "WS connected" : "WS disconnected";
+  wsEl.className = panelWsConnected ? "ok" : "bad";
   updateActionButtons();
 }
 
@@ -407,6 +408,9 @@ async function refresh() {
 
 const handoffBtn = document.getElementById("handoff");
 handoffBtn.addEventListener("click", async () => {
+  if (!panelWsConnected) {
+    await refreshStatus();
+  }
   if (!panelWsConnected) {
     showHandoffError("WS disconnected — cannot hand off");
     return;
@@ -458,11 +462,27 @@ chrome.runtime.onMessage.addListener((msg) => {
   }
 });
 
+// Keep the MV3 service worker alive while the side panel is open, and
+// reconnect WS as soon as the panel mounts.
+try {
+  chrome.runtime.connect({ name: "virgil-desk-panel" });
+} catch {
+  /* ignore */
+}
+
 resolveHandoffTabId();
 document.addEventListener("visibilitychange", () => {
   if (document.visibilityState === "visible") {
     resolveHandoffTabId();
+    refreshStatus();
   }
 });
 
 refresh();
+
+// While disconnected, retry more often than the 1‑minute alarm.
+setInterval(() => {
+  if (!panelWsConnected) {
+    refreshStatus();
+  }
+}, 3000);
