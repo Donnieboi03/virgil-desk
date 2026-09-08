@@ -19,6 +19,7 @@ import {
 import { tabsToCloseForItem } from "./tabCleanup.js";
 import { shouldCloseSpawnedTab } from "./popupPolicy.js";
 import { updateActStall } from "./actStall.js";
+import { normalizeScrapeResult } from "./scrapeResult.js";
 import {
   decideExcerpt,
   getLastFullTextUrl,
@@ -738,27 +739,37 @@ function policyBlock(command, tabId) {
 async function scrapeTab(tabId) {
   const maxText = deskConfig.browser?.scrape_text_max_chars ?? 8000;
   const maxLinks = deskConfig.browser?.scrape_links_max ?? 50;
-  const [{ result }] = await chrome.scripting.executeScript({
-    target: { tabId },
-    func: (textMax, linkMax) => {
-      const allLinks = [...document.querySelectorAll("a[href]")]
-        .map((a) => a.href)
-        .filter((h) => h.startsWith("http"));
-      const fullText = document.body?.innerText || "";
-      return {
-        text: fullText.slice(0, textMax),
-        links: allLinks.slice(0, linkMax),
-        url: location.href,
-        title: document.title,
-        metrics: {
-          full_text_chars: fullText.length,
-          full_link_count: allLinks.length,
-        },
-      };
-    },
-    args: [maxText, maxLinks],
-  });
-  return result;
+  try {
+    const injected = await chrome.scripting.executeScript({
+      target: { tabId },
+      func: (textMax, linkMax) => {
+        const allLinks = [...document.querySelectorAll("a[href]")]
+          .map((a) => a.href)
+          .filter((h) => h.startsWith("http"));
+        const fullText = document.body?.innerText || "";
+        return {
+          text: fullText.slice(0, textMax),
+          links: allLinks.slice(0, linkMax),
+          url: location.href,
+          title: document.title,
+          metrics: {
+            full_text_chars: fullText.length,
+            full_link_count: allLinks.length,
+          },
+        };
+      },
+      args: [maxText, maxLinks],
+    });
+    const result = injected?.[0]?.result;
+    return normalizeScrapeResult(result);
+  } catch {
+    return normalizeScrapeResult(null);
+  }
+}
+
+async function settleTabAfterOpen() {
+  const ms = deskConfig.browser?.default_wait_ms ?? 500;
+  await new Promise((r) => setTimeout(r, ms));
 }
 
 function scrollViewportRatio() {
@@ -1109,9 +1120,11 @@ async function runBrowserCommand(command) {
     if (command.op === "duplicateTab") {
       const resolved = await resolveAgentTab(command);
       tabId = resolved.tabId;
+      await settleTabAfterOpen();
     } else if (command.op === "openTab") {
       const resolved = await resolveAgentTab({ ...command, op: "openTab" });
       tabId = resolved.tabId;
+      await settleTabAfterOpen();
     }
 
     const block = policyBlock(command, tabId);

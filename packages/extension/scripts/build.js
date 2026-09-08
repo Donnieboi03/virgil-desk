@@ -30,6 +30,7 @@ const files = [
   "popupPolicy.js",
   "actStall.js",
   "observeExcerpt.js",
+  "scrapeResult.js",
   "background.js",
   "targetMap.js",
   "panel.html",
