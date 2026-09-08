@@ -44,6 +44,8 @@ def test_ws_handoff_board_patch_and_click_verify():
             agents = [i for i in result["items"] if i.get("column") == "agent"]
             assert agents
             assert agents[0]["status"] in ("proposed", "running")
+            # Optional agent_tab_id on handoff is for tests/mocks; real extension omits it.
+            assert agents[0].get("human_tab_id") == 101
 
             pending = run_browser_wait(
                 client,
@@ -65,6 +67,31 @@ def test_ws_handoff_board_patch_and_click_verify():
             assert body["ok"] is True
             assert body["result"]["screenshot"]["base64"]
             assert body["result"]["scrape_excerpt"]
+        finally:
+            ext.close()
+
+
+def test_handoff_without_agent_tab_id_still_decomposes():
+    """E2E: handoff scrape-then-defer shape (no agent_tab_id) still boards items."""
+    handoff_payload = {
+        "run_id": "desk_e2e_defer001",
+        "url": "https://example.com/job/1",
+        "title": "Job posting",
+        "human_tab_id": 101,
+        "window_id": 1,
+        "snapshot": {
+            "excerpt": "Apply now",
+            "links": [],
+        },
+    }
+    with TestClient(app) as client:
+        ext = MockExtensionSession(client)
+        try:
+            result = ext.handoff(handoff_payload)
+            agents = [i for i in result["items"] if i.get("column") == "agent"]
+            assert agents
+            assert agents[0].get("agent_tab_id") in (None, "")
+            assert agents[0].get("human_tab_id") == 101
         finally:
             ext.close()
 

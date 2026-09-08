@@ -47,14 +47,20 @@ Prefer **`observe`**. Handoff may still capture a PNG for decompose.
 
 ## Hand off
 
-1. Extension mints `run_id`, **duplicateTab** into **Virgil · Agent** group
-2. Optional scroll loops on agent tab
-3. Scrape + screenshot on agent tab (handoff only)
-4. Host → Hermes decompose
+1. Extension mints `run_id`, **duplicateTab** into **Virgil · Agent** for a short-lived scrape
+2. Optional scroll loops on that snapshot tab
+3. Scrape + screenshot on snapshot tab (handoff only), then **close** the snapshot tab
+4. Host → Hermes decompose (board cards; **no** per-item agent tabs yet)
+
+## Run agent
+
+1. Operator clicks **Run agent** on one Agent root
+2. Extension duplicates (or opens) that item’s agent tab into **Virgil · Agent**, PATCHes `agent_tab_id`
+3. Host starts execute with that tab
 
 ## Agent tab policy
 
-- Agent work on `agent_tab_id` in **Virgil · Agent** group
+- Agent work on `agent_tab_id` in **Virgil · Agent** group (provisioned at Run agent)
 - Ops on `human_tab_id` blocked except `captureHandoffSnapshot`
 - Navigation: duplicate same-origin, else open new agent tab
 

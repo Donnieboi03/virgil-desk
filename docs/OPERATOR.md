@@ -15,9 +15,9 @@ npm install && npm run build -w @virgil-desk/extension
 
 Chrome → `chrome://extensions` → **Load unpacked** → `packages/extension/dist`.
 
-Open any page → Virgil Desk side panel → **Hand off this tab**. Board columns **You / Agent / Waiting** should populate. Hand off duplicates the page into **Virgil · Agent**, scrolls (config), scrapes, and captures a screenshot for Hermes decompose.
+Open any page → Virgil Desk side panel → **Hand off this tab**. Board columns **You / Agent / Waiting** should populate. Hand off briefly duplicates into **Virgil · Agent** for scroll/scrape/screenshot, then **closes** that snapshot tab — no per-task agent collage until you click **Run agent**.
 
-**Run agent** (Agent column) triggers Hermes execute via Host. Default execute driver is **extension Path B** (slim targets + `target_id`; no CDP — see [`BROWSER_LAYER.md`](BROWSER_LAYER.md)). Rollback to harness CDP: `browser.driver: harness` or `DESK_BROWSER_DRIVER=harness` (then enable `chrome://inspect/#remote-debugging` — [`tests/manual/harness_everyday_chrome_checklist.md`](../tests/manual/harness_everyday_chrome_checklist.md)). Cross-branch compare: [`tests/manual/path_compare_checklist.md`](../tests/manual/path_compare_checklist.md).
+**Run agent** (Agent column) provisions that item’s agent tab (duplicate into **Virgil · Agent**), then triggers Hermes execute via Host. Default execute driver is **extension Path B** (slim targets + `target_id`; no CDP — see [`BROWSER_LAYER.md`](BROWSER_LAYER.md)). Rollback to harness CDP: `browser.driver: harness` or `DESK_BROWSER_DRIVER=harness` (then enable `chrome://inspect/#remote-debugging` — [`tests/manual/harness_everyday_chrome_checklist.md`](../tests/manual/harness_everyday_chrome_checklist.md)). Cross-branch compare: [`tests/manual/path_compare_checklist.md`](../tests/manual/path_compare_checklist.md).
 
 **Mark done** closes You items. **Accept/Deny** on Waiting proposals.
 
@@ -31,11 +31,11 @@ desk-events --run-id <run_id>
 
 Run once with a real tab ([`packages/e2e/README.md`](../packages/e2e/README.md)):
 
-1. Handoff duplicates agent tab first — snapshot (excerpt + screenshot) from agent tab, not human tab only
+1. Handoff scrapes via a short-lived agent duplicate, then closes it — board cards without open agent tabs until **Run agent**
 2. Different URL → `openTab` in **Virgil · Agent** group
 3. Same page work → `duplicateTab`; human tab untouched
 4. Post-click `command_result` includes scrape + screenshot
-5. **Run agent** on Agent column → `browser.command` events in log
+5. **Run agent** on one Agent item → provisions that item’s tab only → `browser.command` events in log
 6. **Accept** on a Waiting calendar proposal
 7. **Mark done** on a You item
 8. Reload Chrome — board persists (`storage.local`)

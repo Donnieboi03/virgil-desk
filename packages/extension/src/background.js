@@ -477,7 +477,7 @@ async function applyPatch(ops, runId) {
       await rememberHandoffUrl(runId, handoffPatch.item.source.url);
     }
   }
-  ops = await provisionAgentItemTabs(runId, ops);
+  // Agent tabs are provisioned only on Run agent — not on board_patch adds.
   const board = await loadBoard();
   await saveBoard(applyBoardPatch(board, ops));
   chrome.runtime.sendMessage({ type: "boardUpdated" }).catch(() => {});
@@ -500,26 +500,15 @@ async function duplicateAgentTabForItem(humanTabId, runId, itemId) {
 }
 
 async function syncItemAgentTab(itemId, runId, agentTabId) {
-  try {
-    await fetch(`${hostUrl}/v1/items/${itemId}`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ run_id: runId, agent_tab_id: agentTabId }),
-    });
-  } catch {
-    /* host may be unreachable; board still updated locally */
+  const res = await fetch(`${hostUrl}/v1/items/${itemId}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ run_id: runId, agent_tab_id: agentTabId }),
+  });
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}));
+    throw new Error(data.detail || res.statusText || "failed to sync agent_tab_id");
   }
-}
-
-async function assignSnapshotTabToItem(runId, itemId, tabId, humanTabId) {
-  const data = await chrome.storage.session.get(PAIRS_KEY);
-  const pairs = data[PAIRS_KEY] || {};
-  if (!pairs[runId]) {
-    pairs[runId] = { humanTabId, items: {} };
-  }
-  if (!pairs[runId].items) pairs[runId].items = {};
-  pairs[runId].items[itemId] = tabId;
-  await chrome.storage.session.set({ [PAIRS_KEY]: pairs });
 }
 
 async function loadRunPair(runId) {
@@ -527,32 +516,93 @@ async function loadRunPair(runId) {
   return data[PAIRS_KEY]?.[runId];
 }
 
-async function provisionAgentItemTabs(runId, ops) {
-  if (!runId) return ops;
-  const agentAdds = ops.filter((p) => p.op === "add" && p.item?.column === "agent");
-  if (!agentAdds.length) return ops;
+async function findBoardItem(itemId) {
+  const board = await loadBoard();
+  for (const col of ["you", "agent", "waiting"]) {
+    const found = (board[col] || []).find((i) => i.id === itemId);
+    if (found) return { item: found, column: col, board };
+  }
+  return null;
+}
 
+async function clearHandoffSnapshotTab(runId, snapshotTabId) {
+  try {
+    await chrome.tabs.remove(snapshotTabId);
+  } catch {
+    /* already closed */
+  }
+  const data = await chrome.storage.session.get(PAIRS_KEY);
+  const pairs = data[PAIRS_KEY] || {};
+  if (pairs[runId]) {
+    delete pairs[runId].agentTabId;
+    await chrome.storage.session.set({ [PAIRS_KEY]: pairs });
+  }
+}
+
+/**
+ * Provision one agent tab for this item at Run agent time (not handoff/board_patch).
+ */
+async function provisionAgentTabBeforeExecute(itemId, runId) {
   return withProvisionLock(runId, async () => {
-    const runPair = await loadRunPair(runId);
-    const humanTabId = runPair?.humanTabId;
-    if (!humanTabId) return ops;
-
-    for (let index = 0; index < agentAdds.length; index++) {
-      const item = agentAdds[index].item;
-      const freshPair = (await loadRunPair(runId)) || runPair;
-      const plan = planAgentTabForItem(item.id, index, freshPair);
-      let tabId = plan.tabId;
-      if (plan.source === "duplicate") {
-        tabId = await duplicateAgentTabForItem(humanTabId, runId, item.id);
-      } else if (plan.source === "snapshot" && tabId) {
-        await assignSnapshotTabToItem(runId, item.id, tabId, humanTabId);
-      }
-      if (!tabId) continue;
-      item.agent_tab_id = tabId;
-      item.human_tab_id = item.human_tab_id || humanTabId;
-      await syncItemAgentTab(item.id, runId, tabId);
+    const located = await findBoardItem(itemId);
+    if (!located?.item) {
+      return { ok: false, error: "work item not found on board" };
     }
-    return ops;
+    const { item, board } = located;
+    if (item.column !== "agent") {
+      return { ok: false, error: "execute only for agent column" };
+    }
+    const runPair = await loadRunPair(runId);
+    const humanTabId = item.human_tab_id || runPair?.humanTabId;
+    if (!humanTabId) {
+      return { ok: false, error: "missing human_tab_id — hand off again before Run agent" };
+    }
+
+    if (item.agent_tab_id) {
+      try {
+        await chrome.tabs.get(item.agent_tab_id);
+        const data = await chrome.storage.session.get(PAIRS_KEY);
+        const pairs = data[PAIRS_KEY] || {};
+        if (!pairs[runId]) pairs[runId] = { humanTabId, items: {} };
+        if (!pairs[runId].items) pairs[runId].items = {};
+        pairs[runId].items[itemId] = item.agent_tab_id;
+        pairs[runId].agentTabId = item.agent_tab_id;
+        pairs[runId].humanTabId = humanTabId;
+        await chrome.storage.session.set({ [PAIRS_KEY]: pairs });
+        return { ok: true, agentTabId: item.agent_tab_id, humanTabId };
+      } catch {
+        /* tab gone — provision fresh */
+      }
+    }
+
+    const plan = planAgentTabForItem(itemId, 0, await loadRunPair(runId));
+    let tabId = plan.tabId;
+    if (plan.source === "duplicate" || !tabId) {
+      tabId = await duplicateAgentTabForItem(humanTabId, runId, itemId);
+    }
+    if (!tabId) {
+      return { ok: false, error: "failed to provision agent tab" };
+    }
+
+    const data = await chrome.storage.session.get(PAIRS_KEY);
+    const pairs = data[PAIRS_KEY] || {};
+    if (!pairs[runId]) pairs[runId] = { humanTabId, items: {} };
+    pairs[runId].humanTabId = humanTabId;
+    pairs[runId].agentTabId = tabId;
+    if (!pairs[runId].items) pairs[runId].items = {};
+    pairs[runId].items[itemId] = tabId;
+    await chrome.storage.session.set({ [PAIRS_KEY]: pairs });
+
+    item.agent_tab_id = tabId;
+    item.human_tab_id = humanTabId;
+    await saveBoard(board);
+    try {
+      await syncItemAgentTab(itemId, runId, tabId);
+    } catch (err) {
+      return { ok: false, error: String(err.message || err) };
+    }
+    chrome.runtime.sendMessage({ type: "boardUpdated" }).catch(() => {});
+    return { ok: true, agentTabId: tabId, humanTabId };
   });
 }
 
@@ -1463,13 +1513,15 @@ async function buildHandoffPayload(tab, intent) {
     human_tab_id: tab.id,
     url: tab.url || "",
   });
-  const agentTabId = resolved.tabId;
+  const snapshotTabId = resolved.tabId;
   const scrollLoopsExecuted = scrollLoops > 0 ? scrollLoops : 0;
   if (scrollLoops > 0) {
-    await scrollAgentTab(agentTabId, scrollLoops);
+    await scrollAgentTab(snapshotTabId, scrollLoops);
   }
-  const snap = await scrapeTab(agentTabId);
-  const shot = await screenshotTab(agentTabId);
+  const snap = await scrapeTab(snapshotTabId);
+  const shot = await screenshotTab(snapshotTabId);
+  // Defer agent collage until Run agent — close scrape tab after snapshot.
+  await clearHandoffSnapshotTab(runId, snapshotTabId);
   const scrapeTextLen = snap.text?.length ?? 0;
   const metrics = snap.metrics || {};
   const fullTextChars = metrics.full_text_chars ?? scrapeTextLen;
@@ -1480,7 +1532,6 @@ async function buildHandoffPayload(tab, intent) {
     url: tab.url || "",
     title: tab.title || "",
     human_tab_id: tab.id,
-    agent_tab_id: agentTabId,
     window_id: tab.windowId,
     intent: intent || "",
     snapshot: {
@@ -1648,6 +1699,10 @@ async function runAgentItem({ itemId, runId }) {
   const wsErr = await ensureWsReady();
   if (wsErr) {
     return { ok: false, error: wsErr };
+  }
+  const provisioned = await provisionAgentTabBeforeExecute(itemId, runId);
+  if (!provisioned.ok) {
+    return provisioned;
   }
   const res = await fetch(`${hostUrl}/v1/items/${itemId}/execute`, {
     method: "POST",

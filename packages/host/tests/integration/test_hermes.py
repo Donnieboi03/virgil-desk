@@ -316,6 +316,13 @@ def test_execute_hermes_subprocess_does_not_block_browser(hermes_backend, monkey
             result = ext.handoff(handoff)
             run_id = result["run_id"]
             agent = [i for i in result["items"] if i["column"] == "agent"][0]
+            # Simulate Run-agent provision (handoff no longer leaves a usable agent_tab_id).
+            patched = client.patch(
+                f"/v1/items/{agent['id']}",
+                json={"run_id": run_id, "agent_tab_id": 2},
+            )
+            assert patched.status_code == 200
+            assert ext.ws.receive_json()["type"] == "board_patch"
             holder: list = []
 
             def _execute():

@@ -1,21 +1,18 @@
 /**
- * Agent tab assignment for decomposed board items.
- * First agent item reuses the handoff snapshot tab; further items duplicate from human.
+ * Agent tab assignment for Run agent (provision-on-run).
+ * Handoff snapshot tabs are closed after scrape — no snapshot reuse.
  */
 
 /** @typedef {{ humanTabId?: number, agentTabId?: number, items?: Record<string, number> }} RunPair */
 
 /**
  * Pure plan for one agent item (testable).
- * @returns {{ tabId: number | null, source: 'existing' | 'snapshot' | 'duplicate' }}
+ * @returns {{ tabId: number | null, source: 'existing' | 'duplicate' }}
  */
-export function planAgentTabForItem(itemId, agentIndex, runPair) {
+export function planAgentTabForItem(itemId, _agentIndex, runPair) {
   const existing = runPair?.items?.[itemId];
   if (existing) {
     return { tabId: existing, source: "existing" };
-  }
-  if (agentIndex === 0 && runPair?.agentTabId) {
-    return { tabId: runPair.agentTabId, source: "snapshot" };
   }
   return { tabId: null, source: "duplicate" };
 }

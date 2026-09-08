@@ -697,7 +697,9 @@ async def execute_item(item_id: str, body: ExecuteBody) -> dict[str, Any]:
     meta = _handoff_meta.get(body.run_id, {})
     ctx = {
         "run_id": body.run_id,
-        "agent_tab_id": item.get("agent_tab_id") or meta.get("agent_tab_id"),
+        # Prefer per-item tab from Run-agent provision; do not fall back to a
+        # closed handoff snapshot id stored on meta.
+        "agent_tab_id": item.get("agent_tab_id"),
         "human_tab_id": item.get("human_tab_id") or meta.get("human_tab_id"),
         "handoff_url": _handoff_urls.get(body.run_id, ""),
     }

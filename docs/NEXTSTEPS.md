@@ -55,11 +55,11 @@ Mission-progress stop (URL unchanged K acts / repeated targets) — parked (easy
 
 ## Done (reference)
 
-- Rich handoff: duplicate agent tab + excerpt + screenshot for decompose
+- Rich handoff: short-lived duplicate for excerpt + screenshot, then close; decompose without leaving agent collage
 - Manual **Run agent** + `POST /v1/items/{id}/execute`
 - **`desk-browser`** CLI for Hermes terminal
 - **Mark done** for You column items
-- **Agent tab provisioning:** one tab per agent item — first item reuses handoff snapshot tab; deduped lock prevents double-provision from `board_patch` + `handoff_result` race
+- **Agent tab provisioning:** deferred until **Run agent** — one tab per running item; no board_patch-time duplicates; no handoff snapshot reuse
 - **Shared desk memory:** `virgil_desk_memory_v1` notepad + last-3 execute summaries injected into execute
 - **Decompose hints** + agent status coerced to `proposed` (no fake done)
 - **Tab cleanup** on execute end + **off-origin popup quarantine** during execute

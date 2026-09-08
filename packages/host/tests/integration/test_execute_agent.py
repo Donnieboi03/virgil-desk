@@ -40,7 +40,63 @@ def test_handoff_rich_snapshot_fields():
             assert result["run_id"] == "desk_richsnap001"
             agent_items = [i for i in result["items"] if i["column"] == "agent"]
             assert agent_items
-            assert agent_items[0].get("agent_tab_id") == 202
+            # Mock may still echo handoff agent_tab_id on items; real extension omits it.
+            assert agent_items[0].get("human_tab_id") == 101
+        finally:
+            ext.close()
+
+
+def test_handoff_without_agent_tab_defers_until_patch():
+    """Handoff without agent_tab_id leaves items unprovisioned until PATCH (Run agent)."""
+    handoff = {
+        "run_id": "desk_defer_tabs001",
+        "url": "https://example.com/job",
+        "title": "Job",
+        "human_tab_id": 101,
+        "window_id": 1,
+        "snapshot": {"excerpt": "Apply now", "links": []},
+    }
+    with TestClient(app) as client:
+        ext = MockExtensionSession(client)
+        try:
+            result = ext.handoff(handoff)
+            run_id = result["run_id"]
+            agent = [i for i in result["items"] if i["column"] == "agent"][0]
+            assert agent.get("agent_tab_id") in (None, "")
+            assert agent.get("human_tab_id") == 101
+
+            patched = client.patch(
+                f"/v1/items/{agent['id']}",
+                json={"run_id": run_id, "agent_tab_id": 303},
+            )
+            assert patched.status_code == 200
+            assert patched.json()["item"]["agent_tab_id"] == 303
+            tab_patch = ext.ws.receive_json()
+            assert tab_patch["type"] == "board_patch"
+            assert tab_patch["ops"][0]["item"]["agent_tab_id"] == 303
+
+            holder: list = []
+
+            def _execute():
+                holder.append(
+                    client.post(
+                        f"/v1/items/{agent['id']}/execute",
+                        json={"run_id": run_id},
+                    )
+                )
+
+            thread = threading.Thread(target=_execute, daemon=True)
+            thread.start()
+            ext.begin_execute()
+            for expected_op in ("scrape", "observe"):
+                handled = ext.respond_next_browser_command(
+                    run_id=run_id, op=expected_op
+                )
+                assert handled["command"]["op"] == expected_op
+                assert handled["command"].get("tab_id") == 303
+            ext.finish_execute_messages()
+            thread.join(timeout=5)
+            assert holder[0].status_code == 200
         finally:
             ext.close()
 
