@@ -54,6 +54,7 @@ let deskConfig = {
     eyes_settle_budget_ms: 2000,
     eyes_settle_poll_ms: 250,
     eyes_settle_min_text_chars: 40,
+    eyes_challenge_extra_ms: 8000,
     eyes_deep_text_max_chars: 4000,
     interact_targets_max: 40,
     observe_annotate_default: true,
@@ -938,11 +939,13 @@ async function settleScrapeEyes(tabId) {
   const budgetMs = deskConfig.browser?.eyes_settle_budget_ms ?? 2000;
   const pollMs = deskConfig.browser?.eyes_settle_poll_ms ?? 250;
   const minChars = deskConfig.browser?.eyes_settle_min_text_chars ?? 40;
+  const challengeExtraMs = deskConfig.browser?.eyes_challenge_extra_ms ?? 8000;
   return settleEyes({
     scrape: () => scrapeTab(tabId),
     isReady: (snap) => scrapeEyesReady(snap, minChars),
     budgetMs,
     pollMs,
+    challengeExtraMs,
   });
 }
 

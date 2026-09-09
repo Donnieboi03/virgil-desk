@@ -3,30 +3,49 @@
  * No focus / screenshot — extension inject only.
  */
 
+const CHALLENGE_RE =
+  /cloudflare|just a moment|checking your browser|challenge-platform|cf-browser-verification|attention required|enable javascript and cookies/i;
+
+/**
+ * Detect bot/challenge interstitial from scrape url/title/text.
+ * @param {{ text?: string, title?: string, url?: string } | null | undefined} snap
+ */
+export function looksLikeChallenge(snap) {
+  if (!snap || typeof snap !== "object") return false;
+  const hay = `${snap.url || ""} ${snap.title || ""} ${snap.text || ""}`;
+  return CHALLENGE_RE.test(hay);
+}
+
 /**
  * @param {{
  *   scrape: () => Promise<any>,
  *   isReady: (result: any) => boolean,
  *   budgetMs?: number,
  *   pollMs?: number,
+ *   challengeExtraMs?: number,
+ *   isChallenge?: (result: any) => boolean,
  *   sleep?: (ms: number) => Promise<void>,
  *   now?: () => number,
  * }} opts
- * @returns {Promise<{ result: any, attempts: number, elapsedMs: number, ready: boolean }>}
+ * @returns {Promise<{ result: any, attempts: number, elapsedMs: number, ready: boolean, challenge_extended?: boolean }>}
  */
 export async function settleEyes({
   scrape,
   isReady,
   budgetMs = 2000,
   pollMs = 250,
+  challengeExtraMs = 0,
+  isChallenge = looksLikeChallenge,
   sleep = (ms) => new Promise((r) => setTimeout(r, ms)),
   now = () => Date.now(),
 }) {
-  const budget = Math.max(0, Number(budgetMs) || 0);
+  let budget = Math.max(0, Number(budgetMs) || 0);
+  const extra = Math.max(0, Number(challengeExtraMs) || 0);
   const poll = Math.max(1, Number(pollMs) || 250);
   const start = now();
   let attempts = 0;
   let last = null;
+  let challengeExtended = false;
 
   while (true) {
     attempts += 1;
@@ -37,15 +56,23 @@ export async function settleEyes({
         attempts,
         elapsedMs: Math.max(0, now() - start),
         ready: true,
+        challenge_extended: challengeExtended,
       };
     }
     const elapsed = Math.max(0, now() - start);
     if (elapsed >= budget) {
+      if (!challengeExtended && extra > 0 && isChallenge(last)) {
+        challengeExtended = true;
+        budget += extra;
+        await sleep(Math.min(poll, budget - elapsed));
+        continue;
+      }
       return {
         result: last,
         attempts,
         elapsedMs: elapsed,
         ready: false,
+        challenge_extended: challengeExtended,
       };
     }
     await sleep(Math.min(poll, budget - elapsed));

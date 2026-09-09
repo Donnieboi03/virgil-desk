@@ -39,6 +39,7 @@ class BrowserConfig:
     eyes_settle_budget_ms: int
     eyes_settle_poll_ms: int
     eyes_settle_min_text_chars: int
+    eyes_challenge_extra_ms: int
     eyes_deep_text_max_chars: int
     interact_targets_max: int
     observe_annotate_default: bool
@@ -199,6 +200,7 @@ def config_for_extension(cfg: DeskConfig | None = None) -> dict[str, Any]:
             "eyes_settle_budget_ms": c.browser.eyes_settle_budget_ms,
             "eyes_settle_poll_ms": c.browser.eyes_settle_poll_ms,
             "eyes_settle_min_text_chars": c.browser.eyes_settle_min_text_chars,
+            "eyes_challenge_extra_ms": c.browser.eyes_challenge_extra_ms,
             "eyes_deep_text_max_chars": c.browser.eyes_deep_text_max_chars,
             "interact_targets_max": c.browser.interact_targets_max,
             "observe_annotate_default": c.browser.observe_annotate_default,

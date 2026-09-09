@@ -4,6 +4,7 @@ import {
   textReady,
   scrapeEyesReady,
   observeEyesReady,
+  looksLikeChallenge,
 } from "./eyesSettle.js";
 
 describe("textReady / scrapeEyesReady / observeEyesReady", () => {
@@ -73,5 +74,40 @@ describe("settleEyes", () => {
     });
     expect(r.ready).toBe(false);
     expect(r.attempts).toBeGreaterThanOrEqual(2);
+  });
+
+  it("extends budget once on challenge markers", async () => {
+    const scrape = vi.fn(async () => ({
+      text: "Just a moment...",
+      title: "Just a moment...",
+      url: "https://jobs.example.com/apply",
+      links: [],
+    }));
+    let t = 0;
+    const r = await settleEyes({
+      scrape,
+      isReady: () => false,
+      budgetMs: 200,
+      pollMs: 100,
+      challengeExtraMs: 300,
+      sleep: async (ms) => {
+        t += ms;
+      },
+      now: () => t,
+    });
+    expect(r.challenge_extended).toBe(true);
+    expect(r.ready).toBe(false);
+    expect(r.elapsedMs).toBeGreaterThanOrEqual(200);
+    expect(scrape.mock.calls.length).toBeGreaterThan(2);
+  });
+});
+
+describe("looksLikeChallenge", () => {
+  it("detects cloudflare / just a moment", () => {
+    expect(looksLikeChallenge({ title: "Just a moment..." })).toBe(true);
+    expect(looksLikeChallenge({ text: "Checking your browser before accessing" })).toBe(
+      true
+    );
+    expect(looksLikeChallenge({ text: "Welcome to the job board" })).toBe(false);
   });
 });
