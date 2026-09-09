@@ -75,6 +75,10 @@ def main() -> int:
             body["source"] = params["source"]
         elif args.url:
             body["source"] = {"kind": "handoff", "url": args.url}
+        if params.get("park_kind"):
+            body["park_kind"] = params["park_kind"]
+        if params.get("resume") is not None:
+            body["resume"] = bool(params["resume"])
         try:
             out = _post_json(f"{base}/v1/items/mint", body, args.timeout + 5)
         except urllib.error.HTTPError as exc:

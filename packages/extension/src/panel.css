@@ -107,6 +107,23 @@ li {
 .badge.failed {
   background: #fecaca;
 }
+.badge.awaiting_human {
+  background: #fde68a;
+}
+.item-url {
+  color: #1d4ed8;
+  text-decoration: underline;
+  cursor: pointer;
+}
+.item-open-url {
+  font-size: 10px;
+  margin-left: 4px;
+  padding: 0 4px;
+}
+.item-awaiting {
+  color: #92400e;
+  font-style: italic;
+}
 .item-error {
   color: #c33;
   font-size: 11px;

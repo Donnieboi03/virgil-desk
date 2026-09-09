@@ -27,9 +27,12 @@ from .navigation import normalize_browser_command
 from .observability import browser_command_result_fields, measure_from_snapshot, record, usage_measure
 from .policy import policy_denied_reason
 from .execute_validation import (
+    auth_gate_blocks_false_closure,
     empty_probe_links_only_cover,
     execute_summary_incomplete_reason,
     failed_open_tab_blocks_done,
+    open_auth_gate_you,
+    open_you_remainder,
     parent_done_blocked_reason,
 )
 from .mint_policy import find_idempotent_mint
@@ -112,6 +115,8 @@ class MintItemBody(BaseModel):
     status: str = "proposed"
     hints: dict[str, Any] | None = None
     source: dict[str, Any] | None = None
+    park_kind: str | None = None
+    resume: bool | None = None
 
 
 class CompleteBody(BaseModel):
@@ -621,6 +626,7 @@ async def dispatch_browser_command(command: dict[str, Any]) -> None:
         command.get("op", ""),
         command.get("tab_id"),
         command.get("human_tab_id"),
+        params=command.get("params") if isinstance(command.get("params"), dict) else None,
     )
     if reason:
         record(
@@ -775,17 +781,28 @@ async def mint_item(body: MintItemBody) -> dict[str, Any]:
     except ExtensionNotConnectedError as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
 
+    park_kind = body.park_kind if body.park_kind in ("auth_gate", "human_remainder") else None
+    resume = bool(body.resume) if body.resume is not None else park_kind == "auth_gate"
+
     source = body.source or dict(parent.get("source") or {"kind": "handoff"})
     if body.source and body.source.get("url"):
         source = {**source, "url": body.source["url"]}
     source_url = (source or {}).get("url") if isinstance(source, dict) else None
 
+    if body.column == "you" and park_kind in ("auth_gate", "human_remainder") and not source_url:
+        raise HTTPException(
+            status_code=400,
+            detail="You park with park_kind requires source.url",
+        )
+
+    gate_dedupe = body.column == "you" and park_kind == "auth_gate"
     existing = find_idempotent_mint(
         _work_items,
         parent_id=body.parent_id,
         column=body.column,
         source_url=source_url,
         title=body.title,
+        gate_dedupe=gate_dedupe,
     )
     if existing:
         record(
@@ -795,7 +812,7 @@ async def mint_item(body: MintItemBody) -> dict[str, Any]:
             item_id=existing["id"],
             parent_id=body.parent_id,
             column=body.column,
-            flags={"idempotent_reuse": True},
+            flags={"idempotent_reuse": True, "park_kind": existing.get("park_kind")},
         )
         return {"ok": True, "item": existing, "idempotent": True}
 
@@ -815,21 +832,37 @@ async def mint_item(body: MintItemBody) -> dict[str, Any]:
     }
     if body.hints:
         item["hints"] = body.hints
+    if park_kind:
+        item["park_kind"] = park_kind
+    if resume:
+        item["resume"] = True
     # Agent subtasks share the parent's agent tab when present (no new collage).
     if body.column == "agent" and parent.get("agent_tab_id") is not None:
         item["agent_tab_id"] = parent["agent_tab_id"]
 
     _work_items[item_id] = item
+    patch_ops: list[dict[str, Any]] = [{"op": "add", "item": item}]
+    if body.column == "you" and park_kind == "auth_gate":
+        parent_updated = {
+            **parent,
+            "status": "awaiting_human",
+            "run_id": body.run_id,
+        }
+        _work_items[body.parent_id] = parent_updated
+        patch_ops.append({"op": "update", "item": parent_updated})
+
     patch_id = uuid.uuid4().hex
     try:
         await _send_board_patch(
             body.run_id,
             patch_id,
-            [{"op": "add", "item": item}],
+            patch_ops,
             required=True,
         )
     except ExtensionNotConnectedError as exc:
         _work_items.pop(item_id, None)
+        if body.column == "you" and park_kind == "auth_gate":
+            _work_items[body.parent_id] = parent
         raise HTTPException(status_code=503, detail=str(exc)) from exc
     record(
         "item.minted",
@@ -838,6 +871,7 @@ async def mint_item(body: MintItemBody) -> dict[str, Any]:
         item_id=item_id,
         parent_id=body.parent_id,
         column=body.column,
+        flags={"park_kind": park_kind, "resume": resume} if park_kind else None,
     )
     return {"ok": True, "item": item, "idempotent": False}
 
@@ -885,6 +919,10 @@ async def execute_item(item_id: str, body: ExecuteBody) -> dict[str, Any]:
     _failed_ops[body.run_id] = []
     _last_probe_links_empty[body.run_id] = False
     _executing_item_ids.add(item_id)
+    if item.get("resume_ready"):
+        cleared = {**item, "resume_ready": False}
+        _work_items[item_id] = cleared
+        item = cleared
     await _execute_session_start(
         run_id=body.run_id,
         item_id=item_id,
@@ -967,6 +1005,13 @@ async def execute_item(item_id: str, body: ExecuteBody) -> dict[str, Any]:
                 failed_ops=list(_failed_ops.get(body.run_id, [])),
                 summary=str(evidence["summary"] or ""),
             )
+        gate_you = open_auth_gate_you(item_id, _work_items)
+        remainder_you = open_you_remainder(item_id, _work_items)
+        if not incomplete:
+            incomplete = auth_gate_blocks_false_closure(
+                str(evidence["summary"] or ""),
+                has_auth_gate_you=bool(remainder_you),
+            )
         if incomplete:
             err = incomplete if incomplete.lower().startswith("partial:") else f"Partial: {incomplete}"
             record(
@@ -1025,6 +1070,43 @@ async def execute_item(item_id: str, body: ExecuteBody) -> dict[str, Any]:
                 "blocked": blocked,
                 "result": result,
             }
+
+        # Auth/challenge park: halt parent until human clears gate (not Completed).
+        if gate_you or current.get("status") == "awaiting_human":
+            await _patch_work_item(
+                item_id,
+                status="awaiting_human",
+                run_id=body.run_id,
+                evidence=evidence,
+            )
+            await _record_execute_memory(
+                run_id=body.run_id,
+                item=item,
+                outcome="awaiting_human",
+                summary=str(evidence["summary"] or ""),
+            )
+            record(
+                "agent.executed",
+                body.run_id,
+                cfg=cfg,
+                measure={
+                    "browser_ops": evidence["browser_ops"],
+                    "exit_code": (result or {}).get("exit_code"),
+                    **usage,
+                },
+                flags={"awaiting_human": True},
+                item_id=item_id,
+                summary_snippet=evidence["summary"][
+                    : cfg.prompts.event_summary_snippet_max_chars
+                ],
+            )
+            return {
+                "ok": True,
+                "work_item_id": item_id,
+                "status": "awaiting_human",
+                "result": result,
+            }
+
         await _patch_work_item(
             item_id,
             status="done",
@@ -1083,7 +1165,54 @@ async def complete_item(item_id: str, body: CompleteBody) -> dict[str, Any]:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
     await _patch_work_item(item_id, status="done", run_id=body.run_id)
     record("item.completed", body.run_id, cfg=get_config(), item_id=item_id, column="you")
-    return {"ok": True, "work_item_id": item_id, "status": "done"}
+
+    resume_parent_id = None
+    parent_id = item.get("parent_id")
+    if parent_id and (item.get("resume") or item.get("park_kind") == "auth_gate"):
+        parent = _work_items.get(parent_id)
+        if parent and parent.get("status") == "awaiting_human":
+            gate_url = ((item.get("source") or {}).get("url")) or ""
+            await _patch_work_item(
+                parent_id,
+                status="proposed",
+                run_id=body.run_id,
+            )
+            # Flag for panel Resume label (cleared on next execute start implicitly via status flow).
+            parent_now = _work_items.get(parent_id)
+            if parent_now is not None:
+                parent_now["resume_ready"] = True
+                _work_items[parent_id] = parent_now
+                await _send_board_patch(
+                    body.run_id,
+                    uuid.uuid4().hex,
+                    [{"op": "update", "item": parent_now}],
+                    required=False,
+                )
+            resume_parent_id = parent_id
+            try:
+                await _memory_patch(
+                    [
+                        {
+                            "op": "append_bullet",
+                            "run_id": body.run_id,
+                            "bullet": f"Human cleared gate for {gate_url or parent_id}; resume agent.",
+                        }
+                    ]
+                )
+            except Exception:
+                pass
+            record(
+                "agent.resume_ready",
+                body.run_id,
+                cfg=get_config(),
+                item_id=parent_id,
+                flags={"from_you": item_id},
+            )
+
+    out: dict[str, Any] = {"ok": True, "work_item_id": item_id, "status": "done"}
+    if resume_parent_id:
+        out["resume_parent_id"] = resume_parent_id
+    return out
 
 
 @app.websocket("/v1/extension")

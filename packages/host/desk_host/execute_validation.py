@@ -98,7 +98,7 @@ def execute_summary_incomplete_reason(text: str) -> str | None:
     if _OPEN_ONLY_SUMMARY_RE.search(body):
         return (
             "open-only observation is not done — finish work, verify terminal "
-            "page state, park remainder (mint_item / openTab placement=human), "
+            "page state, park remainder (mint_item You + source.url), "
             "claim single-closure, or Partial:"
         )
     return None
@@ -178,5 +178,68 @@ def empty_probe_links_only_cover(
         return (
             "empty probe_links is not link-check — re-observe, follow link targets, "
             "or Partial:"
+        )
+    return None
+
+
+_FALSE_CLOSURE_RE = re.compile(
+    r"(?i)\b(single[\s-]?closure|no further (?:closures|action|agent|human))\b"
+)
+_HONEST_REMAINDER_RE = re.compile(
+    r"(?i)\b(awaiting|parked|remainder|you column|human (?:view|review|glance)|resume)\b"
+)
+
+
+def open_auth_gate_you(
+    parent_id: str, work_items: dict[str, dict[str, Any]]
+) -> dict[str, Any] | None:
+    """Open You child with park_kind=auth_gate (or resume) under parent."""
+    for item in work_items.values():
+        if item.get("parent_id") != parent_id:
+            continue
+        if item.get("column") != "you":
+            continue
+        if item.get("park_kind") != "auth_gate" and not item.get("resume"):
+            continue
+        if item.get("status") not in ("proposed", "running"):
+            continue
+        return item
+    return None
+
+
+def open_you_remainder(
+    parent_id: str, work_items: dict[str, dict[str, Any]]
+) -> dict[str, Any] | None:
+    """Open You child that still needs human (auth_gate or human_remainder)."""
+    for item in work_items.values():
+        if item.get("parent_id") != parent_id:
+            continue
+        if item.get("column") != "you":
+            continue
+        if item.get("status") not in ("proposed", "running"):
+            continue
+        kind = item.get("park_kind")
+        if kind in ("auth_gate", "human_remainder") or item.get("resume"):
+            return item
+    return None
+
+
+def auth_gate_blocks_false_closure(
+    summary: str, *, has_auth_gate_you: bool
+) -> str | None:
+    """
+    Reject single-closure / no-further-action when a You gate/remainder still needs human.
+    """
+    if not has_auth_gate_you:
+        return None
+    body = strip_max_iter_banner(summary or "")
+    if not body:
+        return None
+    if execute_summary_indicates_failure(body):
+        return None
+    if _FALSE_CLOSURE_RE.search(body) and not _HONEST_REMAINDER_RE.search(body):
+        return (
+            "You park remains — do not claim single-closure/no further action; "
+            "leave parent awaiting_human or acknowledge parked remainder"
         )
     return None

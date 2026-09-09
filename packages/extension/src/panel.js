@@ -16,6 +16,47 @@ function truncateUrl(url) {
   }
 }
 
+function statusLabel(status) {
+  if (status === "awaiting_human") return "awaiting you";
+  return status || "proposed";
+}
+
+/** Clickable destination URL for You parks (URL-first handoff). */
+function appendSourceUrl(container, url) {
+  if (!url) return;
+  const meta = document.createElement("div");
+  meta.className = "item-meta";
+  const link = document.createElement("a");
+  link.href = url;
+  link.className = "item-url";
+  link.textContent = truncateUrl(url);
+  link.title = url;
+  link.addEventListener("click", async (ev) => {
+    ev.preventDefault();
+    try {
+      await chrome.tabs.create({ url, active: true });
+    } catch {
+      window.open(url, "_blank", "noopener,noreferrer");
+    }
+  });
+  meta.appendChild(link);
+  const openBtn = document.createElement("button");
+  openBtn.type = "button";
+  openBtn.className = "item-open-url";
+  openBtn.textContent = "Open";
+  openBtn.title = "Open in Chrome";
+  openBtn.addEventListener("click", async () => {
+    try {
+      await chrome.tabs.create({ url, active: true });
+    } catch (err) {
+      console.warn(err);
+    }
+  });
+  meta.appendChild(document.createTextNode(" "));
+  meta.appendChild(openBtn);
+  container.appendChild(meta);
+}
+
 let panelWsConnected = false;
 let handoffTargetTabId = null;
 
@@ -77,8 +118,10 @@ async function runAgentAction(item, li, runBtn) {
     if (updated?.last_error) {
       appendItemError(li, updated.last_error);
     }
-    runBtn.textContent = status === "failed" ? "Retry agent" : "Run agent";
-    runBtn.disabled = !panelWsConnected || status === "done";
+    if (status === "failed") runBtn.textContent = "Retry agent";
+    else if (status === "proposed" && updated?.resume_ready) runBtn.textContent = "Resume agent";
+    else runBtn.textContent = "Run agent";
+    runBtn.disabled = !panelWsConnected || status === "done" || status === "awaiting_human";
   }
 }
 
@@ -86,17 +129,10 @@ function appendChildRow(ul, child) {
   const cli = document.createElement("li");
   const cb = document.createElement("span");
   cb.className = `badge ${child.status || "proposed"}`;
-  cb.textContent = child.status || "proposed";
+  cb.textContent = statusLabel(child.status);
   cli.appendChild(cb);
   cli.appendChild(document.createTextNode(` ${child.title || "(untitled)"}`));
-  const curl = child.source?.url;
-  if (curl) {
-    const meta = document.createElement("div");
-    meta.className = "item-meta";
-    meta.textContent = truncateUrl(curl);
-    meta.title = curl;
-    cli.appendChild(meta);
-  }
+  appendSourceUrl(cli, child.source?.url);
   if (child.last_error) {
     const err = document.createElement("div");
     err.className = "item-error";
@@ -113,11 +149,20 @@ function appendItemActions(li, item, column) {
       (item.status === "running" ||
         item.status === "proposed" ||
         item.status === "failed");
+    if (item.status === "awaiting_human") {
+      const note = document.createElement("div");
+      note.className = "item-meta item-awaiting";
+      note.textContent = "Waiting on you — open You card URL, then Mark done to Resume";
+      li.appendChild(note);
+      return;
+    }
     if (canRun) {
       const actions = document.createElement("div");
       actions.className = "item-actions";
       const runBtn = document.createElement("button");
-      runBtn.textContent = item.status === "failed" ? "Retry agent" : "Run agent";
+      if (item.status === "failed") runBtn.textContent = "Retry agent";
+      else if (item.status === "proposed" && item.resume_ready) runBtn.textContent = "Resume agent";
+      else runBtn.textContent = "Run agent";
       runBtn.disabled = !panelWsConnected;
       runBtn.title = panelWsConnected ? "" : "Connect extension WS first";
       runBtn.onclick = () => runAgentAction(item, li, runBtn);
@@ -217,20 +262,13 @@ function renderItemCard(item, column, columnItems, { showFrom = false, byId = {}
   }
   const badge = document.createElement("span");
   badge.className = `badge ${item.status || "proposed"}`;
-  badge.textContent = item.status || "proposed";
+  badge.textContent = statusLabel(item.status);
   const title = document.createElement("div");
   title.className = "item-title";
   title.appendChild(badge);
   title.appendChild(document.createTextNode(item.title || "(untitled)"));
   li.appendChild(title);
-  const url = item.source?.url;
-  if (url) {
-    const meta = document.createElement("div");
-    meta.className = "item-meta";
-    meta.textContent = truncateUrl(url);
-    meta.title = url;
-    li.appendChild(meta);
-  }
+  appendSourceUrl(li, item.source?.url);
   if (showFrom && item.parent_id && byId[item.parent_id]) {
     const from = document.createElement("div");
     from.className = "item-meta item-from";

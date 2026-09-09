@@ -4,9 +4,12 @@ export type Column = "you" | "agent" | "waiting";
 export type WorkItemStatus =
   | "proposed"
   | "running"
+  | "awaiting_human"
   | "done"
   | "failed"
   | "denied";
+
+export type ParkKind = "auth_gate" | "human_remainder";
 
 export type ProposalKind = "calendar_slot" | "draft" | "fill" | "other";
 
@@ -42,6 +45,12 @@ export interface WorkItem {
   status: WorkItemStatus;
   parent_id?: string;
   kind?: "parent" | "subtask";
+  /** You park: auth/challenge gate (resume parent) vs informational human glance. */
+  park_kind?: ParkKind;
+  /** When true, Mark done unblocks parent agent for Resume. */
+  resume?: boolean;
+  /** Set on parent after You auth_gate Mark done; panel shows Resume agent. */
+  resume_ready?: boolean;
   evidence?: WorkItemEvidence;
   proposals?: Proposal[];
   hints?: WorkItemHints;

@@ -7,9 +7,11 @@
     "id": { "type": "string" },
     "column": { "enum": ["you", "agent", "waiting"] },
     "title": { "type": "string" },
-    "status": { "enum": ["proposed", "running", "done", "failed", "denied"] },
+    "status": { "enum": ["proposed", "running", "awaiting_human", "done", "failed", "denied"] },
     "parent_id": { "type": "string" },
     "kind": { "enum": ["parent", "subtask"], "default": "parent" },
+    "park_kind": { "enum": ["auth_gate", "human_remainder"] },
+    "resume": { "type": "boolean" },
     "source": {
       "type": "object",
       "required": ["kind"],
