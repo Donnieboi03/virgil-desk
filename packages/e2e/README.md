@@ -26,6 +26,6 @@ See [`docs/OPERATOR.md`](../../docs/OPERATOR.md) § Manual checklist — run aft
 1. Handoff scrape-then-close (no per-task agent collage)
 2. **Run agent** on one root → provisions that item only
 3. Mid-run `mint_item` children appear under Agent accordion / You-Waiting columns
-4. You child with clickable `source.url` / Open (URL-first park; no agent `placement=human`)
+4. You child with clickable `source.url` (URL-first park; no agent `placement=human`)
 
 Playwright smoke (`packages/e2e/playwright`) loads the unpacked extension in CI.

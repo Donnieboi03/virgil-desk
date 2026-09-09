@@ -5,7 +5,7 @@
 | Protocol | `npm run test -w @virgil-desk/protocol` |
 | Extension unit | `npm run test -w @virgil-desk/extension` |
 | Host unit + integration | `npm run test:host` |
-| Park resume / URL-first | Covered in host unit (`mint_policy`, `policy`, `execute_validation`) + `test_execute_agent` auth_gate complete; Eyes challenge settle in extension vitest |
+| Park resume / URL-first | Host: auth_gate complete → `cleared_gates` + resume Packet; policy openTab URL required; Eyes challenge settle in extension vitest |
 | **E2E (mock extension)** | `npm run test:e2e` |
 | **Playwright (extension load + handoff smoke)** | `npm run test:playwright` |
 | **All** (incl. Playwright) | `npm run test:all` |
