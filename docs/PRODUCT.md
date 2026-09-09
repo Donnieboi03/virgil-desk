@@ -7,7 +7,7 @@ Virgil Desk is a **browser allocation desk**: you hand off the active tab, an ag
 - Side-panel board (**You / Agent / Waiting**) backed by `chrome.storage.local`
 - Local Host (FastAPI) for handoff, browser commands, proposals, and observability
 - Pluggable agent backends: mock (default), Hermes, OpenClaw stub
-- **Path B (default):** DOM **Eyes** (slim `interact_targets`, fail-only `eyes_mode` ladder, optional AX/`page_tree`, probes) → **Hands** by `target_id` — see [`BROWSER_LAYER.md`](BROWSER_LAYER.md), [`INTERACTION_LAYERS.md`](INTERACTION_LAYERS.md), and the Eyes/Done framework in [`ARCHITECTURE.md`](ARCHITECTURE.md)
+- **Path B (default):** DOM **Eyes** (slim `interact_targets`, fail-only `eyes_mode` ladder, optional AX/`page_tree`, probes) → **Hands** by `target_id` — see [`BROWSER_LAYER.md`](BROWSER_LAYER.md) and Done/park in [`ARCHITECTURE.md`](ARCHITECTURE.md)
 - URL open/construct is a **secondary workaround** (hostile Eyes) — not the primary operating model
 - **Park You** is URL-first (`source.url` on the card; panel Open). Auth gates leave the parent **`awaiting_human`** until Mark done → Resume agent
 - **Verified terminal** page state (expired / already submitted) after Eyes read = **Completed** for review goals — not automatic You mint

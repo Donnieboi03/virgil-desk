@@ -5,7 +5,7 @@ Wire Hermes as the agent backend for live handoff decompose, **Run agent** execu
 ## 1. Profile and skills
 
 ```bash
-hermes profile use virgil-executor   # or your profile name
+hermes profile use <your-profile>   # local default often virgil-executor
 ```
 
 Add this repo's skills directory to Hermes config (`~/.hermes/profiles/<profile>/config.yaml`):
@@ -31,8 +31,8 @@ export PATH="$PWD/scripts:$PATH"
 
 ```bash
 export DESK_AGENT_BACKEND=hermes
-export DESK_HERMES_PROFILE=virgil-executor
-export DESK_HERMES_HOME=~/.hermes/profiles/virgil-executor
+export DESK_HERMES_PROFILE=<your-profile>   # local default often virgil-executor
+export DESK_HERMES_HOME=~/.hermes/profiles/<your-profile>
 export DESK_HOST=127.0.0.1
 export DESK_PORT=8787
 # Optional: force stub decompose for debugging

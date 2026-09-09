@@ -23,7 +23,7 @@ def test_detects_partial_not_max_iterations():
     assert not execute_summary_indicates_failure("Reached maximum iterations")
     assert not execute_summary_indicates_failure(
         "⚠️  Reached maximum iterations (20). Requesting summary...\n"
-        "Reviewed Engevity August 2026 Monthly Update from Deilen Davis."
+        "Reviewed August 2026 Monthly Update from the sender."
     )
     assert execute_summary_indicates_failure(
         "Partial: searched inbox but could not open thread"
@@ -33,10 +33,10 @@ def test_detects_partial_not_max_iterations():
 def test_strip_max_iter_banner():
     raw = (
         "⚠️  Reached maximum iterations (20). Requesting summary...\n"
-        "Reviewed Engevity August 2026 Monthly Update from Deilen Davis."
+        "Reviewed August 2026 Monthly Update from the sender."
     )
     assert strip_max_iter_banner(raw) == (
-        "Reviewed Engevity August 2026 Monthly Update from Deilen Davis."
+        "Reviewed August 2026 Monthly Update from the sender."
     )
 
 
@@ -92,10 +92,10 @@ def test_verified_terminal_opened_summary_is_done():
     )
 
 
-def test_engevity_opened_with_park_to_you_column_is_done():
+def test_opened_with_park_to_you_column_is_done():
     """Open-only gate must not false-fail real park language after 'Opened…'."""
     summary = (
-        "Opened Engevity August 2026 Monthly Update from Deilen Davis; "
+        "Opened August 2026 Monthly Update from the sender; "
         "parked Drive folder and PandaDoc agreement to You column."
     )
     assert execute_summary_incomplete_reason(summary) is None
@@ -205,7 +205,7 @@ def test_auth_gate_blocks_false_closure():
     from desk_host.execute_validation import auth_gate_blocks_false_closure
 
     assert auth_gate_blocks_false_closure(
-        "Single closure: reviewed Engevity update; no further action.",
+        "Single closure: reviewed monthly update; no further action.",
         has_auth_gate_you=True,
     )
     assert (

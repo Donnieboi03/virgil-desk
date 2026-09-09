@@ -16,29 +16,29 @@ Use notepad + recent executions for temporal context; do not re-do work already 
 
 **Done** means, in order of preference:
 
-1. **Agent-safe work finished** — including following relevant in-body links in the **agent** tab (Drive/Docs/read/summarize), **or verifying a terminal page state**, then one-line success summary, or
-2. Explicit one-line **`Partial:`** (blocked / cannot proceed — auth wall, forbidden action, true stuck), or
-3. **Last-resort park** — `mint_item` You (or Waiting) with **`source.url`** when a destination exists. Parent stays **`awaiting_human`** for auth/challenge gates until the human Marks done and Resume agent runs. **Never** `openTab` with `placement:human` (host denies it).
+1. **Agent-safe work finished** — including following relevant in-body links in the **agent** tab (readable docs/files/pages), **or verifying a terminal page state**, then one-line success summary, or
+2. Explicit one-line **`Partial:`** (blocked without a You park — forbidden action, true stuck, blank Eyes with no human remainder), or
+3. **Last-resort park** — `mint_item` You (or Waiting) with **`source.url`** when a destination exists. Auth/challenge gates use `park_kind: auth_gate` (parent **`awaiting_human`** until Mark done → Resume). **Never** `openTab` with `placement:human` (host denies it).
 
 ### Verified terminal = Completed (not Partial, not park)
 
-When the work item is review/check/status and Eyes confirm a **terminal** outcome (expired link, already submitted, deadline passed, not found), that **is Done**. Summarize the verified fact in one line and stop. Do **not** mint You merely to show the user an expired page they do not need to act on.
+When the work item is review/check/status and Eyes confirm a **terminal** outcome (expired link, already submitted, deadline passed, not found), that **is Done**. Summarize the verified fact in one line and stop. Do **not** mint You merely to show the user a dead-end page they do not need to act on.
 
-Examples of Done language: `Verified expired screening link (deadline passed / already submitted); no further action.` / `Single closure: …`
+Examples of Done language: `Verified expired link (deadline passed / already submitted); no further action.` / `Single closure: …`
 
-**Not done:** a one-line “Observed …” / “Opened …” after opening a thread **without** a verified terminal claim, single-closure, or park. The host rejects open-only observation summaries. **Not done:** “Reviewed …” after a failed `openTab`/`duplicateTab`. **Not done:** parking a Drive/Docs link you could have read as agent. **Not done:** “no further action” / “single closure” when a You remainder or auth gate was minted — say the remainder is parked / awaiting human instead.
+**Not done:** a one-line “Observed …” / “Opened …” after opening a thread **without** a verified terminal claim, single-closure, or park. The host rejects open-only observation summaries. **Not done:** “Reviewed …” after a failed `openTab`/`duplicateTab`. **Not done:** parking a readable link you could have opened as agent. **Not done:** “no further action” / “single closure” when a You remainder or auth gate was minted — say the remainder is parked / awaiting human instead.
 
 For inbox / email / message-list work items:
 
 1. **Open the matching thread** before claiming progress. Click the row whose Eyes `label` matches sender/subject hints (`target_id`). Re-`observe` and confirm you left the list (URL/hash change and/or body beyond the list snippet).
 2. **List / search preview is not done.**
 3. **If you cannot open the thread:** `Partial:` one-liner — do not claim success from the list.
-4. Prefer conversation-row `target_id`s. **Never** bare CSS like `tr.zA` / `[role=row]`.
+4. Prefer conversation-row `target_id`s. **Never** bare list-row CSS selectors.
 5. **Stop only when the Done bar above is met** — then one-line success summary and stop. Turn ceiling is backup only.
 
 ## Links after open (agent-continue first)
 
-After the thread/body is open, **follow relevant in-body links** (Drive, Docs, attachments, job pages, readable PandaDoc/views) that are part of the task:
+After the thread/body is open, **follow relevant in-body links** (shared folders, docs, attachments, job pages, readable agreement viewers) that are part of the task:
 
 1. `openTab` **without** `placement:human` (agent tab) → `observe` → read/summarize (or mint an **agent** child and pursue it in this run).
 2. Do **not** crawl every link. An **empty** `probe_links` is not “links checked” — re-`observe` or click visible link targets.
@@ -59,25 +59,25 @@ desk-browser --run-id RUN --op mint_item --params '{
 }'
 ```
 
-- **`park_kind: auth_gate`** (+ `resume: true`) — login / CAPTCHA / Cloudflare / auth wall. Host sets parent to **`awaiting_human`**. One card per destination (origin+path dedupe); do not mint Cloudflare then login as two You cards.
-- **`park_kind: human_remainder`** — agent verified facts **and** human still must view/act (e.g. Drive/PandaDoc glance). Parent may Complete with an honest “remainder parked You” summary — **forbid** “no further action” / “single closure” without acknowledging the remainder.
+- **`park_kind: auth_gate`** (+ `resume: true`) — login / CAPTCHA / bot-challenge / auth wall. Host sets parent to **`awaiting_human`**. One card per destination (origin+path dedupe); do not mint challenge interstitial then login as two You cards.
+- **`park_kind: human_remainder`** — agent verified facts **and** human still must view/act. Parent may Complete with an honest “remainder parked You” summary — **forbid** “no further action” / “single closure” without acknowledging the remainder.
 - Soft-help You (keywords/draft/checklist) when human action is still required.
 
-**Challenge patience:** on Cloudflare / “Just a moment” / checking-your-browser, wait for Eyes settle (extra challenge budget) and **re-observe once**. If still gated → **one** You `auth_gate` for the **destination** URL (not the challenge interstitial title as a second card).
+**Challenge patience:** on bot/challenge interstitials (e.g. “Just a moment” / checking-your-browser), wait for Eyes settle (extra challenge budget) and **re-observe once**. If still gated → **one** You `auth_gate` for the **destination** URL.
 
 Park **only when**:
 
-- **Login / CAPTCHA / auth / challenge wall** — after one settle/re-observe; then `auth_gate` You; stop (parent awaiting_human).
-- **Forbidden action** — LinkedIn send/connect/InMail, public post, pay/charge, sign/submit forms, send email without Accept.
-- **Hostile / empty Eyes with no verified fact** — soft-help You. If observe/open reports **`eyes_mode: 1`**, treat the promoted `scrape_excerpt` as authoritative. If Eyes verify a **terminal** page (expired / already submitted / deadline passed), that is **Completed** — do not park. If **`eyes_empty`** / **`eyes_mode: 2`** with no usable fact, do **not** invent page copy from the URL alone — use `eyes_hints.url_path_hint` only as a soft signal, then `Partial:` (or park only when human action is still required).
-- **Stuck** after one re-`observe` (`stall_detected` / repeated `used:none`).
+- **Login / CAPTCHA / auth / challenge wall** — after one settle/re-observe → **`auth_gate` You** (not bare `Partial:`). Parent stays `awaiting_human`.
+- **Forbidden action** — outbound social connect/message, public post, pay/charge, sign/submit forms, send email without Accept → park You (or Waiting proposal).
+- **Hostile / empty Eyes with no verified fact** — soft-help You when human must still act; else `Partial:`. If observe/open reports **`eyes_mode: 1`**, treat the promoted `scrape_excerpt` as authoritative. If Eyes verify a **terminal** page, that is **Completed** — do not park. If **`eyes_empty`** / **`eyes_mode: 2`** with no usable fact, do **not** invent page copy from the URL alone — use `eyes_hints.url_path_hint` only as a soft signal.
+- **Stuck** after one re-`observe` (`stall_detected` / repeated `used:none`) → `Partial:` or soft-help You if human action remains.
 
-Do **not** park merely because a Drive/Docs/job URL appeared — continue as agent first. Do **not** park an expired/already-submitted screening link after Eyes verified it.
+Do **not** park merely because a readable link appeared — continue as agent first. Do **not** park after Eyes verified a terminal dead-end.
 
 ## Allowed vs forbidden actions
 
-- **Allowed:** email **drafts**; search; open threads; expand panels; agent-safe reads (Drive/Docs/bodies).
-- **Forbidden on agent path:** **LinkedIn send / connect / InMail**, public posts, payment submits, signing, sending email without human Accept — then park You.
+- **Allowed:** email **drafts**; search; open threads; expand panels; agent-safe reads (docs/files/bodies).
+- **Forbidden on agent path:** outbound social send/connect/InMail-class actions, public posts, payment submits, signing, sending email without human Accept — then park You.
 - Still never automate `human_tab_id`.
 
 ## Mid-flight subtasks (mandatory when multi-closure)
@@ -95,10 +95,10 @@ When Eyes (or a **non-empty** `probe_links`) show **more than one closure** that
    }'
    ```
    Host **dedupes** mint by parent + column + `source.url` (auth gates: origin+path). Prefer passing `source.url` when parking/following a specific link.
-2. Prefer **`column: agent`** for readable follow-ups (Drive folder, Doc, thread body). Pursue agent children in this run.
+2. Prefer **`column: agent`** for readable follow-ups. Pursue agent children in this run.
 3. Use **`column: you|waiting`** under last-resort park rules (**URL-first** — no `placement:human`).
 4. If you cannot continue or park when required: `Partial:` — do not claim success.
-5. Prefer imperative titles (“Open Drive folder and list shared files”), not “Summarize …”.
+5. Prefer imperative titles (“Open shared folder and list files”), not “Summarize …”.
 
 If there is truly only one closure and no further agent/human action (including verified terminal pages): say so explicitly (“Single closure: …” / “Verified expired …; no further action.”) after finishing that work — do not use open-only “Observed …”. If a You remainder remains, acknowledge it instead of “no further action.”
 
@@ -107,8 +107,8 @@ If there is truly only one closure and no further agent/human action (including 
 1. Use **`desk-browser`** until Done (or `Partial:` / awaiting_human park).
 2. Never automate `human_tab_id`.
 3. **Observe–act–observe:** `observe` → act by `target_id` → verify `act_resolved` / URL when opening.
-4. **Forbidden:** LinkedIn send/connect, send email (without Accept), submit forms that pay/charge/sign, or post public content — propose / last-resort park You only.
-5. **Allowed:** email drafts, search/navigation Enter, opening threads, Drive/Docs reads, expanding panels — `press_key` on fill or `key` op.
+4. **Forbidden:** social send/connect, send email (without Accept), submit forms that pay/charge/sign, or post public content — propose / last-resort park You only.
+5. **Allowed:** email drafts, search/navigation Enter, opening threads, document reads, expanding panels — `press_key` on fill or `key` op.
 6. **Extension driver (default / Path B):**
    ```bash
    desk-browser ... --op observe --wait

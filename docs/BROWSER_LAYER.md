@@ -1,6 +1,6 @@
 # Browser layer
 
-Eyes vs Hands (DOM / CDP Input / OS), costs, and dual-focus fit: [`INTERACTION_LAYERS.md`](INTERACTION_LAYERS.md).
+Eyes vs Hands taxonomy (DOM / CDP Input / OS — archive reference): [`archive/INTERACTION_LAYERS.md`](archive/INTERACTION_LAYERS.md).
 
 Virgil Desk can drive Chrome two ways. **Handoff / board / decompose** always use the **MV3 extension**. **Execute** (`desk-browser` / `POST /v1/browser`) follows `browser.driver` in [`config/desk.yaml`](../config/desk.yaml).
 
@@ -28,9 +28,15 @@ Eyes channels (no vision / screenshot by default):
 - Same-URL follow-up observe: `text_omitted` + no `page_tree` when content unchanged; keep slim targets. Mode-1 promote forces a non-omitted excerpt.
 - **Eyes settle (fast):** after open/scrape/observe, poll until excerpt/targets ready or `eyes_settle_budget_ms` (default 2s, poll 250ms). Happy path exits on first scrape. Empty first scrape does **not** lock omit baseline. If scrape looks like a **challenge** (Cloudflare / Just a moment / checking your browser), extend once by `eyes_challenge_extra_ms` (default 8s) before giving up. Still-empty → one-shot deep text (`eyes_deep_text_max_chars`) + forced DIY `page_tree` → promote or soft hints (no screenshot / no tab focus).
 
-**`eyes_mode` is not soft site tiers A–D** (those remain expectation-only below).
+**Desk defaults**
 
-Done/park rules for verified terminal pages, mint/tab idempotency, and execute lock: [`ARCHITECTURE.md`](ARCHITECTURE.md).
+| Phase | Eyes | Hands | Driver |
+|-------|------|-------|--------|
+| Handoff / decompose | Extension scrape + screenshot | — | Extension |
+| Execute (default / Path B) | slim targets + optional `page_tree` + excerpt omit | DOM `target_id` | `browser.driver: extension` |
+| Execute (rollback) | dims / scrape; empty targets | CDP Input (`x,y` / selector) | `browser.driver: harness` |
+
+**`eyes_mode` is not soft site tiers A–D** (those remain expectation-only below). Ladder SoT is this file; Done/park: [`ARCHITECTURE.md`](ARCHITECTURE.md).
 
 Implementation: [WebMarker](https://github.com/reidbarber/webmarker) + `deskDeepText` / `deskPageTree` / probes in `interactObserve.bundle.js`. `allFrames: true` stamps `frame_id`; act uses `frameIds`.
 

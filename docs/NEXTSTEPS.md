@@ -4,9 +4,9 @@ Portable checklist for Desk work not in the current MVP slice. Check items off a
 
 ## Active
 
-### Dual-focus (agent Gmail + human homework)
+### Dual-focus (agent browse + human homework)
 
-Research SoT: [`docs/DUAL_FOCUS_RESEARCH.md`](DUAL_FOCUS_RESEARCH.md) — atoms, feasibility battery, build DAG. Interaction taxonomy (Eyes/Hands, costs): [`docs/INTERACTION_LAYERS.md`](INTERACTION_LAYERS.md). Not scheduled until P0/C2/A1 spikes.
+Research notes (archive): [`archive/DUAL_FOCUS_RESEARCH.md`](archive/DUAL_FOCUS_RESEARCH.md), [`archive/INTERACTION_LAYERS.md`](archive/INTERACTION_LAYERS.md). Not scheduled until measured spikes.
 
 ### Auto-execute Agent items
 
@@ -36,11 +36,10 @@ Optional multi-page Gmail scroll beyond `handoff_scroll_loops` (config-driven).
 
 ### Hermes fallback hygiene for Desk
 
-OpenRouter in-flight **402** (budget) and native Gemini fallback **404** currently leave a weak board `last_error` / useless `session_id`-only stdout. Desk now surfaces stderr snippets when present; still need provider/fallback config hygiene so execute does not silently fall through broken fallbacks.
+When provider fallbacks fail mid-execute, board `last_error` should show the real API failure (not a bare session id). Keep fallback_providers / model paths healthy for Desk execute models.
 
-- [ ] Audit `virgil-executor` fallback_providers for Desk `-m` models
-- [ ] Avoid OpenRouter 402 mid-run without a working Gemini native path
-- [ ] Confirm board `last_error` shows the real API failure after fallbacks
+- [ ] Audit Hermes profile fallback chain for Desk execute models
+- [ ] Confirm board `last_error` surfaces real API failures after fallbacks
 
 ### Host-owned rolling execute history
 

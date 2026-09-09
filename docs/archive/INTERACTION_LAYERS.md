@@ -1,8 +1,8 @@
 # Eyes / Hands — interaction mental model
 
 **Audience:** Donovan + agents working on Virgil Desk (or Virgil Hub L2).  
-**Status:** Reference taxonomy (Aug 29, 2026). Not a build plan.  
-**Related:** [`DUAL_FOCUS_RESEARCH.md`](DUAL_FOCUS_RESEARCH.md), [`BROWSER_LAYER.md`](BROWSER_LAYER.md).
+**Status:** **Archive** — reference taxonomy (Aug 29, 2026). Not living product SoT. Living Path B: [`../BROWSER_LAYER.md`](../BROWSER_LAYER.md).
+**Related:** [`DUAL_FOCUS_RESEARCH.md`](DUAL_FOCUS_RESEARCH.md), [`../BROWSER_LAYER.md`](../BROWSER_LAYER.md).
 
 Desk (and harness-style agents) split browser work into two jobs:
 

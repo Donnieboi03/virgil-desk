@@ -1,10 +1,10 @@
 # Dual-focus research — Virgil Desk
 
 **Audience:** Donovan (operator / CS founder).  
-**Status:** Research synthesis (Aug 29, 2026). Not a build plan until feasibility atoms pass.  
+**Status:** **Archive** — research synthesis (Aug 29, 2026). Not living product SoT. Living Path B: [`../BROWSER_LAYER.md`](../BROWSER_LAYER.md).
 **Product stake:** Desk’s value is **dual-work** — agent finishes Gmail (or similar) while you do homework. Focus-steal fights that promise.
 
-**Eyes / Hands taxonomy** (DOM vs CDP Input vs OS, costs, pros/cons): [`INTERACTION_LAYERS.md`](INTERACTION_LAYERS.md).
+**Eyes / Hands taxonomy** (DOM vs CDP Input vs OS, costs, pros/cons): [`INTERACTION_LAYERS.md`](INTERACTION_LAYERS.md) (same archive folder).
 
 Swarm lenses: CDP background semantics, MV3 `chrome.debugger`, prior-art contradictions, architecture cuts, Desk/harness activate audit ([codebase TT](0c3f3098-7253-49c4-903e-5fdb3e1f625a)).
 
@@ -122,14 +122,20 @@ P0 (measure steal)
 
 ---
 
-## 6. Hints for Donovan (background: CS BS/MS, Engevity cofounder)
+## 6. Hints for Donovan (background: CS BS/MS, ops/product founder)
+
+Use this section as a taste filter, not a feature checklist.
+
+- Prefer demos humans can feel in one Run (homework uninterrupted) over clever Chromium tricks.
+- **C3 Gmail DOM vs Input** — domain experiment on *your* workflow; ops taste for “good enough.”
+- Kill false paths fast with the atom battery; package window/Space UX that humans understand.
 
 ### Cleanly tackle now (your wheelhouse)
 
 - **Instrument P0** — you already live in Desk events / `run_id`; add focus probes (frontmost app, selected tab id) around execute. Product-minded measurement.
 - **C2 harness flag** — small, local, reversible (`activate=False` in `harness_backend` scripts / `BH_NO_ACTIVATE`). Classic systems spike.
 - **W2 second window** — product + ops design you already use for Virgil Chrome lanes; less Chromium theology, more UX packaging (“Agent window” vs “Homework window”).
-- **C3 Gmail DOM vs Input** — domain experiment on *your* workflow; Engevity/ops taste for “good enough.”
+- **C3 Gmail DOM vs Input** — domain experiment on *your* workflow; ops taste for “good enough.”
 - **Read and map** `helpers.py` `switch_tab` / Desk `harness_backend.py` — code is already in-tree; no new framework.
 
 ### Learn more before deep diving
@@ -150,7 +156,7 @@ P0 (measure steal)
 
 ### Founder framing
 
-Dual-focus is a **wedge** if you can demo homework uninterrupted for a full Run. The **defensible** near-term story is likely **same cookies + agent window (W2/W3)** plus **measured** activate reduction — not “we solved Chromium background Input.” Your CS edge is running the atom battery yourself and killing false paths fast; your Engevity edge is packaging the window/Space UX humans understand.
+Dual-focus is a **wedge** if you can demo homework uninterrupted for a full Run. The **defensible** near-term story is likely **same cookies + agent window (W2/W3)** plus **measured** activate reduction — not “we solved Chromium background Input.” Your CS edge is running the atom battery yourself and killing false paths fast; your product edge is packaging the window/Space UX humans understand.
 
 ---
 

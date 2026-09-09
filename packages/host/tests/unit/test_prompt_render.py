@@ -35,8 +35,8 @@ def test_execute_prompt_dom_primary_playbooks():
     text = (root / "prompts" / "execute_agent_item.md").read_text(encoding="utf-8")
     assert "DOM Eyes" in text
     assert "secondary workaround" in text
-    assert "Auth wall" in text or "auth wall" in text.lower()
-    assert "LinkedIn send" in text
+    assert "Auth wall" in text or "auth wall" in text.lower() or "auth_gate" in text
+    assert "social send" in text.lower() or "outbound social" in text.lower() or "connect" in text.lower()
     assert "email **drafts**" in text or "email drafts" in text.lower()
     assert "last resort" in text.lower()
     assert "agent-continue" in text.lower() or "Agent-continue" in text or "agent tab" in text

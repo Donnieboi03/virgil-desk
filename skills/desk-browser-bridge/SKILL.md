@@ -3,7 +3,7 @@ name: desk-browser-bridge
 description: >-
   Virgil Desk browser bridge: desk-browser CLI, Path B extension Eyes/Hands
   (default) or harness CDP rollback, You/Agent/Waiting board, Accept/Deny proposals.
-version: 1.15.0
+version: 1.15.1
 metadata:
   hermes:
     tags: [virgil-desk, browser, handoff]
@@ -25,7 +25,6 @@ export DESK_HOST=127.0.0.1
 export DESK_PORT=8787
 
 desk-browser --run-id desk_abc --op observe --human-tab-id 1 --tab-id 2 --wait
-# Path B (default): click/fill by target_id from observe
 desk-browser --run-id desk_abc --op click --human-tab-id 1 --tab-id 2 \
   --params '{"target_id": 7}' --wait
 desk-browser --run-id desk_abc --op fill --human-tab-id 1 --tab-id 2 \
@@ -34,16 +33,13 @@ desk-browser --run-id desk_abc --op scroll --human-tab-id 1 --tab-id 2 \
   --params '{"direction":"down"}' --wait
 desk-browser --run-id desk_abc --op key --human-tab-id 1 --tab-id 2 \
   --params '{"key":"Enter"}' --wait
-# Optional probes (lazy Eyes)
 desk-browser --run-id desk_abc --op probe_links --human-tab-id 1 --tab-id 2 --wait
 desk-browser --run-id desk_abc --op probe_form --human-tab-id 1 --tab-id 2 --wait
-# Mid-flight subtask (board mint — not a browser op)
 desk-browser --run-id desk_abc --op mint_item --params '{
   "parent_id": "PARENT_ID",
   "column": "agent",
-  "title": "Open Drive folder and list files"
+  "title": "Open shared folder and list files"
 }'
-# closeTab requires the tab id returned from openTab
 desk-browser --run-id desk_abc --op closeTab --tab-id 99 --wait
 ```
 
@@ -65,7 +61,7 @@ See [`docs/BROWSER_LAYER.md`](../docs/BROWSER_LAYER.md).
 
 ## Tab rules
 
-- **`openTab`** (default / agent) — different URL than handoff; stays in **Virgil · Agent**. Use this to **continue** on Drive/Docs/job pages.
+- **`openTab`** (default / agent) — different URL than handoff; stays in **Virgil · Agent**. Use this to **continue** on readable follow-up pages.
 - **`openTab` + `placement:human`** — **denied** (`human_park_tab_denied`). Park is URL-first You card only.
 - **`duplicateTab`** — same page as human (extension).
 - **`closeTab`** — requires `--tab-id`; missing id is rejected (not a silent no-op).
@@ -73,7 +69,7 @@ See [`docs/BROWSER_LAYER.md`](../docs/BROWSER_LAYER.md).
 
 ## Agent-continue vs park (URL-first last resort)
 
-**Continue as agent** when links are readable: Drive folders/Docs, thread bodies, job pages — `openTab` (agent) → observe → read/summarize; mint **agent** children for multi-closure.
+**Continue as agent** when links are readable: shared folders/docs, thread bodies, job pages — `openTab` (agent) → observe → read/summarize; mint **agent** children for multi-closure.
 
 **Park You only when:** login/CAPTCHA/auth/challenge wall; forbidden send/connect/pay/sign/submit; hostile/empty Eyes when human action is still required; or stuck after re-observe. Soft-help = `mint_item` → You (keywords/draft/checklist).
 
@@ -90,11 +86,11 @@ desk-browser --run-id RUN --op mint_item --params '{
 }'
 ```
 
-- **`park_kind: auth_gate`** — parent → `awaiting_human` until human Marks done → **Resume agent**.
+- **`park_kind: auth_gate`** — parent → `awaiting_human` until human Marks done → **Resume agent**. Use this for auth/challenge walls (not bare `Partial:`).
 - **`park_kind: human_remainder`** — agent may Complete verified facts **and** leave You for human view; never claim “no further action” without acknowledging the remainder.
-- Challenge patience: wait/settle/re-observe once on Cloudflare; **one** You per destination (origin+path dedupe).
+- Challenge patience: wait/settle/re-observe once on bot interstitials; **one** You per destination (origin+path dedupe).
 
-Do not claim Observed success from blank scrape. If Eyes return **`eyes_mode: 1`**, trust the promoted excerpt. If Eyes **verify a terminal** outcome (expired / already submitted), stop with Completed — do not mint You. If **`eyes_empty`** / **`eyes_mode: 2`** with no usable fact, do not invent page copy from the URL alone — use `eyes_hints.url_path_hint` only as a soft signal, then `Partial:` or last-resort park when human action remains. Mint is **idempotent** on parent+column+`source.url` (gates: origin+path).
+Do not claim Observed success from blank scrape. If Eyes return **`eyes_mode: 1`**, trust the promoted excerpt. If Eyes **verify a terminal** outcome, stop with Completed — do not mint You. If **`eyes_empty`** / **`eyes_mode: 2`** with no usable fact, do not invent page copy from the URL alone — use `eyes_hints.url_path_hint` only as a soft signal, then `Partial:` or last-resort park when human action remains. Mint is **idempotent** on parent+column+`source.url` (gates: origin+path).
 
 ## Observe–act–observe
 
@@ -114,8 +110,8 @@ Check `act_resolved.url_before` vs `url_after` when opening threads or navigatin
 
 - **Must open** the matching message/thread and re-observe body/URL before claiming progress.
 - **List / search snippets are not done.**
-- Prefer row `target_id`s. **Forbidden:** bare CSS `tr.zA` / `[role=row]`.
-- **Done** = agent-safe work finished (incl. following Drive/Docs links as agent), **or** `Partial:`, **or** last-resort URL-first park. Host rejects bare “Observed …” / “Opened …”. Host also rejects “Reviewed …” after a failed `openTab`.
+- Prefer row `target_id`s. **Forbidden:** bare list-row CSS instead of `target_id`.
+- **Done** = agent-safe work finished (incl. following readable links as agent), **or** `Partial:`, **or** last-resort URL-first park. Host rejects bare “Observed …” / “Opened …”. Host also rejects “Reviewed …” after a failed `openTab`.
 - **Stop only when Done is met.** Turn ceiling is backup; ceiling without Done → `Partial:`.
 - After open, **follow relevant in-body links as agent** before parking. Empty `probe_links` ≠ links checked.
 
@@ -125,11 +121,11 @@ When Eyes / non-empty probes show **multiple actionable closures**, **must** `mi
 
 ## Forbidden
 
-- **LinkedIn send / connect / InMail**, public posts, payment/sign submits
+- outbound social send/connect/InMail-class actions, public posts, payment/sign submits
 - send email without human Accept (email **drafts** are allowed)
 - any browser op on `human_tab_id` (except snapshot at user gesture)
 - **`openTab` + `placement:human`** (use URL-first You mint)
-- bare row CSS selectors (`tr.zA` / `[role=row]`) instead of `target_id`
+- bare list-row CSS instead of `target_id`
 
 **Search / navigation Enter is allowed** — use `press_key: "Enter"` on fill or `key`.
 

@@ -46,10 +46,6 @@ Run once with a real tab ([`packages/e2e/README.md`](../packages/e2e/README.md))
 13. Failed ops show `error` / `tab_id` / `url` in `desk-events --summary`
 14. When backends expose usage, `desk-events --summary` may include rolled-up `cost_usd` / token totals (optional; omit when absent)
 
-## Hub Q-mapping (Desk)
-
-Virgil Hub allocate-then-handoff (Q1 Do / Q2 Schedule / Q3 Delegate) maps here as **You / Waiting / Agent**. Desk execute mints mid-flight children (Hub Drafts analogue); parent stays open until agent children finish or human remainder is parked.
-
 ## 3. Wire Hermes (real agent)
 
 ```bash

@@ -51,7 +51,7 @@ Required: `command_id`, `ok`, `duration_ms`. **`observe`** adds slim `interact_t
 
 Same-URL follow-up `observe` may set `text_omitted: true` and omit `page_tree` while keeping targets; URL changes get a capped follow-up excerpt (`browser.observe_followup_excerpt_max_chars`, default 2000). Full observe excerpt defaults to `browser.scrape_excerpt_max_chars` (4000); `page_tree` defaults to 2000 chars; deep escalate text defaults to `browser.eyes_deep_text_max_chars` (4000).
 
-Eyes ladder fields on `command_result` (extension Path B): **`eyes_mode`** (`0` default / `1` deep-text promote / `2` soft hints), **`eyes_empty`**, optional **`eyes_hints.url_path_hint`**, plus settle measures `eyes_settle_ms` / `eyes_settle_attempts`. Not soft site tiers A–D. Full Done/park/idempotency framework: [`ARCHITECTURE.md`](ARCHITECTURE.md).
+Eyes ladder fields on `command_result` (extension Path B): **`eyes_mode`** (`0` default / `1` deep-text promote / `2` soft hints), **`eyes_empty`**, optional **`eyes_hints.url_path_hint`**, plus settle measures `eyes_settle_ms` / `eyes_settle_attempts`. Ladder behavior: [`BROWSER_LAYER.md`](BROWSER_LAYER.md). Done/park/idempotency: [`ARCHITECTURE.md`](ARCHITECTURE.md).
 
 **Mint** (`POST /v1/items/mint`): idempotent on parent + column + `source.url` → may return `{ idempotent: true }`.
 
