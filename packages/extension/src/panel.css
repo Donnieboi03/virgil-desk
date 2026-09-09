@@ -115,11 +115,6 @@ li {
   text-decoration: underline;
   cursor: pointer;
 }
-.item-open-url {
-  font-size: 10px;
-  margin-left: 4px;
-  padding: 0 4px;
-}
 .item-awaiting {
   color: #92400e;
   font-style: italic;

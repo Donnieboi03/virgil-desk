@@ -12,6 +12,12 @@ Treat context as boxes — do not expect the full tool history to stay available
 
 Use notepad + recent executions for temporal context; do not re-do work already marked done in them. Prefer `item.hints` to search/open the target thread before free-form browsing.
 
+When Packet includes **`resume`** (after human Mark done on an auth gate):
+
+- Honor **`resume.cleared_gates`** (url / you_item_id / park_kind). **Do not** mint another You for those URLs.
+- Continue past the gate: `openTab --url` the destination if still needed, observe, finish agent-safe work.
+- Notepad may also say the gate was cleared — treat that as the same signal.
+
 ## Success criteria (hard)
 
 **Done** means, in order of preference:
@@ -59,7 +65,7 @@ desk-browser --run-id RUN --op mint_item --params '{
 }'
 ```
 
-- **`park_kind: auth_gate`** (+ `resume: true`) — login / CAPTCHA / bot-challenge / auth wall. Host sets parent to **`awaiting_human`**. One card per destination (origin+path dedupe); do not mint challenge interstitial then login as two You cards.
+- **`park_kind: auth_gate`** (+ `resume: true`) — login / CAPTCHA / bot-challenge / auth wall. Host sets parent to **`awaiting_human`**. Prefer one You for the destination URL (not challenge interstitial + login as two cards); after Mark done, Resume Packet lists cleared gates — do not remint them.
 - **`park_kind: human_remainder`** — agent verified facts **and** human still must view/act. Parent may Complete with an honest “remainder parked You” summary — **forbid** “no further action” / “single closure” without acknowledging the remainder.
 - Soft-help You (keywords/draft/checklist) when human action is still required.
 
@@ -90,11 +96,11 @@ When Eyes (or a **non-empty** `probe_links`) show **more than one closure** that
      "parent_id": "PARENT_ITEM_ID",
      "column": "agent|you|waiting",
      "title": "short closure title",
-     "source": {"url": "https://optional-dedupe-key.example/path"},
+     "source": {"url": "https://optional.example/path"},
      "hints": {"search_query": "optional"}
    }'
    ```
-   Host **dedupes** mint by parent + column + `source.url` (auth gates: origin+path). Prefer passing `source.url` when parking/following a specific link.
+   Prefer passing `source.url` when parking/following a specific link.
 2. Prefer **`column: agent`** for readable follow-ups. Pursue agent children in this run.
 3. Use **`column: you|waiting`** under last-resort park rules (**URL-first** — no `placement:human`).
 4. If you cannot continue or park when required: `Partial:` — do not claim success.

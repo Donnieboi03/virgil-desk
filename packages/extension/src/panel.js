@@ -40,20 +40,6 @@ function appendSourceUrl(container, url) {
     }
   });
   meta.appendChild(link);
-  const openBtn = document.createElement("button");
-  openBtn.type = "button";
-  openBtn.className = "item-open-url";
-  openBtn.textContent = "Open";
-  openBtn.title = "Open in Chrome";
-  openBtn.addEventListener("click", async () => {
-    try {
-      await chrome.tabs.create({ url, active: true });
-    } catch (err) {
-      console.warn(err);
-    }
-  });
-  meta.appendChild(document.createTextNode(" "));
-  meta.appendChild(openBtn);
   container.appendChild(meta);
 }
 

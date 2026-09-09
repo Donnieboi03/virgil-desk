@@ -53,7 +53,7 @@ Same-URL follow-up `observe` may set `text_omitted: true` and omit `page_tree` w
 
 Eyes ladder fields on `command_result` (extension Path B): **`eyes_mode`** (`0` default / `1` deep-text promote / `2` soft hints), **`eyes_empty`**, optional **`eyes_hints.url_path_hint`**, plus settle measures `eyes_settle_ms` / `eyes_settle_attempts`. Ladder behavior: [`BROWSER_LAYER.md`](BROWSER_LAYER.md). Done/park/idempotency: [`ARCHITECTURE.md`](ARCHITECTURE.md).
 
-**Mint** (`POST /v1/items/mint`): idempotent on parent + column + `source.url` → may return `{ idempotent: true }`.
+**Mint** (`POST /v1/items/mint`): always creates a child (no host remint collapse). Resume continuity uses Packet `resume.cleared_gates`.
 
 **Execute** (`POST /v1/items/{id}/execute`): concurrent second call → **409** while in progress.
 

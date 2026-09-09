@@ -35,7 +35,6 @@ from .execute_validation import (
     open_you_remainder,
     parent_done_blocked_reason,
 )
-from .mint_policy import find_idempotent_mint
 from .screenshot_store import persist_handoff_screenshot, persist_screenshot
 
 # In-memory proposal + extension connection state
@@ -796,27 +795,6 @@ async def mint_item(body: MintItemBody) -> dict[str, Any]:
             detail="You park with park_kind requires source.url",
         )
 
-    gate_dedupe = body.column == "you" and park_kind == "auth_gate"
-    existing = find_idempotent_mint(
-        _work_items,
-        parent_id=body.parent_id,
-        column=body.column,
-        source_url=source_url,
-        title=body.title,
-        gate_dedupe=gate_dedupe,
-    )
-    if existing:
-        record(
-            "item.minted",
-            body.run_id,
-            cfg=get_config(),
-            item_id=existing["id"],
-            parent_id=body.parent_id,
-            column=body.column,
-            flags={"idempotent_reuse": True, "park_kind": existing.get("park_kind")},
-        )
-        return {"ok": True, "item": existing, "idempotent": True}
-
     short = uuid.uuid4().hex[:8]
     item_id = f"{body.parent_id}_sub_{short}"
     item: dict[str, Any] = {
@@ -874,7 +852,7 @@ async def mint_item(body: MintItemBody) -> dict[str, Any]:
         column=body.column,
         flags={"park_kind": park_kind, "resume": resume} if park_kind else None,
     )
-    return {"ok": True, "item": item, "idempotent": False}
+    return {"ok": True, "item": item}
 
 
 @app.post("/v1/items/{item_id}/execute")
@@ -920,10 +898,20 @@ async def execute_item(item_id: str, body: ExecuteBody) -> dict[str, Any]:
     _failed_ops[body.run_id] = []
     _last_probe_links_empty[body.run_id] = False
     _executing_item_ids.add(item_id)
-    if item.get("resume_ready"):
-        cleared = {**item, "resume_ready": False}
-        _work_items[item_id] = cleared
-        item = cleared
+    if item.get("resume_ready") or item.get("cleared_gates"):
+        cleared_gates = list(item.get("cleared_gates") or [])
+        ctx["resume"] = {
+            "ready": bool(item.get("resume_ready")),
+            "cleared_gates": cleared_gates,
+            "note": (
+                "Human cleared these gate URLs. Do not mint another You card for them; "
+                "continue agent work past the gate (open destination with --url if needed)."
+            ),
+        }
+        if item.get("resume_ready"):
+            cleared = {**item, "resume_ready": False}
+            _work_items[item_id] = cleared
+            item = cleared
     await _execute_session_start(
         run_id=body.run_id,
         item_id=item_id,
@@ -1182,6 +1170,16 @@ async def complete_item(item_id: str, body: CompleteBody) -> dict[str, Any]:
             parent_now = _work_items.get(parent_id)
             if parent_now is not None:
                 parent_now["resume_ready"] = True
+                gates = list(parent_now.get("cleared_gates") or [])
+                gates.append(
+                    {
+                        "url": gate_url,
+                        "park_kind": item.get("park_kind") or "auth_gate",
+                        "you_item_id": item_id,
+                        "title": item.get("title") or "",
+                    }
+                )
+                parent_now["cleared_gates"] = gates[-20:]
                 _work_items[parent_id] = parent_now
                 await _send_board_patch(
                     body.run_id,

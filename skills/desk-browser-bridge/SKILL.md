@@ -3,7 +3,7 @@ name: desk-browser-bridge
 description: >-
   Virgil Desk browser bridge: desk-browser CLI, Path B extension Eyes/Hands
   (default) or harness CDP rollback, You/Agent/Waiting board, Accept/Deny proposals.
-version: 1.15.1
+version: 1.15.2
 metadata:
   hermes:
     tags: [virgil-desk, browser, handoff]
@@ -88,9 +88,9 @@ desk-browser --run-id RUN --op mint_item --params '{
 
 - **`park_kind: auth_gate`** — parent → `awaiting_human` until human Marks done → **Resume agent**. Use this for auth/challenge walls (not bare `Partial:`).
 - **`park_kind: human_remainder`** — agent may Complete verified facts **and** leave You for human view; never claim “no further action” without acknowledging the remainder.
-- Challenge patience: wait/settle/re-observe once on bot interstitials; **one** You per destination (origin+path dedupe).
+- Challenge patience: wait/settle/re-observe once on bot interstitials; prefer **one** You for the destination URL. On Resume, honor Packet `resume.cleared_gates`.
 
-Do not claim Observed success from blank scrape. If Eyes return **`eyes_mode: 1`**, trust the promoted excerpt. If Eyes **verify a terminal** outcome, stop with Completed — do not mint You. If **`eyes_empty`** / **`eyes_mode: 2`** with no usable fact, do not invent page copy from the URL alone — use `eyes_hints.url_path_hint` only as a soft signal, then `Partial:` or last-resort park when human action remains. Mint is **idempotent** on parent+column+`source.url` (gates: origin+path).
+Do not claim Observed success from blank scrape. If Eyes return **`eyes_mode: 1`**, trust the promoted excerpt. If Eyes **verify a terminal** outcome, stop with Completed — do not mint You. If **`eyes_empty`** / **`eyes_mode: 2`** with no usable fact, do not invent page copy from the URL alone — use `eyes_hints.url_path_hint` only as a soft signal, then `Partial:` or last-resort park when human action remains. On **Resume**, Packet may include `resume.cleared_gates` — do not remint those URLs; continue past the gate.
 
 ## Observe–act–observe
 

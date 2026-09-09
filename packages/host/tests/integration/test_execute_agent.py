@@ -462,27 +462,6 @@ def test_mint_item_board_patch_and_parent_done_blocked(monkeypatch):
             assert patch["type"] == "board_patch"
             assert patch["ops"][0]["item"]["id"] == child["id"]
 
-            # Idempotent remint: same parent+column+source.url returns existing child.
-            from desk_host import app as desk_app
-
-            desk_app._work_items[child["id"]]["source"] = {
-                "url": "https://drive.example/doc/1"
-            }
-            mint_again = client.post(
-                "/v1/items/mint",
-                json={
-                    "run_id": run_id,
-                    "parent_id": agent["id"],
-                    "column": "agent",
-                    "title": "Open nested Drive doc again",
-                    "source": {"url": "https://drive.example/doc/1"},
-                },
-            )
-            assert mint_again.status_code == 200
-            body_again = mint_again.json()
-            assert body_again.get("idempotent") is True
-            assert body_again["item"]["id"] == child["id"]
-
             holder: list = []
 
             def _execute():
@@ -554,21 +533,6 @@ def test_auth_gate_mint_awaiting_and_complete_resumes_parent():
 
             assert desk_app._work_items[agent["id"]]["status"] == "awaiting_human"
 
-            mint2 = client.post(
-                "/v1/items/mint",
-                json={
-                    "run_id": run_id,
-                    "parent_id": agent["id"],
-                    "column": "you",
-                    "title": "Login wall",
-                    "park_kind": "auth_gate",
-                    "source": {"url": "https://jobs.example.com/apply?login=1"},
-                },
-            )
-            assert mint2.status_code == 200
-            assert mint2.json().get("idempotent") is True
-            assert mint2.json()["item"]["id"] == you["id"]
-
             done = client.post(
                 f"/v1/items/{you['id']}/complete",
                 json={"run_id": run_id},
@@ -579,5 +543,8 @@ def test_auth_gate_mint_awaiting_and_complete_resumes_parent():
             parent = desk_app._work_items[agent["id"]]
             assert parent["status"] == "proposed"
             assert parent.get("resume_ready") is True
+            gates = parent.get("cleared_gates") or []
+            assert gates and gates[-1].get("you_item_id") == you["id"]
+            assert "jobs.example.com/apply" in (gates[-1].get("url") or "")
         finally:
             ext.close()

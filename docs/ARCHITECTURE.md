@@ -43,34 +43,29 @@ Host gate ([`execute_validation.py`](../packages/host/desk_host/execute_validati
 ### Resume after You Mark done
 
 1. Agent mints You `auth_gate` → parent status **`awaiting_human`**.
-2. Human opens URL from the panel (clickable link / Open) and clears the gate.
-3. **Mark done** on that You → parent → **`proposed`** + `resume_ready` + notepad bullet; panel shows **Resume agent** (same execute endpoint). No auto-Hermes this ship.
+2. Human opens URL from the panel (clickable link) and clears the gate.
+3. **Mark done** on that You → parent → **`proposed`** + `resume_ready` + `cleared_gates[]` + notepad bullet; panel shows **Resume agent**.
+4. Next execute injects Packet **`resume.cleared_gates`** so Hermes must not remint those URLs — continue past the gate. No auto-Hermes this ship.
 
-Prompt/skill: [`prompts/execute_agent_item.md`](../prompts/execute_agent_item.md), [`skills/desk-browser-bridge/SKILL.md`](../skills/desk-browser-bridge/SKILL.md) **1.15.1**.
+Prompt/skill: [`prompts/execute_agent_item.md`](../prompts/execute_agent_item.md), [`skills/desk-browser-bridge/SKILL.md`](../skills/desk-browser-bridge/SKILL.md) **1.15.2**.
 
 ---
 
-## Idempotency
+## Mint / park
 
-### Mint (`POST /v1/items/mint`)
+You parks with `park_kind` **require** `source.url`. Prefer agents pass `"source": {"url": "…"}` when parking a specific link.
 
-Dedupe key: **parent_id + column + normalized `source.url`** (fallback: same title when no URL). Open children only (`proposed`/`running`/`awaiting_human`).
-
-- **Auth gates** (`park_kind: auth_gate`): normalize to **origin + pathname** (drop query) so challenge vs login on the same destination collapses to one You card.
-- Hit → return existing item, `idempotent: true`, event `item.minted` with `flags.idempotent_reuse`.
-- Helper: [`mint_policy.py`](../packages/host/desk_host/mint_policy.py).
-
-Prefer agents pass `"source": {"url": "…"}` when minting for a specific link. You parks with `park_kind` **require** `source.url`.
+Host does **not** silently collapse remints — Resume continuity is **Packet state** (`resume.cleared_gates`), not mint idempotency.
 
 ### Human park tab (`openTab` + `placement: human`)
 
-**Denied** on the execute path (`human_park_tab_denied`). Extension may still have reuse helpers unused. Park surface is the You card URL in the panel.
+**Denied** on the execute path (`human_park_tab_denied`). Park surface is the You card URL in the panel.
 
 ---
 
 ## Challenge settle patience
 
-See [`BROWSER_LAYER.md`](BROWSER_LAYER.md) (`eyes_challenge_extra_ms`). Auth-gate mint collapses challenge vs login on the same destination path ([`mint_policy.py`](../packages/host/desk_host/mint_policy.py)).
+See [`BROWSER_LAYER.md`](BROWSER_LAYER.md) (`eyes_challenge_extra_ms`).
 
 ---
 
@@ -93,7 +88,7 @@ See [`BROWSER_LAYER.md`](BROWSER_LAYER.md) (`eyes_challenge_extra_ms`). Auth-gat
 
 1. **Eyes quality** — event rate of `eyes_mode` 0/1/2 and `eyes_empty` per host; sample mode-1 excerpts for SPA coverage.
 2. **Done vs park** — count `item.minted` column=you vs `agent.executed` with verified-terminal language; expect park to drop for expired links. Track `awaiting_human` / `agent.resume_ready` for gate resume latency.
-3. **Idempotency** — `flags.idempotent_reuse` on mint (incl. gate origin+path); policy `human_park_tab_denied` rate.
+3. **Resume state** — `resume.cleared_gates` on execute after You Mark done; expect remint rate to drop.
 4. **Concurrency** — 409 rate on execute; should be rare after UI debounce.
-5. **Challenge settle** — `eyes_settle_ms` vs budget when challenge markers present; challenge-extended settles.
-6. **Ladder growth** — new escalate modes stay fail-only; never dump full HTML into CLI; document here + BROWSER_LAYER + PROTOCOL together.
+5. **Challenge settle** — `eyes_settle_ms` vs budget when challenge markers present.
+6. **Ladder growth** — new escalate modes stay fail-only; never dump full HTML into CLI; document in BROWSER_LAYER + PROTOCOL.
