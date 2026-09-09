@@ -13,8 +13,8 @@ Coverage:
 3. Calendar Accept after mock handoff
 4. Hermes backend path with calendar proposal + browser verify
 5. Handoff **without** `agent_tab_id` still decomposes (defer tabs until Run agent / PATCH)
-6. `openTab` with `params.placement=human` forwarded to the extension
-7. Host integration: `mint_item` board_patch + parent done blocked while agent children open (see `packages/host/tests/integration/test_execute_agent.py`)
+6. `openTab` with `params.placement=human` is **denied** (`human_park_tab_denied`; URL-first You park)
+7. Host integration: `mint_item` board_patch + parent done blocked while agent children open; auth_gate mint → awaiting_human → complete resumes parent (see `packages/host/tests/integration/test_execute_agent.py`)
 8. `openTab` result includes `tab_id`; failed scrape logs `error`/`tab_id`; `closeTab` without `tab_id` rejected
 
 Helper: `packages/host/tests/helpers/mock_extension.py`
@@ -26,6 +26,6 @@ See [`docs/OPERATOR.md`](../../docs/OPERATOR.md) § Manual checklist — run aft
 1. Handoff scrape-then-close (no per-task agent collage)
 2. **Run agent** on one root → provisions that item only
 3. Mid-run `mint_item` children appear under Agent accordion / You-Waiting columns
-4. You child + `openTab` `placement=human` outside **Virgil · Agent**
+4. You child with clickable `source.url` / Open (URL-first park; no agent `placement=human`)
 
 Playwright smoke (`packages/e2e/playwright`) loads the unpacked extension in CI.

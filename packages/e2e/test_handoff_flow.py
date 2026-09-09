@@ -249,8 +249,8 @@ def test_handoff_seeds_notepad_and_execute_records_recent(monkeypatch):
 
 
 
-def test_open_tab_placement_human_passthrough():
-    """Host forwards openTab params.placement=human to the extension."""
+def test_open_tab_placement_human_denied():
+    """Host denies openTab params.placement=human (URL-first park)."""
     with TestClient(app) as client:
         ext = MockExtensionSession(client)
         try:
@@ -272,11 +272,11 @@ def test_open_tab_placement_human_passthrough():
                     "params": {"placement": "human"},
                 },
             )
-            handled = ext.respond_next_browser_command(run_id=run_id)
-            assert handled["command"]["op"] == "openTab"
-            assert handled["command"].get("params", {}).get("placement") == "human"
             pending["thread"].join(timeout=5)
-            assert pending["holder"][0]["status"] == 200
+            resp = pending["holder"][0]
+            assert resp["status"] == 403
+            detail = str(resp.get("json") or "")
+            assert "human_park_tab_denied" in detail
         finally:
             ext.close()
 

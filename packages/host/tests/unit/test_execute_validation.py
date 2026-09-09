@@ -199,3 +199,44 @@ def test_parent_done_ok_when_children_done():
         },
     }
     assert parent_done_blocked_reason(items["p1"], items) is None
+
+
+def test_auth_gate_blocks_false_closure():
+    from desk_host.execute_validation import auth_gate_blocks_false_closure
+
+    assert auth_gate_blocks_false_closure(
+        "Single closure: reviewed Engevity update; no further action.",
+        has_auth_gate_you=True,
+    )
+    assert (
+        auth_gate_blocks_false_closure(
+            "Verified Drive summary; remainder parked You for human glance.",
+            has_auth_gate_you=True,
+        )
+        is None
+    )
+    assert (
+        auth_gate_blocks_false_closure(
+            "Single closure: done.",
+            has_auth_gate_you=False,
+        )
+        is None
+    )
+
+
+def test_open_you_remainder_kinds():
+    from desk_host.execute_validation import open_auth_gate_you, open_you_remainder
+
+    items = {
+        "y1": {
+            "id": "y1",
+            "parent_id": "p1",
+            "column": "you",
+            "status": "proposed",
+            "park_kind": "human_remainder",
+        }
+    }
+    assert open_auth_gate_you("p1", items) is None
+    assert open_you_remainder("p1", items) and open_you_remainder("p1", items)["id"] == "y1"
+    items["y1"]["park_kind"] = "auth_gate"
+    assert open_auth_gate_you("p1", items)["id"] == "y1"

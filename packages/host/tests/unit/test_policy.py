@@ -21,3 +21,16 @@ def test_snapshot_on_human_ok():
 def test_requires_auto_verify():
     assert requires_auto_verify("click")
     assert not requires_auto_verify("scrape")
+
+
+def test_human_park_tab_denied():
+    assert (
+        policy_denied_reason(
+            "openTab", 87, 42, params={"placement": "human"}
+        )
+        == "human_park_tab_denied"
+    )
+    assert policy_denied_reason("openTab", 87, 42, params={}) is None
+    assert (
+        policy_denied_reason("openTab", 87, 42, params={"placement": "agent"}) is None
+    )

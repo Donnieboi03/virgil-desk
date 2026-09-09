@@ -510,3 +510,74 @@ def test_mint_item_board_patch_and_parent_done_blocked(monkeypatch):
             assert body["ok"] is False
         finally:
             ext.close()
+
+
+def test_auth_gate_mint_awaiting_and_complete_resumes_parent():
+    """You auth_gate mint → parent awaiting_human; Mark done → proposed + resume_parent_id."""
+    with TestClient(app) as client:
+        ext = MockExtensionSession(client)
+        try:
+            result = ext.handoff(
+                {
+                    "url": "https://example.com/inbox",
+                    "human_tab_id": 1,
+                    "agent_tab_id": 2,
+                    "window_id": 1,
+                }
+            )
+            run_id = result["run_id"]
+            agent = [i for i in result["items"] if i["column"] == "agent"][0]
+            mint = client.post(
+                "/v1/items/mint",
+                json={
+                    "run_id": run_id,
+                    "parent_id": agent["id"],
+                    "column": "you",
+                    "title": "Clear Recruit.net login",
+                    "park_kind": "auth_gate",
+                    "resume": True,
+                    "source": {"url": "https://jobs.example.com/apply?cf=1"},
+                },
+            )
+            assert mint.status_code == 200, mint.text
+            you = mint.json()["item"]
+            assert you["park_kind"] == "auth_gate"
+            assert you["resume"] is True
+            patch = ext.ws.receive_json()
+            assert patch["type"] == "board_patch"
+            statuses = {
+                (op.get("item") or {}).get("id"): (op.get("item") or {}).get("status")
+                for op in patch.get("ops") or []
+            }
+            assert statuses.get(agent["id"]) == "awaiting_human"
+            from desk_host import app as desk_app
+
+            assert desk_app._work_items[agent["id"]]["status"] == "awaiting_human"
+
+            mint2 = client.post(
+                "/v1/items/mint",
+                json={
+                    "run_id": run_id,
+                    "parent_id": agent["id"],
+                    "column": "you",
+                    "title": "Login wall",
+                    "park_kind": "auth_gate",
+                    "source": {"url": "https://jobs.example.com/apply?login=1"},
+                },
+            )
+            assert mint2.status_code == 200
+            assert mint2.json().get("idempotent") is True
+            assert mint2.json()["item"]["id"] == you["id"]
+
+            done = client.post(
+                f"/v1/items/{you['id']}/complete",
+                json={"run_id": run_id},
+            )
+            assert done.status_code == 200, done.text
+            body = done.json()
+            assert body["resume_parent_id"] == agent["id"]
+            parent = desk_app._work_items[agent["id"]]
+            assert parent["status"] == "proposed"
+            assert parent.get("resume_ready") is True
+        finally:
+            ext.close()

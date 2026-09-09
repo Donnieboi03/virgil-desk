@@ -26,7 +26,7 @@ Eyes channels (no vision / screenshot by default):
 - Hands: **`target_id`** only (coords kept in extension `targetMap`, stripped from CLI).
 - Execute observe defaults `skip_screenshot: true` (`observe_skip_screenshot_default`) — no `captureVisibleTab` tab flicker.
 - Same-URL follow-up observe: `text_omitted` + no `page_tree` when content unchanged; keep slim targets. Mode-1 promote forces a non-omitted excerpt.
-- **Eyes settle (fast):** after open/scrape/observe, poll until excerpt/targets ready or `eyes_settle_budget_ms` (default 2s, poll 250ms). Happy path exits on first scrape. Empty first scrape does **not** lock omit baseline. Still-empty → one-shot deep text (`eyes_deep_text_max_chars`) + forced DIY `page_tree` → promote or soft hints (no screenshot / no tab focus).
+- **Eyes settle (fast):** after open/scrape/observe, poll until excerpt/targets ready or `eyes_settle_budget_ms` (default 2s, poll 250ms). Happy path exits on first scrape. Empty first scrape does **not** lock omit baseline. If scrape looks like a **challenge** (Cloudflare / Just a moment / checking your browser), extend once by `eyes_challenge_extra_ms` (default 8s) before giving up. Still-empty → one-shot deep text (`eyes_deep_text_max_chars`) + forced DIY `page_tree` → promote or soft hints (no screenshot / no tab focus).
 
 **`eyes_mode` is not soft site tiers A–D** (those remain expectation-only below).
 

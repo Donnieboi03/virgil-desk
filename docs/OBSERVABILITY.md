@@ -36,6 +36,9 @@ High-frequency `browser.command` / `browser.command_result` omit `limits` (still
 | `eyes_settle_ms`, `eyes_settle_attempts` | measure | Settle budget health |
 | `eyes_hints` | detail | Soft URL hints when mode 2 |
 | `item.minted` + `flags.idempotent_reuse` | mint | Deduped parks |
+| `agent.executed` + `flags.awaiting_human` | execute | Auth gate halt |
+| `agent.resume_ready` | complete You | Parent unblocked for Resume |
+| `policy.denied` `human_park_tab_denied` | browser | Agent tried human park tab |
 | `agent.execute_failed` 409-class detail | execute lock | Double-run attempts (HTTP 409) |
 
 Framework narrative: [`ARCHITECTURE.md`](ARCHITECTURE.md).

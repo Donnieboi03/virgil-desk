@@ -30,7 +30,7 @@ Board mutations from execute/complete/accept/deny require an active WebSocket; o
 
 ## BrowserOp
 
-`captureHandoffSnapshot`, `navigate` (host-normalized to `openTab` / `duplicateTab`), `openTab` (optional `params.placement`: `agent`|`human`), `duplicateTab`, `closeTab`, `scroll`, `scrape`, `screenshot`, **`observe`**, **`probe_form`**, **`probe_links`**, **`probe_table`**, `click`, `fill`, **`key`**, `wait`, `focusTab`
+`captureHandoffSnapshot`, `navigate` (host-normalized to `openTab` / `duplicateTab`), `openTab` (agent placement only — `params.placement: human` is **denied**), `duplicateTab`, `closeTab`, `scroll`, `scrape`, `screenshot`, **`observe`**, **`probe_form`**, **`probe_links`**, **`probe_table`**, `click`, `fill`, **`key`**, `wait`, `focusTab`
 
 Optional body field: `skip_screenshot` (Path B observe defaults true via `observe_skip_screenshot_default`).
 
