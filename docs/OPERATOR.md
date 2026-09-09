@@ -37,9 +37,9 @@ Run once with a real tab ([`packages/e2e/README.md`](../packages/e2e/README.md))
 4. Post-act `command_result` includes `tab_id` / `url` / optional scrape excerpt; Path B **observe** defaults to **no** screenshot (`skip_screenshot`)
 5. **Run agent** on one Agent **root** → provisions that item’s tab only → `browser.command` events in log
 6. Mid-flight children: Agent accordion under parent; You/Waiting nest parks under **From: {parent}** groups (parent may live in Agent)
-7. Human remainder URL → `openTab` with `placement: human` (tab outside **Virgil · Agent**, not focused)
+7. Human remainder / auth gate → `mint_item` You with **`source.url`** (panel Open / link). **Do not** `openTab placement=human` (host denies). Auth gates leave parent **`awaiting_human`** until Mark done → **Resume agent**.
 8. Auth wall / empty Eyes with no verified fact (`eyes_empty` / `eyes_mode: 2`) → You mint + soft-help or `Partial:`; do not invent page copy from URL alone (`eyes_hints` soft only). Mode `1` promoted excerpt is authoritative. **Verified terminal** (expired / already submitted) after Eyes = Agent **Completed** — not park. Framework: [`ARCHITECTURE.md`](ARCHITECTURE.md).
-9. Mint You for the same link twice → host returns existing child (`idempotent`). Human park `openTab` reuses same-URL tabs. Concurrent double **Run agent** on one item → HTTP 409.
+9. Mint You for the same destination twice → host returns existing child (`idempotent`; auth gates match origin+path). Concurrent double **Run agent** on one item → HTTP 409.
 10. **Accept** on a Waiting calendar proposal
 11. **Mark done** on a You item
 12. Reload Chrome — board persists (`storage.local`)

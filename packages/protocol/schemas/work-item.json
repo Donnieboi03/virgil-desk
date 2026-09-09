@@ -12,6 +12,7 @@
     "kind": { "enum": ["parent", "subtask"], "default": "parent" },
     "park_kind": { "enum": ["auth_gate", "human_remainder"] },
     "resume": { "type": "boolean" },
+    "resume_ready": { "type": "boolean" },
     "source": {
       "type": "object",
       "required": ["kind"],

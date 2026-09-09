@@ -68,7 +68,7 @@ def find_idempotent_mint(
 ) -> dict[str, Any] | None:
     """
     Return an existing child under parent with same column and source URL
-    (or same title when no URL). Open statuses only (proposed/running).
+    Open statuses only (proposed/running/awaiting_human).
 
     When gate_dedupe=True (You auth parks), match on origin+path only.
     """
