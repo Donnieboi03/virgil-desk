@@ -6,9 +6,13 @@ from desk_host.memory import (
     append_notepad_bullet,
     append_recent,
     apply_memory_patch,
+    apply_semantic_patch,
+    delete_fact,
     empty_memory,
+    empty_semantic,
     format_for_execute,
     seed_run_notepad,
+    upsert_fact,
 )
 
 
@@ -71,3 +75,93 @@ def test_format_for_execute():
     assert fmt["decomposition"] == "d1"
     assert fmt["run_notepad"]["bullets"] == ["b1"]
     assert fmt["recent_executions"][0]["summary"] == "prior"
+    assert fmt["semantic_facts"] == []
+
+
+def test_upsert_fact_supersedes_by_key():
+    sem = upsert_fact(
+        empty_semantic(),
+        key="prefer_concise",
+        value="Prefer short replies",
+        tags=["user"],
+        source="manual",
+    )
+    sem = upsert_fact(
+        sem,
+        key="prefer_concise",
+        value="Prefer very short replies",
+        tags=["user"],
+        source="host",
+    )
+    assert len(sem["facts"]) == 1
+    assert sem["facts"][0]["value"] == "Prefer very short replies"
+    assert sem["facts"][0]["source"] == "host"
+
+
+def test_delete_fact_and_caps():
+    sem = empty_semantic()
+    for i in range(5):
+        sem = upsert_fact(
+            sem,
+            key=f"k{i}",
+            value=f"v{i}",
+            tags=["decision"],
+            max_facts=3,
+        )
+    assert len(sem["facts"]) == 3
+    keys = {f["key"] for f in sem["facts"]}
+    assert "k4" in keys
+    sem = delete_fact(sem, key="k4")
+    assert all(f["key"] != "k4" for f in sem["facts"])
+
+
+def test_apply_semantic_patch_and_format():
+    sem = apply_semantic_patch(
+        empty_semantic(),
+        [
+            {
+                "op": "upsert_fact",
+                "key": "yc_no_false_close",
+                "value": "Do not single-closure YC review items",
+                "tags": ["decision"],
+            },
+            {
+                "op": "upsert_fact",
+                "key": "prefer_concise",
+                "value": "Be concise",
+                "tags": ["user"],
+            },
+        ],
+    )
+    fmt = format_for_execute(empty_memory(), "r1", semantic=sem, packet_max_facts=1)
+    assert len(fmt["semantic_facts"]) == 1
+    assert "key" in fmt["semantic_facts"][0]
+    assert "value" in fmt["semantic_facts"][0]
+
+
+def test_semantic_value_and_key_truncation():
+    sem = upsert_fact(
+        empty_semantic(),
+        key="k" * 100,
+        value="v" * 500,
+        max_key_chars=64,
+        max_value_chars=200,
+    )
+    assert len(sem["facts"][0]["key"]) == 64
+    assert len(sem["facts"][0]["value"]) == 200
+    fmt = format_for_execute(
+        empty_memory(),
+        "r1",
+        semantic=sem,
+        max_key_chars=32,
+        max_value_chars=50,
+    )
+    assert fmt["semantic_facts"][0]["key"] == ("k" * 32)
+    assert fmt["semantic_facts"][0]["value"] == ("v" * 50)
+
+
+def test_empty_semantic_always_list():
+    fmt = format_for_execute(empty_memory(), "missing-run", semantic=None)
+    assert fmt["semantic_facts"] == []
+    fmt2 = format_for_execute(empty_memory(), "missing-run", semantic=empty_semantic())
+    assert fmt2["semantic_facts"] == []

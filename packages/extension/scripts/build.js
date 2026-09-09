@@ -42,6 +42,9 @@ const files = [
   "options.html",
   "options.js",
   "content-handoff.js",
+  "tabCustody.js",
+  "reveal.html",
+  "reveal.js",
 ];
 for (const f of files) {
   cpSync(join(root, "src", f), join(dist, f));

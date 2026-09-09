@@ -3,7 +3,9 @@ browser:
   scrape_links_max: 200
   scrape_excerpt_max_chars: 4000
   handoff_excerpt_max_chars: 12000
-  handoff_scroll_loops: 2
+  # Default 0 = viewport capture (excerpt + screenshot of what’s on screen).
+  # Set >0 only for advanced nested-list experiments — does not equal “full inbox.”
+  handoff_scroll_loops: 0
   handoff_scroll_viewport_ratio: 0.85
   screenshot_mode: captureVisibleTab
   screenshot_max_per_run: 40
@@ -46,6 +48,10 @@ memory:
   recent_max: 3
   notepad_max_bullets: 20
   notepad_max_chars: 4000
+  semantic_max_facts: 20
+  semantic_packet_max_facts: 10
+  semantic_max_value_chars: 200
+  semantic_max_key_chars: 64
 prompts:
   decompose_items_max: 10
   decompose_summary_sentences_max: 3

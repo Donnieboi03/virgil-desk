@@ -32,7 +32,7 @@ Eyes channels (no vision / screenshot by default):
 
 | Phase | Eyes | Hands | Driver |
 |-------|------|-------|--------|
-| Handoff / decompose | Extension scrape + screenshot | — | Extension |
+| Handoff / decompose | Extension viewport scrape + screenshot (default **no scroll**) — [`HANDOFF_CAPTURE.md`](HANDOFF_CAPTURE.md) | — | Extension |
 | Execute (default / Path B) | slim targets + optional `page_tree` + excerpt omit | DOM `target_id` | `browser.driver: extension` |
 | Execute (rollback) | dims / scrape; empty targets | CDP Input (`x,y` / selector) | `browser.driver: harness` |
 
@@ -71,21 +71,23 @@ Forums: expect soft **A/B** until proven otherwise — do not hard-code forum ti
 
 ## Hand off
 
-1. Extension mints `run_id`, **duplicateTab** as an **ungrouped** short-lived scrape tab (no Virgil · Agent yet)
-2. Optional scroll loops on that snapshot tab
-3. Scrape + screenshot, then **close** the snapshot tab
+1. Extension mints `run_id`
+2. **Default (`handoff_scroll_loops: 0`):** scrape + screenshot the **human tab** (no duplicate)
+3. **If scroll loops > 0:** background `create` scrape tab → scroll → capture → close
 4. Host → Hermes decompose (board cards; **no** agent group / per-item tabs yet)
+
+See [`HANDOFF_CAPTURE.md`](HANDOFF_CAPTURE.md).
 
 ## Run agent
 
 1. Operator clicks **Run agent** on one Agent root
-2. Extension creates **Virgil · Agent** if needed, duplicates that item’s tab into the group, PATCHes `agent_tab_id`
+2. Extension creates **Virgil · Agent** if needed, opens that item’s tab into the group via `tabs.create({ active: false })`, PATCHes `agent_tab_id`
 3. Host starts execute with that tab
 
 ## Agent tab policy
 
 - Agent work on `agent_tab_id` in **Virgil · Agent** group (provisioned at Run agent)
 - Ops on `human_tab_id` blocked except `captureHandoffSnapshot`
-- Navigation: duplicate same-origin, else open new agent tab
+- Navigation: always `openTab` (background create); never `tabs.duplicate`
 
 Playwright in `packages/e2e/playwright/` is **CI/E2E only**. Virgil Hub tick stays on isolated Chrome (`~/.chrome-virgil/*`).

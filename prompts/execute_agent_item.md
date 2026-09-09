@@ -4,13 +4,13 @@ Execute one Virgil Desk **Agent** work item using the `desk-browser` CLI.
 
 Treat context as boxes — do not expect the full tool history to stay available:
 
-- **Packet** (once, in the JSON below): `item` (title, id, optional **`hints`**: `search_query` / `sender` / `subject_contains`), `run_id`, tabs, `handoff_url`, **`initial_scrape`**, plus `decomposition`, `run_notepad`, `recent_executions`.
+- **Packet** (once, in the JSON below): `item` (title, id, optional **`hints`**: `search_query` / `sender` / `subject_contains`), `run_id`, tabs, `handoff_url`, **`initial_scrape`**, plus `decomposition`, `run_notepad`, `recent_executions`, optional **`semantic_facts`** (standing user prefs / decisions — honor them; do not invent facts).
 - **Eyes** (latest `desk-browser` observe only): url, title, slim `interact_targets` (`id`/`ref`/`kind`/`label`/`frame_id`), optional `page_tree`, optional short excerpt (same URL → `text_omitted`), plus **`eyes_mode`** (`0` default / `1` deep-text promote / `2` soft hints). Screenshots are **omitted** from CLI JSON (`screenshot.omitted`). Prefer **`target_id`** from the latest observe — do not invent CSS selectors or raw `{x,y}` as the primary path.
 - **Hands** (latest act only): `act_resolved`, url before/after.
 
 **Primary model = DOM Eyes → `target_id` Hands.** Constructing/opening URLs is a **secondary workaround** when Eyes are empty/hostile — not the default operating model. **Park to You is last resort**, not a general success path.
 
-Use notepad + recent executions for temporal context; do not re-do work already marked done in them. Prefer `item.hints` to search/open the target thread before free-form browsing.
+Use notepad + recent executions for temporal context; do not re-do work already marked done in them. Prefer `item.hints` to search/open the target thread before free-form browsing. When Packet includes `semantic_facts`, treat them as standing operator prefs/decisions for this Desk — honor them; do not invent new facts.
 
 When Packet includes **`resume`** (after human Mark done on an auth gate):
 
@@ -24,15 +24,28 @@ When Packet includes **`resume`** (after human Mark done on an auth gate):
 
 1. **Agent-safe work finished** — including following relevant in-body links in the **agent** tab (readable docs/files/pages), **or verifying a terminal page state**, then one-line success summary, or
 2. Explicit one-line **`Partial:`** (blocked without a You park — forbidden action, true stuck, blank Eyes with no human remainder), or
-3. **Last-resort park** — `mint_item` You (or Waiting) with **`source.url`** when a destination exists. Auth/challenge gates use `park_kind: auth_gate` (parent **`awaiting_human`** until Mark done → Resume). **Never** `openTab` with `placement:human` (host denies it).
+3. **Last-resort park** — `mint_item` You (or Waiting) with **`source.url`** when a destination exists. Auth/challenge gates use `park_kind: auth_gate` (parent **`awaiting_human`** until Mark done → Resume). Desk **lends the existing agent tab** (Show tab in panel — no second tab). **Never** `openTab` with `placement:human` (host denies it).
 
 ### Verified terminal = Completed (not Partial, not park)
 
 When the work item is review/check/status and Eyes confirm a **terminal** outcome (expired link, already submitted, deadline passed, not found), that **is Done**. Summarize the verified fact in one line and stop. Do **not** mint You merely to show the user a dead-end page they do not need to act on.
 
-Examples of Done language: `Verified expired link (deadline passed / already submitted); no further action.` / `Single closure: …`
+Examples of Done language: `Verified expired link (deadline passed / already submitted); no further action.`
 
 **Not done:** a one-line “Observed …” / “Opened …” after opening a thread **without** a verified terminal claim, single-closure, or park. The host rejects open-only observation summaries. **Not done:** “Reviewed …” after a failed `openTab`/`duplicateTab`. **Not done:** parking a readable link you could have opened as agent. **Not done:** “no further action” / “single closure” when a You remainder or auth gate was minted — say the remainder is parked / awaiting human instead.
+
+### Human is source of closure (mandatory park)
+
+When the **operator** must still decide, reply, apply, match/pick people, approve, or **use** docs/folders (not merely confirm they open), you **must** mint `human_remainder` You with **`source.url`** for each distinct human action — then Complete with “remainder parked You …”.
+
+| Agent may Complete alone | Must park `human_remainder` (then acknowledge) |
+|--------------------------|--------------------------------------------------|
+| Verified terminal dead-end (expired / already submitted) | Co-founder / candidate **picks**, likes, messages |
+| Extracted a factual answer the item asked for | **Respond / reply / apply / submit** that needs the human |
+| Confirmed access **and** item only asked to open/list | **Use** offboarding / 1:1 / shared docs after access |
+| | Any title with review/decide/choose/match/access+use where your preferences matter |
+
+**Forbidden Done language** after only reading (host rejects): `Single closure: Reviewed …; no further action.` / `verified access …; no further action.` without a You park.
 
 For inbox / email / message-list work items:
 
@@ -52,7 +65,7 @@ After the thread/body is open, **follow relevant in-body links** (shared folders
 
 ## Park = URL-first You card (last resort)
 
-Park = `mint_item` → **You**/Waiting with **`source.url`** (clickable in the Desk panel). **Do not** call `openTab` `placement:human` — the host returns `human_park_tab_denied`.
+Park = `mint_item` → **You**/Waiting with **`source.url`** (clickable in the Desk panel). For **`auth_gate`**, the extension also surfaces the **same agent tab** via Show tab — do not expect a duplicate. **Do not** call `openTab` `placement:human` — the host returns `human_park_tab_denied`.
 
 ```bash
 desk-browser --run-id RUN --op mint_item --params '{
@@ -65,8 +78,8 @@ desk-browser --run-id RUN --op mint_item --params '{
 }'
 ```
 
-- **`park_kind: auth_gate`** (+ `resume: true`) — login / CAPTCHA / bot-challenge / auth wall. Host sets parent to **`awaiting_human`**. Prefer one You for the destination URL (not challenge interstitial + login as two cards); after Mark done, Resume Packet lists cleared gates — do not remint them.
-- **`park_kind: human_remainder`** — agent verified facts **and** human still must view/act. Parent may Complete with an honest “remainder parked You” summary — **forbid** “no further action” / “single closure” without acknowledging the remainder.
+- **`park_kind: auth_gate`** (+ `resume: true`) — login / CAPTCHA / bot-challenge / auth wall. Host sets parent to **`awaiting_human`** and copies parent **`agent_tab_id`** onto the You card when present. Prefer one You for the destination URL (not challenge interstitial + login as two cards); after Mark done, Resume Packet lists cleared gates — do not remint them.
+- **`park_kind: human_remainder`** — agent verified facts **and** human still must view/act (apply, submit, pick among options, reply, use docs after access). **Mint a You card with `source.url` for each distinct human action** — do **not** only list those URLs inside a “Single closure: …” summary. Parent Completes with “remainder parked You …” — **forbid** “no further action” / bare “single closure” without acknowledging parked remainders. Titles like Review / Respond / Access+use / Match almost always need this.
 - Soft-help You (keywords/draft/checklist) when human action is still required.
 
 **Challenge patience:** on bot/challenge interstitials (e.g. “Just a moment” / checking-your-browser), wait for Eyes settle (extra challenge budget) and **re-observe once**. If still gated → **one** You `auth_gate` for the **destination** URL.
@@ -106,7 +119,7 @@ When Eyes (or a **non-empty** `probe_links`) show **more than one closure** that
 4. If you cannot continue or park when required: `Partial:` — do not claim success.
 5. Prefer imperative titles (“Open shared folder and list files”), not “Summarize …”.
 
-If there is truly only one closure and no further agent/human action (including verified terminal pages): say so explicitly (“Single closure: …” / “Verified expired …; no further action.”) after finishing that work — do not use open-only “Observed …”. If a You remainder remains, acknowledge it instead of “no further action.”
+If there is truly only one closure and no further agent/**or human** action (including verified terminal pages): say so explicitly (“Verified expired …; no further action.”) after finishing that work — do not use open-only “Observed …”. If the human must still decide or use something, mint `human_remainder` first and acknowledge the park — do not use “Single closure … no further action” after only reading.
 
 ## Rules
 

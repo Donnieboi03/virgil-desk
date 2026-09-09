@@ -7,14 +7,14 @@
 
 /**
  * Pure plan for one agent item (testable).
- * @returns {{ tabId: number | null, source: 'existing' | 'duplicate' }}
+ * @returns {{ tabId: number | null, source: 'existing' | 'create' }}
  */
 export function planAgentTabForItem(itemId, _agentIndex, runPair) {
   const existing = runPair?.items?.[itemId];
   if (existing) {
     return { tabId: existing, source: "existing" };
   }
-  return { tabId: null, source: "duplicate" };
+  return { tabId: null, source: "create" };
 }
 
 /**

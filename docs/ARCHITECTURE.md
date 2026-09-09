@@ -2,18 +2,18 @@
 
 Extension (board SoT in `chrome.storage.local`) ↔ Host (policy + agent router) ↔ AgentBackend (Hermes / OpenClaw / mock).
 
-Memory/RAG lives in agent config only.
+**Hermes** Memory/RAG (`USER.md` / providers) lives in agent config only. **Desk** owns a separate capped memory surface (working notepad, thin episodic, semantic facts) in the extension — see [`MEMORY.md`](MEMORY.md). Host does not own RAG.
 
 ## Control surfaces
 
 | Surface | Role |
 |---------|------|
-| MV3 extension | Board UI, tab pairs, Path B Eyes/Hands inject, WS client |
-| Host `:8787` | Handoff, `POST /v1/browser`, mint, execute, events |
+| MV3 extension | Board UI, tab pairs, Path B Eyes/Hands inject, WS client, Desk memory SoT |
+| Host `:8787` | Handoff, `POST /v1/browser`, mint, execute, desk-memory REST, events |
 | Hermes (default agent) | Decompose + execute via `desk-browser` CLI |
 | Config | [`config/desk.yaml`](../config/desk.yaml) — limits pushed to extension on register |
 
-Related: [`BROWSER_LAYER.md`](BROWSER_LAYER.md) (Path B Eyes SoT), [`PROTOCOL.md`](PROTOCOL.md), [`PRODUCT.md`](PRODUCT.md), [`OBSERVABILITY.md`](OBSERVABILITY.md). Eyes/Hands taxonomy (archive): [`archive/INTERACTION_LAYERS.md`](archive/INTERACTION_LAYERS.md).
+Related: [`MEMORY.md`](MEMORY.md), [`BROWSER_LAYER.md`](BROWSER_LAYER.md) (Path B Eyes SoT), [`PROTOCOL.md`](PROTOCOL.md), [`PRODUCT.md`](PRODUCT.md), [`OBSERVABILITY.md`](OBSERVABILITY.md). Eyes/Hands taxonomy (archive): [`archive/INTERACTION_LAYERS.md`](archive/INTERACTION_LAYERS.md).
 
 ---
 
@@ -31,8 +31,8 @@ Measure (on `browser.command_result`): flags `eyes_mode`, `eyes_empty`; measures
 |---------|------|--------------|
 | **Completed** | Agent-safe work finished **or** Eyes **verified terminal** page (expired / already submitted / deadline passed / not found) for a review/check goal | One-line success summary; stop. **No** You mint |
 | **`Partial:`** | Blocked without a verified terminal fact (auth, forbidden, stuck, blank Eyes) | One-line `Partial:`; stop |
-| **`awaiting_human`** | Auth/challenge gate parked as You (`park_kind: auth_gate`) | Parent halted until human Marks done → **Resume agent** |
-| **Park You (URL-first)** | Last resort — auth wall, forbidden human action still required, soft-help / human remainder | `mint_item` You/Waiting with **`source.url`** (+ `park_kind`). **Never** `openTab placement=human` (policy `human_park_tab_denied`) |
+| **`awaiting_human`** | Auth/challenge gate parked as You (`park_kind: auth_gate`) | Parent halted until human Marks done → **Resume agent**. Extension **lends** `agent_tab_id` (ungroup, inactive until Show tab) |
+| **Park You (tab-first auth / URL-first remainder)** | Auth wall → same agent tab + `source.url` fallback; **human judgment/use** (decide, reply, apply, use docs) → `human_remainder`; forbidden human action / soft-help | `mint_item` You with **`source.url`** (+ `park_kind`). Auth_gate also stamps **`agent_tab_id`**. **Never** `openTab placement=human`. Host rejects “Single closure / no further action” after only reading judgment titles |
 
 Host gate ([`execute_validation.py`](../packages/host/desk_host/execute_validation.py)):
 
@@ -42,10 +42,10 @@ Host gate ([`execute_validation.py`](../packages/host/desk_host/execute_validati
 
 ### Resume after You Mark done
 
-1. Agent mints You `auth_gate` → parent status **`awaiting_human`**.
-2. Human opens URL from the panel (clickable link) and clears the gate.
-3. **Mark done** on that You → parent → **`proposed`** + `resume_ready` + `cleared_gates[]` + notepad bullet; panel shows **Resume agent**.
-4. Next execute injects Packet **`resume.cleared_gates`** so Hermes must not remint those URLs — continue past the gate. No auto-Hermes this ship.
+1. Agent mints You `auth_gate` → parent status **`awaiting_human`**; host copies parent **`agent_tab_id`** onto the You card when present.
+2. Extension ungroups that agent tab (stays inactive). Human uses panel **Show tab** / `reveal.html` (same tab — no duplicate), clears the gate. Opportunistic / reveal screenshots → `tab.custody`.
+3. **Mark done** on that You (optional viewport shot if still on the agent tab) → parent → **`proposed`** + `resume_ready` + `cleared_gates[]` + notepad bullet; panel shows **Resume agent**.
+4. **Resume agent** regroups the tab into **Virgil · Agent**. Next execute injects Packet **`resume.cleared_gates`** so Hermes must not remint those URLs. No auto-Hermes this ship.
 
 Prompt/skill: [`prompts/execute_agent_item.md`](../prompts/execute_agent_item.md), [`skills/desk-browser-bridge/SKILL.md`](../skills/desk-browser-bridge/SKILL.md) **1.15.2**.
 
@@ -53,13 +53,13 @@ Prompt/skill: [`prompts/execute_agent_item.md`](../prompts/execute_agent_item.md
 
 ## Mint / park
 
-You parks with `park_kind` **require** `source.url`. Prefer agents pass `"source": {"url": "…"}` when parking a specific link.
+You parks with `park_kind` **require** `source.url`. Prefer agents pass `"source": {"url": "…"}` when parking a specific link. **`auth_gate`** also receives parent `agent_tab_id` for Show-tab custody.
 
 Host does **not** silently collapse remints — Resume continuity is **Packet state** (`resume.cleared_gates`), not mint idempotency.
 
 ### Human park tab (`openTab` + `placement: human`)
 
-**Denied** on the execute path (`human_park_tab_denied`). Park surface is the You card URL in the panel.
+**Denied** on the execute path (`human_park_tab_denied`). Auth parks use **Show tab** on the existing agent tab; remainder parks use the You card page URL.
 
 ---
 
@@ -77,9 +77,9 @@ See [`BROWSER_LAYER.md`](BROWSER_LAYER.md) (`eyes_challenge_extra_ms`).
 
 ## Hands / tabs (short)
 
-- Agent collage: Virgil · Agent group; act only on agent `tab_id`.
+- Agent collage: Virgil · Agent group; act only on agent `tab_id`. Auth park lends that tab (ungroup → Show → Resume regroups).
 - Never automate `human_tab_id`.
-- Park is URL-first You cards (panel Open / link); agent `openTab placement=human` is denied.
+- Park: auth_gate = tab custody + URL fallback; human_remainder = URL-first You cards; agent `openTab placement=human` is denied.
 - See [`BROWSER_LAYER.md`](BROWSER_LAYER.md) for driver modes and soft site tiers A–D.
 
 ---

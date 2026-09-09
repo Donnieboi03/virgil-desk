@@ -224,6 +224,60 @@ def test_auth_gate_blocks_false_closure():
     )
 
 
+def test_human_judgment_blocks_false_closure():
+    from desk_host.execute_validation import human_judgment_blocks_false_closure
+
+    # YC-style: Review title + read-only single closure → reject
+    assert human_judgment_blocks_false_closure(
+        "Single closure: Reviewed YC Co-Founder Match picks; no further action.",
+        item_title="Review YC Co-Founder Match profile picks",
+    )
+    # Access folder + verified access sold as done → reject
+    assert human_judgment_blocks_false_closure(
+        "Single closure: verified access to Google Drive shared folder; no further action.",
+        item_title="Access shared folder '1on1 Donovan'",
+    )
+    # Summary-only "Reviewed" + single closure even without title verb → reject
+    assert human_judgment_blocks_false_closure(
+        "Single closure: Reviewed two candidate profiles; no further action.",
+        item_title="Open co-founder email",
+    )
+    # Verified terminal still OK (Western Digital expired)
+    assert (
+        human_judgment_blocks_false_closure(
+            "Verified expired link (deadline passed / already submitted) for "
+            "Western Digital screening; no further action.",
+            item_title="Respond to Western Digital application inquiry",
+        )
+        is None
+    )
+    # Honest remainder park OK
+    assert (
+        human_judgment_blocks_false_closure(
+            "Opened profiles; remainder parked You for decide on Adish / Anastasia.",
+            item_title="Review YC Co-Founder Match profile picks",
+        )
+        is None
+    )
+    # Already has You remainder → defer to auth_gate_blocks honesty gate
+    assert (
+        human_judgment_blocks_false_closure(
+            "Single closure: Reviewed picks; no further action.",
+            item_title="Review YC picks",
+            has_you_remainder=True,
+        )
+        is None
+    )
+    # Factual extract without review/access language OK
+    assert (
+        human_judgment_blocks_false_closure(
+            "Single closure: extracted Welocalize rate from Handshake email; no further action.",
+            item_title="Check Welocalize rate in Handshake round-up",
+        )
+        is None
+    )
+
+
 def test_open_you_remainder_kinds():
     from desk_host.execute_validation import open_auth_gate_you, open_you_remainder
 

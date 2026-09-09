@@ -30,9 +30,9 @@ When the operator **Accept**s a **Waiting** item that needs browser work, provis
 
 Replace `booked_stub` with Hermes `gws` calendar create (or equivalent L1 path).
 
-### Inbox scroll depth
+### Inbox / list depth beyond the viewport
 
-Optional multi-page Gmail scroll beyond `handoff_scroll_loops` (config-driven).
+Default handoff is **viewport-only** (`handoff_scroll_loops: 0`). Seeing more = change what’s on screen (search / open), not a bigger excerpt. Virtualization + JS-heap limits: [`HANDOFF_CAPTURE.md`](HANDOFF_CAPTURE.md). Optional multi-window harvest or network-list adapters are research — not the product spine.
 
 ### Hermes fallback hygiene for Desk
 
@@ -54,7 +54,7 @@ Mission-progress stop (URL unchanged K acts / repeated targets) — parked (easy
 
 ## Done (reference)
 
-- Rich handoff: short-lived duplicate for excerpt + screenshot, then close; decompose without leaving agent collage
+- Rich handoff: viewport excerpt + screenshot on human tab by default (no duplicate unless scroll loops > 0); decompose without leaving agent collage
 - Manual **Run agent** + `POST /v1/items/{id}/execute`
 - **`desk-browser`** CLI for Hermes terminal
 - **Mark done** for You column items

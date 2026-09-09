@@ -3,11 +3,11 @@ name: desk-browser-bridge
 description: >-
   Virgil Desk browser bridge: desk-browser CLI, Path B extension Eyes/Hands
   (default) or harness CDP rollback, You/Agent/Waiting board, Accept/Deny proposals.
-version: 1.15.2
+version: 1.15.3
 metadata:
   hermes:
     tags: [virgil-desk, browser, handoff]
-    keywords: [mint_item, subtask, auth_wall, soft_help, park_last_resort, url_first_park, awaiting_human, eyes_empty, eyes_mode, verified_terminal]
+    keywords: [mint_item, subtask, auth_wall, soft_help, park_last_resort, url_first_park, awaiting_human, eyes_empty, eyes_mode, verified_terminal, human_remainder, human_judgment]
 ---
 
 # Desk browser bridge
@@ -65,15 +65,17 @@ See [`docs/BROWSER_LAYER.md`](../docs/BROWSER_LAYER.md).
 - **`openTab` + `placement:human`** — **denied** (`human_park_tab_denied`). Park is URL-first You card only.
 - **`duplicateTab`** — same page as human (extension).
 - **`closeTab`** — requires `--tab-id`; missing id is rejected (not a silent no-op).
-- Handoff uses a short-lived **ungrouped** scrape tab then closes it — **Virgil · Agent** is created only on **Run agent**.
+- Handoff captures the **human tab** by default (excerpt + screenshot; no duplicate unless scroll loops > 0). **Virgil · Agent** is created only on **Run agent**.
 
 ## Agent-continue vs park (URL-first last resort)
 
 **Continue as agent** when links are readable: shared folders/docs, thread bodies, job pages — `openTab` (agent) → observe → read/summarize; mint **agent** children for multi-closure.
 
-**Park You only when:** login/CAPTCHA/auth/challenge wall; forbidden send/connect/pay/sign/submit; hostile/empty Eyes when human action is still required; or stuck after re-observe. Soft-help = `mint_item` → You (keywords/draft/checklist).
+**Park You when:** login/CAPTCHA/auth/challenge wall; forbidden send/connect/pay/sign/submit; hostile/empty Eyes when human action is still required; stuck after re-observe; **or the operator must still decide/reply/apply/use docs** (co-founder picks, respond-to-X, access-then-use folder) — mint `human_remainder` with `source.url`. Soft-help = `mint_item` → You (keywords/draft/checklist).
 
-**URL-first park** — mint You with `source.url` (+ `park_kind` / `resume` for gates). Desk panel shows a clickable URL / Open. Do **not** `openTab placement=human`.
+Do **not** claim `Single closure … no further action` after only reading those judgment/use items — host rejects that. Verified terminal dead-ends (expired / already submitted) remain Completed without park.
+
+**URL-first park** — mint You with `source.url` (+ `park_kind` / `resume` for gates). Desk panel: **auth_gate** → **Show tab** on the existing agent tab (plus page URL fallback); **human_remainder** → clickable URL / Open. Do **not** `openTab placement=human`.
 
 ```bash
 desk-browser --run-id RUN --op mint_item --params '{
@@ -86,8 +88,8 @@ desk-browser --run-id RUN --op mint_item --params '{
 }'
 ```
 
-- **`park_kind: auth_gate`** — parent → `awaiting_human` until human Marks done → **Resume agent**. Use this for auth/challenge walls (not bare `Partial:`).
-- **`park_kind: human_remainder`** — agent may Complete verified facts **and** leave You for human view; never claim “no further action” without acknowledging the remainder.
+- **`park_kind: auth_gate`** — parent → `awaiting_human` until human Marks done → **Resume agent**. Extension lends `agent_tab_id` (ungroup / Show tab / Resume regroups). Use this for auth/challenge walls (not bare `Partial:`).
+- **`park_kind: human_remainder`** — agent may Complete verified facts **and** leave You for human decide/reply/use; never claim “no further action” without acknowledging the remainder. Review/match/respond/access+use titles almost always need this.
 - Challenge patience: wait/settle/re-observe once on bot interstitials; prefer **one** You for the destination URL. On Resume, honor Packet `resume.cleared_gates`.
 
 Do not claim Observed success from blank scrape. If Eyes return **`eyes_mode: 1`**, trust the promoted excerpt. If Eyes **verify a terminal** outcome, stop with Completed — do not mint You. If **`eyes_empty`** / **`eyes_mode: 2`** with no usable fact, do not invent page copy from the URL alone — use `eyes_hints.url_path_hint` only as a soft signal, then `Partial:` or last-resort park when human action remains. On **Resume**, Packet may include `resume.cleared_gates` — do not remint those URLs; continue past the gate.

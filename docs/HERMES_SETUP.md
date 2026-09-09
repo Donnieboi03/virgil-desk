@@ -87,7 +87,7 @@ Expect `agent.execute_started`, `browser.command`, `browser.command_result`, `ag
 
 1. `DESK_AGENT_BACKEND=hermes desk-host`
 2. Open a real page (job listing, article, inbox thread)
-3. Hand off with optional intent text
+3. Hand off with intent chips (**All visible** / **This item**) and optional detail text
 4. Confirm board titles match page content (not `Hermes: <title>` stub)
 5. `desk-events --run-id <id>` shows `handoff.decomposed` with `"live": true`
 6. `handoff.snapshot` shows `flags.has_screenshot: true` when extension captured PNG

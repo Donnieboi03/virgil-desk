@@ -7,6 +7,20 @@
   <body>
     <header>
       <h1>Virgil Desk</h1>
+      <div class="handoff-intent" id="handoff-intent">
+        <button type="button" class="intent-chip active" data-intent="all visible" title="Triage what’s on screen">
+          All visible
+        </button>
+        <button type="button" class="intent-chip" data-intent="this item" title="Focus on one thing in view">
+          This item
+        </button>
+        <input
+          id="intent-extra"
+          type="text"
+          placeholder="Optional detail (subject, URL fragment…)"
+          autocomplete="off"
+        />
+      </div>
       <button id="handoff">Hand off this tab</button>
     </header>
     <div id="status-strip" class="status-strip">

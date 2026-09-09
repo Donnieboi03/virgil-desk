@@ -9,7 +9,7 @@ Virgil Desk is a **browser allocation desk**: you hand off the active tab, an ag
 - Pluggable agent backends: mock (default), Hermes, OpenClaw stub
 - **Path B (default):** DOM **Eyes** (slim `interact_targets`, fail-only `eyes_mode` ladder, optional AX/`page_tree`, probes) → **Hands** by `target_id` — see [`BROWSER_LAYER.md`](BROWSER_LAYER.md) and Done/park in [`ARCHITECTURE.md`](ARCHITECTURE.md)
 - URL open/construct is a **secondary workaround** (hostile Eyes) — not the primary operating model
-- **Park You** is URL-first (`source.url` on the card; panel Open). Auth gates leave the parent **`awaiting_human`** until Mark done → Resume agent
+- **Park You** — auth_gate is tab-first (`agent_tab_id` + Show tab) with URL fallback; **human_remainder** when you must still decide/reply/apply/use docs (not agent-only reads). Auth gates leave the parent **`awaiting_human`** until Mark done → Resume agent
 - **Verified terminal** page state (expired / already submitted) after Eyes read = **Completed** for review goals — not automatic You mint
 
 ## What it is not
@@ -22,7 +22,7 @@ Virgil Desk is a **browser allocation desk**: you hand off the active tab, an ag
 
 ## Primary flows
 
-1. **Hand off** — short-lived ungrouped scrape tab (excerpt + optional screenshot) → backend decomposes → board patch (no Virgil · Agent yet)
+1. **Hand off** — viewport excerpt + screenshot on the **human tab** by default (`handoff_scroll_loops: 0`, no duplicate); optional intent chips → backend decomposes → board patch (no Virgil · Agent yet). See [`HANDOFF_CAPTURE.md`](HANDOFF_CAPTURE.md).
 2. **Agent browser ops** — `desk-browser` / `POST /v1/browser` → extension **observe → act(`target_id`) → observe** on the agent tab (screenshots skipped by default on Path B execute)
 3. **Agent execution** — manual **Run agent** button on Agent column (auto-run planned — see [`NEXTSTEPS.md`](NEXTSTEPS.md))
 4. **Waiting proposals** — calendar slots (etc.) → Accept or Deny in the panel

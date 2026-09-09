@@ -3,8 +3,13 @@ const PAIRS_KEY = "virgil_desk_tab_pairs";
 const AGENT_GROUP_TITLE = "Virgil · Agent";
 const DEFAULT_HOST = "http://127.0.0.1:8787";
 
-import { applyBoardPatch, chooseNavigationOp, policyBlock as tabPolicyBlock, openTabPlacement, urlsMatchForPark } from "./tabPolicy.js";
+import { applyBoardPatch, chooseNavigationOp, policyBlock as tabPolicyBlock } from "./tabPolicy.js";
 import { withProvisionLock, planAgentTabForItem } from "./agentTabs.js";
+import {
+  authGateParksFromOps,
+  planAgentTabPromotion,
+  resolveParkAgentTabId,
+} from "./tabCustody.js";
 import {
   storeTargetMap,
   getTargetMap,
@@ -13,8 +18,12 @@ import {
 } from "./targetMap.js";
 import {
   MEMORY_KEY,
+  SEMANTIC_KEY,
   emptyMemory,
+  emptySemantic,
   applyMemoryPatch,
+  applySemanticPatch,
+  partitionMemoryOps,
 } from "./deskMemory.js";
 import { tabsToCloseForItem } from "./tabCleanup.js";
 import { shouldCloseSpawnedTab } from "./popupPolicy.js";
@@ -47,7 +56,7 @@ let deskConfig = {
     scrape_links_max: 200,
     scrape_excerpt_max_chars: 4000,
     handoff_excerpt_max_chars: 12000,
-    handoff_scroll_loops: 2,
+    handoff_scroll_loops: 0,
     handoff_scroll_viewport_ratio: 0.85,
     screenshot_mode: "captureVisibleTab",
     default_wait_ms: 500,
@@ -69,6 +78,10 @@ let deskConfig = {
     recent_max: 3,
     notepad_max_bullets: 20,
     notepad_max_chars: 4000,
+    semantic_max_facts: 20,
+    semantic_packet_max_facts: 10,
+    semantic_max_value_chars: 200,
+    semantic_max_key_chars: 64,
   },
 };
 let wsConnected = false;
@@ -212,6 +225,13 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
     completeItem(msg).then(sendResponse);
     return true;
   }
+  if (msg.type === "revealAgentTab") {
+    revealAgentTab(msg.tabId, {
+      itemId: msg.itemId,
+      runId: msg.runId,
+    }).then(sendResponse);
+    return true;
+  }
 });
 
 async function loadDeskMemory() {
@@ -223,6 +243,15 @@ async function saveDeskMemory(memory) {
   await chrome.storage.local.set({ [MEMORY_KEY]: memory });
 }
 
+async function loadDeskSemantic() {
+  const data = await chrome.storage.local.get(SEMANTIC_KEY);
+  return data[SEMANTIC_KEY] || emptySemantic();
+}
+
+async function saveDeskSemantic(semantic) {
+  await chrome.storage.local.set({ [SEMANTIC_KEY]: semantic });
+}
+
 function memoryLimits() {
   const m = deskConfig.memory || {};
   return {
@@ -232,8 +261,17 @@ function memoryLimits() {
   };
 }
 
+function semanticLimits() {
+  const m = deskConfig.memory || {};
+  return {
+    maxFacts: m.semantic_max_facts ?? 20,
+    maxKeyChars: m.semantic_max_key_chars ?? 64,
+    maxValueChars: m.semantic_max_value_chars ?? 200,
+  };
+}
+
 async function handleMemoryGet(msg) {
-  const memory = await loadDeskMemory();
+  const [memory, semantic] = await Promise.all([loadDeskMemory(), loadDeskSemantic()]);
   if (ws?.readyState === WebSocket.OPEN) {
     ws.send(
       JSON.stringify({
@@ -241,16 +279,26 @@ async function handleMemoryGet(msg) {
         request_id: msg.request_id,
         run_id: msg.run_id,
         memory,
+        semantic,
       }),
     );
   }
 }
 
 async function handleMemoryPatch(msg) {
-  const limits = memoryLimits();
-  const current = await loadDeskMemory();
-  const next = applyMemoryPatch(current, msg.ops || [], limits);
-  await saveDeskMemory(next);
+  const { memoryOps, semanticOps } = partitionMemoryOps(msg.ops || []);
+  if (memoryOps.length) {
+    const limits = memoryLimits();
+    const current = await loadDeskMemory();
+    const next = applyMemoryPatch(current, memoryOps, limits);
+    await saveDeskMemory(next);
+  }
+  if (semanticOps.length) {
+    const limits = semanticLimits();
+    const current = await loadDeskSemantic();
+    const next = applySemanticPatch(current, semanticOps, limits);
+    await saveDeskSemantic(next);
+  }
 }
 
 async function handleExecuteSession(msg) {
@@ -280,18 +328,6 @@ async function trackSpawnedTab(runId, itemId, tabId) {
   const list = pairs[runId].spawnedByItem[itemId] || [];
   if (!list.includes(tabId)) list.push(tabId);
   pairs[runId].spawnedByItem[itemId] = list;
-  await chrome.storage.session.set({ [PAIRS_KEY]: pairs });
-}
-
-/** Park human remainder tabs outside agent cleanup (not closed on execute_cleanup). */
-async function trackHumanParkedTab(runId, itemId, tabId) {
-  const data = await chrome.storage.session.get(PAIRS_KEY);
-  const pairs = data[PAIRS_KEY] || {};
-  if (!pairs[runId]) pairs[runId] = { items: {}, humanParkedByItem: {} };
-  if (!pairs[runId].humanParkedByItem) pairs[runId].humanParkedByItem = {};
-  const list = pairs[runId].humanParkedByItem[itemId] || [];
-  if (!list.includes(tabId)) list.push(tabId);
-  pairs[runId].humanParkedByItem[itemId] = list;
   await chrome.storage.session.set({ [PAIRS_KEY]: pairs });
 }
 
@@ -630,42 +666,159 @@ async function applyPatch(ops, runId) {
   }
   // Agent tabs are provisioned only on Run agent — not on board_patch adds.
   const board = await loadBoard();
-  await saveBoard(applyBoardPatch(board, ops));
+  const next = applyBoardPatch(board, ops);
+  await saveBoard(next);
   chrome.runtime.sendMessage({ type: "boardUpdated" }).catch(() => {});
+
+  const parks = authGateParksFromOps(ops, runId);
+  const allItems = [...(next.you || []), ...(next.agent || []), ...(next.waiting || [])];
+  for (const park of parks) {
+    let tabId = park.agentTabId;
+    if (tabId == null) {
+      tabId = resolveParkAgentTabId(park.youItem, allItems);
+    }
+    if (tabId == null) continue;
+    try {
+      await releaseAgentTabToHuman(tabId);
+      const shot = await captureIfActive(tabId);
+      await postTabCustody({
+        itemId: park.youItem.id,
+        runId: park.runId || runId,
+        action: "park",
+        agentTabId: tabId,
+        viewportShot: shot,
+        flags: shot
+          ? { shot_skipped_inactive: false }
+          : { shot_skipped_inactive: true },
+      });
+    } catch {
+      /* tab closed / host down — board still updated */
+    }
+  }
 }
 
-async function duplicateUngroupedSnapshot(humanTabId, runId) {
+/** Ungroup agent tab for human; do not activate. */
+async function releaseAgentTabToHuman(tabId) {
+  try {
+    const tab = await chrome.tabs.get(tabId);
+    if (tab.groupId != null && tab.groupId !== -1) {
+      await chrome.tabs.ungroup(tabId);
+    }
+  } catch {
+    /* already closed or not grouped */
+  }
+}
+
+/** Screenshot only if tabId is already the active tab in its window. */
+async function captureIfActive(tabId) {
+  try {
+    const tab = await chrome.tabs.get(tabId);
+    const [active] = await chrome.tabs.query({ active: true, windowId: tab.windowId });
+    if (active?.id !== tabId) return null;
+    const dataUrl = await chrome.tabs.captureVisibleTab(tab.windowId, { format: "png" });
+    const base64 = dataUrl.split(",")[1] || "";
+    return {
+      mime: "image/png",
+      base64,
+      width: 0,
+      height: 0,
+    };
+  } catch {
+    return null;
+  }
+}
+
+async function postTabCustody({ itemId, runId, action, agentTabId, viewportShot, flags }) {
+  if (!itemId || !runId || !hostUrl) return;
+  try {
+    await fetch(`${hostUrl}/v1/items/${itemId}/tab_custody`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        run_id: runId,
+        action,
+        agent_tab_id: agentTabId,
+        viewport_shot: viewportShot || undefined,
+        flags: flags || undefined,
+      }),
+    });
+  } catch {
+    /* observability best-effort */
+  }
+}
+
+/**
+ * Activate existing agent tab for human (no create). Used by panel + reveal.html.
+ */
+async function revealAgentTab(tabId, { itemId, runId } = {}) {
+  const id = Number(tabId);
+  if (!id) return { ok: false, error: "missing tabId" };
+  try {
+    await releaseAgentTabToHuman(id);
+    const tab = await chrome.tabs.get(id);
+    await chrome.tabs.update(id, { active: true });
+    if (tab.windowId != null) {
+      await chrome.windows.update(tab.windowId, { focused: true }).catch(() => {});
+    }
+    await new Promise((r) => setTimeout(r, deskConfig.browser?.default_wait_ms ?? 200));
+    const shot = await captureIfActive(id);
+    if (itemId && runId) {
+      await postTabCustody({
+        itemId,
+        runId,
+        action: "reveal",
+        agentTabId: id,
+        viewportShot: shot,
+        flags: { shot_skipped_inactive: !shot },
+      });
+    }
+    return { ok: true, tabId: id, has_shot: !!shot };
+  } catch (err) {
+    return { ok: false, error: String(err?.message || err) };
+  }
+}
+
+/**
+ * Background tab via create({ active: false }) — does not activate (unlike tabs.duplicate).
+ */
+async function createBackgroundTab(url, windowId) {
+  const targetUrl = (url || "").trim();
+  if (!targetUrl || targetUrl === "about:blank" || !/^https?:\/\//i.test(targetUrl)) {
+    throw new Error("createBackgroundTab requires http(s) url");
+  }
+  return chrome.tabs.create({ url: targetUrl, active: false, windowId });
+}
+
+async function createUngroupedSnapshot(humanTabId, runId) {
   /** Handoff scrape only — do NOT create Virgil · Agent (group on Run agent). */
-  const dup = await chrome.tabs.duplicate(humanTabId);
-  await chrome.tabs.update(dup.id, { active: false });
+  const human = await chrome.tabs.get(humanTabId);
+  const tab = await createBackgroundTab(human.url, human.windowId);
   const data = await chrome.storage.session.get(PAIRS_KEY);
   const pairs = data[PAIRS_KEY] || {};
   pairs[runId] = {
     humanTabId,
     items: pairs[runId]?.items || {},
     spawnedByItem: pairs[runId]?.spawnedByItem || {},
-    humanParkedByItem: pairs[runId]?.humanParkedByItem || {},
   };
   await chrome.storage.session.set({ [PAIRS_KEY]: pairs });
-  return dup.id;
+  return tab.id;
 }
 
-async function duplicateAgentTabForItem(humanTabId, runId, itemId) {
-  const dup = await chrome.tabs.duplicate(humanTabId);
-  await chrome.tabs.update(dup.id, { active: false });
-  const tab = await chrome.tabs.get(dup.id);
-  await ensureAgentGroup(dup.id, tab.windowId);
+async function createAgentTabForItem(humanTabId, runId, itemId) {
+  const human = await chrome.tabs.get(humanTabId);
+  const tab = await createBackgroundTab(human.url, human.windowId);
+  await ensureAgentGroup(tab.id, tab.windowId);
   const data = await chrome.storage.session.get(PAIRS_KEY);
   const pairs = data[PAIRS_KEY] || {};
   if (!pairs[runId]) {
     pairs[runId] = { humanTabId, items: {} };
   }
   if (!pairs[runId].items) pairs[runId].items = {};
-  pairs[runId].items[itemId] = dup.id;
+  pairs[runId].items[itemId] = tab.id;
   pairs[runId].humanTabId = humanTabId;
-  pairs[runId].agentTabId = dup.id;
+  pairs[runId].agentTabId = tab.id;
   await chrome.storage.session.set({ [PAIRS_KEY]: pairs });
-  return dup.id;
+  return tab.id;
 }
 
 async function syncItemAgentTab(itemId, runId, agentTabId) {
@@ -677,6 +830,42 @@ async function syncItemAgentTab(itemId, runId, agentTabId) {
   if (!res.ok) {
     const data = await res.json().catch(() => ({}));
     throw new Error(data.detail || res.statusText || "failed to sync agent_tab_id");
+  }
+}
+
+/**
+ * Point run/item primary agent tab at tabId (openTab destinations for Show-tab custody).
+ * Previous primary is retained in spawnedByItem for later cleanup.
+ */
+async function promoteAgentTab(runId, itemId, tabId, pairs) {
+  if (!pairs[runId]) {
+    pairs[runId] = { items: {}, spawnedByItem: {} };
+  }
+  const prev = pairs[runId].agentTabId;
+  const plan = planAgentTabPromotion(prev, tabId);
+  if (plan.spawnPrev != null && itemId) {
+    await trackSpawnedTab(runId, itemId, plan.spawnPrev);
+  }
+  pairs[runId].agentTabId = plan.agentTabId;
+  if (itemId) {
+    if (!pairs[runId].items) pairs[runId].items = {};
+    pairs[runId].items[itemId] = tabId;
+  }
+  await chrome.storage.session.set({ [PAIRS_KEY]: pairs });
+  if (activeExecute && activeExecute.runId === runId) {
+    activeExecute.agentTabId = Number(tabId);
+  }
+  if (!itemId || !hostUrl) return;
+  try {
+    await syncItemAgentTab(itemId, runId, tabId);
+    const located = await findBoardItem(itemId);
+    if (located?.item) {
+      located.item.agent_tab_id = tabId;
+      await saveBoard(located.board);
+      chrome.runtime.sendMessage({ type: "boardUpdated" }).catch(() => {});
+    }
+  } catch {
+    /* mid-flight sync best-effort */
   }
 }
 
@@ -730,6 +919,8 @@ async function provisionAgentTabBeforeExecute(itemId, runId) {
     if (item.agent_tab_id) {
       try {
         await chrome.tabs.get(item.agent_tab_id);
+        const tab = await chrome.tabs.get(item.agent_tab_id);
+        await ensureAgentGroup(item.agent_tab_id, tab.windowId);
         const data = await chrome.storage.session.get(PAIRS_KEY);
         const pairs = data[PAIRS_KEY] || {};
         if (!pairs[runId]) pairs[runId] = { humanTabId, items: {} };
@@ -746,8 +937,8 @@ async function provisionAgentTabBeforeExecute(itemId, runId) {
 
     const plan = planAgentTabForItem(itemId, 0, await loadRunPair(runId));
     let tabId = plan.tabId;
-    if (plan.source === "duplicate" || !tabId) {
-      tabId = await duplicateAgentTabForItem(humanTabId, runId, itemId);
+    if (plan.source === "create" || !tabId) {
+      tabId = await createAgentTabForItem(humanTabId, runId, itemId);
     }
     if (!tabId) {
       return { ok: false, error: "failed to provision agent tab" };
@@ -797,76 +988,17 @@ async function ensureAgentGroup(tabId, windowId) {
 async function resolveAgentTab(command) {
   const pairs = (await chrome.storage.session.get(PAIRS_KEY))[PAIRS_KEY] || {};
   const runId = command.run_id;
-  const placement = openTabPlacement(command);
-
-  // Human remainder tabs stay outside Virgil · Agent and are not the agent collage.
-  if (command.op === "openTab" && placement === "human") {
-    const human = command.human_tab_id
-      ? await chrome.tabs.get(command.human_tab_id)
-      : null;
-    const windowId = human?.windowId;
-    const targetUrl = command.url || "about:blank";
-
-    // Idempotent park: reuse existing human-parked / same-URL tab in window.
-    const parkedLists = Object.values(pairs[runId]?.humanParkedByItem || {});
-    const parkedIds = parkedLists.flat();
-    for (const tid of parkedIds) {
-      try {
-        const t = await chrome.tabs.get(tid);
-        if (t?.url && urlsMatchForPark(t.url, targetUrl)) {
-          return { tabId: t.id, tabMode: "reuse", placement: "human" };
-        }
-      } catch {
-        /* tab closed */
-      }
-    }
-    if (windowId != null && targetUrl !== "about:blank") {
-      try {
-        const inWindow = await chrome.tabs.query({ windowId });
-        const hit = inWindow.find((t) => t.url && urlsMatchForPark(t.url, targetUrl));
-        if (hit?.id != null) {
-          if (activeExecute?.itemId && runId) {
-            await trackHumanParkedTab(runId, activeExecute.itemId, hit.id);
-          }
-          return { tabId: hit.id, tabMode: "reuse", placement: "human" };
-        }
-      } catch {
-        /* query failed — fall through to create */
-      }
-    }
-
-    const tab = await chrome.tabs.create({
-      url: targetUrl,
-      active: false,
-      windowId,
-    });
-    if (activeExecute?.itemId && runId) {
-      await trackHumanParkedTab(runId, activeExecute.itemId, tab.id);
-    }
-    return { tabId: tab.id, tabMode: "create", placement: "human" };
-  }
 
   // openTab always creates (or navigates a new tab) — never reuse collage without loading url.
   if (command.op !== "openTab" && pairs[runId]?.agentTabId) {
     return { tabId: pairs[runId].agentTabId, tabMode: "reuse" };
   }
-  if (command.op === "duplicateTab") {
-    const dup = await chrome.tabs.duplicate(command.human_tab_id);
-    await chrome.tabs.update(dup.id, { active: false });
-    const tab = await chrome.tabs.get(dup.id);
-    await ensureAgentGroup(dup.id, tab.windowId);
-    pairs[runId] = {
-      humanTabId: command.human_tab_id,
-      agentTabId: dup.id,
-      items: pairs[runId]?.items || {},
-      spawnedByItem: pairs[runId]?.spawnedByItem || {},
-      humanParkedByItem: pairs[runId]?.humanParkedByItem || {},
-    };
-    await chrome.storage.session.set({ [PAIRS_KEY]: pairs });
-    return { tabId: dup.id, tabMode: "duplicate", placement: "agent" };
-  }
-    if command.op === "openTab") {
-    const targetUrl = (command.url || "").trim();
+  // duplicateTab is legacy alias — same as openTab (create background; never tabs.duplicate).
+  if (command.op === "duplicateTab" || command.op === "openTab") {
+    const human = command.human_tab_id
+      ? await chrome.tabs.get(command.human_tab_id)
+      : null;
+    const targetUrl = (command.url || human?.url || "").trim();
     if (!targetUrl || targetUrl === "about:blank" || !/^https?:\/\//i.test(targetUrl)) {
       return {
         tabId: null,
@@ -875,35 +1007,19 @@ async function resolveAgentTab(command) {
         error: "openTab requires http(s) url",
       };
     }
-    const human = command.human_tab_id
-      ? await chrome.tabs.get(command.human_tab_id)
-      : null;
     const windowId = human?.windowId;
-    const tab = await chrome.tabs.create({
-      url: targetUrl,
-      active: false,
-      windowId,
-    });
+    const tab = await createBackgroundTab(targetUrl, windowId);
     await ensureAgentGroup(tab.id, tab.windowId);
     if (!pairs[runId]) {
       pairs[runId] = {
         humanTabId: command.human_tab_id,
         items: {},
         spawnedByItem: {},
-        humanParkedByItem: {},
       };
     }
-    if (!pairs[runId].agentTabId) {
-      pairs[runId].agentTabId = tab.id;
-      if (activeExecute?.itemId) {
-        if (!pairs[runId].items) pairs[runId].items = {};
-        pairs[runId].items[activeExecute.itemId] = tab.id;
-      }
-    } else if (activeExecute?.itemId) {
-      await trackSpawnedTab(runId, activeExecute.itemId, tab.id);
-    }
     pairs[runId].humanTabId = pairs[runId].humanTabId || command.human_tab_id;
-    await chrome.storage.session.set({ [PAIRS_KEY]: pairs });
+    // Always promote: Show-tab / auth_gate mint must target the tab the agent just opened.
+    await promoteAgentTab(runId, activeExecute?.itemId, tab.id, pairs);
     return { tabId: tab.id, tabMode: "create", placement: "agent" };
   }
   return { tabId: command.tab_id, tabMode: "reuse" };
@@ -1487,12 +1603,8 @@ async function runBrowserCommand(command) {
     }
 
     let tabId = command.tab_id;
-    if (command.op === "duplicateTab") {
+    if (command.op === "duplicateTab" || command.op === "openTab") {
       const resolved = await resolveAgentTab(command);
-      tabId = resolved.tabId;
-      await settleTabAfterOpen(tabId);
-    } else if (command.op === "openTab") {
-      const resolved = await resolveAgentTab({ ...command, op: "openTab" });
       if (resolved.error || !resolved.tabId) {
         return {
           ...base,
@@ -2089,17 +2201,22 @@ async function buildHandoffPayload(tab, intent) {
   const scrapeLinksMax = deskConfig.browser?.scrape_links_max ?? 200;
   const scrollLoops = deskConfig.browser?.handoff_scroll_loops ?? 0;
   const scrollRatio = scrollViewportRatio();
-  // Ungrouped temp tab — Virgil · Agent is created only on Run agent.
-  const snapshotTabId = await duplicateUngroupedSnapshot(tab.id, runId);
-  const scrollLoopsExecuted = scrollLoops > 0 ? scrollLoops : 0;
+  // Default (scroll=0): scrape + shot the human tab — no extra tab (avoids empty SPA shells).
+  // Scroll >0 uses a short-lived background create so we don't move the human viewport.
+  let snapshotTabId = tab.id;
+  let usedScrapeTab = false;
   if (scrollLoops > 0) {
+    snapshotTabId = await createUngroupedSnapshot(tab.id, runId);
+    usedScrapeTab = true;
     await scrollAgentTab(snapshotTabId, scrollLoops);
   }
+  const scrollLoopsExecuted = scrollLoops > 0 ? scrollLoops : 0;
   const settled = await settleScrapeEyes(snapshotTabId);
   const snap = settled.result || (await scrapeTab(snapshotTabId));
   const shot = await screenshotTab(snapshotTabId);
-  // Defer agent collage until Run agent — close scrape tab after snapshot.
-  await clearHandoffSnapshotTab(runId, snapshotTabId);
+  if (usedScrapeTab) {
+    await clearHandoffSnapshotTab(runId, snapshotTabId);
+  }
   const scrapeTextLen = snap.text?.length ?? 0;
   const metrics = snap.metrics || {};
   const fullTextChars = metrics.full_text_chars ?? scrapeTextLen;
@@ -2120,6 +2237,8 @@ async function buildHandoffPayload(tab, intent) {
         scroll_loops_executed: scrollLoopsExecuted,
         scroll_loops_configured: scrollLoops,
         scroll_viewport_ratio: scrollRatio,
+        used_scrape_tab: usedScrapeTab,
+        used_duplicate_tab: usedScrapeTab,
         scrape_text_max_chars: scrapeTextMax,
         handoff_excerpt_max_chars: handoffMax,
         scrape_links_max: scrapeLinksMax,
@@ -2304,14 +2423,68 @@ async function completeItem({ itemId, runId }) {
   if (wsErr) {
     return { ok: false, error: wsErr };
   }
+  const boardBefore = await loadBoard();
+  const allBefore = [
+    ...(boardBefore.you || []),
+    ...(boardBefore.agent || []),
+    ...(boardBefore.waiting || []),
+  ];
+  const youItem = allBefore.find((i) => i.id === itemId);
+  const agentTabId = youItem ? resolveParkAgentTabId(youItem, allBefore) : null;
+  let viewportShot = null;
+  let shotOnAgentTab = false;
+  if (agentTabId != null) {
+    viewportShot = await captureIfActive(agentTabId);
+    shotOnAgentTab = !!viewportShot;
+  }
   const res = await fetch(`${hostUrl}/v1/items/${itemId}/complete`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ run_id: runId }),
+    body: JSON.stringify({
+      run_id: runId,
+      viewport_shot: viewportShot || undefined,
+      shot_on_agent_tab: shotOnAgentTab,
+    }),
   });
   const data = await res.json();
   if (!res.ok) {
     return { ok: false, error: data.detail || res.statusText, ...data };
+  }
+  // Re-load after POST so required board_patch (cleared_gates, etc.) is not clobbered.
+  const board = await loadBoard();
+  let changed = false;
+  for (const col of ["you", "agent", "waiting"]) {
+    const list = board[col] || [];
+    const idx = list.findIndex((i) => i.id === itemId);
+    if (idx >= 0 && list[idx].status !== "done") {
+      list[idx] = { ...list[idx], status: "done" };
+      board[col] = list;
+      changed = true;
+      break;
+    }
+  }
+  const resumeParentId = data.resume_parent_id;
+  if (resumeParentId) {
+    for (const col of ["you", "agent", "waiting"]) {
+      const list = board[col] || [];
+      const idx = list.findIndex((i) => i.id === resumeParentId);
+      if (idx >= 0) {
+        const prev = list[idx];
+        list[idx] = {
+          ...prev,
+          status: "proposed",
+          resume_ready: true,
+          cleared_gates: prev.cleared_gates,
+        };
+        delete list[idx].last_error;
+        board[col] = list;
+        changed = true;
+        break;
+      }
+    }
+  }
+  if (changed) {
+    await saveBoard(board);
   }
   chrome.runtime.sendMessage({ type: "boardUpdated" }).catch(() => {});
   return data;

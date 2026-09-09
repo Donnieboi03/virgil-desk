@@ -189,6 +189,24 @@ _HONEST_REMAINDER_RE = re.compile(
     r"(?i)\b(awaiting|parked|remainder|you column|human (?:view|review|glance)|resume)\b"
 )
 
+# Titles that usually need the operator as source of closure (not agent-only read).
+_HUMAN_JUDGMENT_TITLE_RE = re.compile(
+    r"(?i)\b("
+    r"review|respond|reply|decide|choose|pick|match|access|apply|consider|approve"
+    r")\b"
+)
+
+# Summary language that looks like "I read it" sold as Done without a human park.
+_READ_ONLY_FALSE_DONE_RE = re.compile(
+    r"(?i)\b("
+    r"reviewed\b"
+    r"|verified\s+(?:access|profile|details|picks?)"
+    r"|opened\s+shared\s+folder"
+    r"|verified\s+access\s+to"
+    r"|profile\s+details"
+    r")\b"
+)
+
 
 def open_auth_gate_you(
     parent_id: str, work_items: dict[str, dict[str, Any]]
@@ -241,5 +259,39 @@ def auth_gate_blocks_false_closure(
         return (
             "You park remains — do not claim single-closure/no further action; "
             "leave parent awaiting_human or acknowledge parked remainder"
+        )
+    return None
+
+
+def human_judgment_blocks_false_closure(
+    summary: str,
+    *,
+    item_title: str = "",
+    has_you_remainder: bool = False,
+) -> str | None:
+    """
+    Reject 'Single closure / no further action' after only reading when the human
+    still must decide, reply, apply, or use docs (unless verified terminal or You park).
+    """
+    if has_you_remainder:
+        return None
+    body = strip_max_iter_banner(summary or "")
+    if not body:
+        return None
+    if execute_summary_indicates_failure(body):
+        return None
+    if _VERIFIED_TERMINAL_DONE_RE.search(body):
+        return None
+    if _HONEST_REMAINDER_RE.search(body):
+        return None
+    if not _FALSE_CLOSURE_RE.search(body):
+        return None
+    title_needs_human = bool(_HUMAN_JUDGMENT_TITLE_RE.search(item_title or ""))
+    read_sold_as_done = bool(_READ_ONLY_FALSE_DONE_RE.search(body))
+    if title_needs_human or read_sold_as_done:
+        return (
+            "human judgment/use remains — mint human_remainder You with source.url "
+            "for each decision or doc the operator must act on; do not claim "
+            "single-closure/no further action after only reading"
         )
     return None

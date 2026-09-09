@@ -12,6 +12,8 @@ See `packages/protocol/src/index.ts` for TypeScript types.
 - `POST /v1/items/{id}/complete` — mark You column item done; requires extension
 - `POST /v1/items/{id}/accept` — commit proposal; requires extension for board patch
 - `POST /v1/items/{id}/deny` — reject proposal; requires extension for board patch
+- `GET /v1/desk-memory/semantic` — semantic facts slice (`virgil_desk_semantic_v1`); requires extension
+- `PATCH /v1/desk-memory/semantic` — `{ op: upsert_fact|delete_fact, … }` → extension `memory_patch`; requires extension
 
 ## WebSocket `WS /v1/extension`
 
@@ -23,14 +25,14 @@ Board mutations from execute/complete/accept/deny require an active WebSocket; o
 
 ### Memory + tab lifecycle
 
-- **`memory_get` / `memory_snapshot`**: host loads `virgil_desk_memory_v1` (recent executions + per-run notepad) before Hermes execute.
-- **`memory_patch`**: seed notepad at handoff; append recent/bullets after execute.
+- **`memory_get` / `memory_snapshot`**: host loads `{ memory, semantic }` — `virgil_desk_memory_v1` (recent + notepad) and `virgil_desk_semantic_v1` (facts) — before Hermes execute. Packet gets `run_notepad`, `recent_executions`, `semantic_facts`. Full map: [`MEMORY.md`](MEMORY.md).
+- **`memory_patch`**: `seed_run` / `append_recent` / `append_bullet` (working + episodic); `upsert_fact` / `delete_fact` (semantic).
 - **`execute_session`**: marks the active item/tab so off-origin popups from the agent tab can be quarantined.
 - **`execute_cleanup`**: closes that item’s agent tab + tracked spawn tabs (never the human tab).
 
 ## BrowserOp
 
-`captureHandoffSnapshot`, `navigate` (host-normalized to `openTab` / `duplicateTab`), `openTab` (agent placement only — `params.placement: human` is **denied**), `duplicateTab`, `closeTab`, `scroll`, `scrape`, `screenshot`, **`observe`**, **`probe_form`**, **`probe_links`**, **`probe_table`**, `click`, `fill`, **`key`**, `wait`, `focusTab`
+`captureHandoffSnapshot`, `navigate` (host-normalized to `openTab`), `openTab` (agent placement only — `params.placement: human` is **denied**), `duplicateTab` (legacy alias → create), `closeTab`, `scroll`, `scrape`, `screenshot`, **`observe`**, **`probe_form`**, **`probe_links`**, **`probe_table`**, `click`, `fill`, **`key`**, `wait`, `focusTab`
 
 Optional body field: `skip_screenshot` (Path B observe defaults true via `observe_skip_screenshot_default`).
 

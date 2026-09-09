@@ -1,11 +1,17 @@
 import { describe, it, expect } from "vitest";
 import {
   emptyMemory,
+  emptySemantic,
   appendRecent,
   seedRunNotepad,
   appendNotepadBullet,
   applyMemoryPatch,
+  applySemanticPatch,
+  upsertFact,
+  deleteFact,
   formatForExecute,
+  formatSemanticForExecute,
+  partitionMemoryOps,
 } from "./deskMemory.js";
 
 describe("deskMemory", () => {
@@ -62,5 +68,63 @@ describe("deskMemory", () => {
     expect(fmt.decomposition).toBe("d1");
     expect(fmt.run_notepad.bullets).toEqual(["b1"]);
     expect(fmt.recent_executions[0].summary).toBe("prior");
+    expect(fmt.semantic_facts).toEqual([]);
+  });
+
+  it("upsertFact supersedes by key and respects caps", () => {
+    let sem = emptySemantic();
+    sem = upsertFact(sem, {
+      key: "prefer_concise",
+      value: "short",
+      tags: ["user"],
+      source: "manual",
+    });
+    sem = upsertFact(sem, {
+      key: "prefer_concise",
+      value: "shorter",
+      tags: ["user"],
+      source: "host",
+    });
+    expect(sem.facts).toHaveLength(1);
+    expect(sem.facts[0].value).toBe("shorter");
+    for (let i = 0; i < 5; i++) {
+      sem = upsertFact(sem, {
+        key: `k${i}`,
+        value: `v${i}`,
+        tags: ["decision"],
+        maxFacts: 3,
+      });
+    }
+    expect(sem.facts.length).toBe(3);
+    sem = deleteFact(sem, { key: sem.facts[0].key });
+    expect(sem.facts.length).toBe(2);
+  });
+
+  it("applySemanticPatch and formatSemanticForExecute", () => {
+    const sem = applySemanticPatch(emptySemantic(), [
+      {
+        op: "upsert_fact",
+        key: "yc_no_false_close",
+        value: "Do not single-closure YC review",
+        tags: ["decision"],
+      },
+      { op: "upsert_fact", key: "tone", value: "concise", tags: ["user"] },
+    ]);
+    const facts = formatSemanticForExecute(sem, { packetMaxFacts: 1 });
+    expect(facts).toHaveLength(1);
+    expect(facts[0].key).toBeTruthy();
+    const fmt = formatForExecute(emptyMemory(), "r1", { semantic: sem });
+    expect(fmt.semantic_facts.length).toBe(2);
+  });
+
+  it("partitionMemoryOps splits semantic vs working", () => {
+    const { memoryOps, semanticOps } = partitionMemoryOps([
+      { op: "seed_run", run_id: "r" },
+      { op: "upsert_fact", key: "a", value: "b" },
+      { op: "append_bullet", run_id: "r", bullet: "x" },
+      { op: "delete_fact", key: "a" },
+    ]);
+    expect(memoryOps.map((o) => o.op)).toEqual(["seed_run", "append_bullet"]);
+    expect(semanticOps.map((o) => o.op)).toEqual(["upsert_fact", "delete_fact"]);
   });
 });

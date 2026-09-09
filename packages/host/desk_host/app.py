@@ -22,7 +22,7 @@ from .harness_backend import (
     run_browser_op as harness_run_browser_op,
     uses_harness_driver,
 )
-from .memory import format_for_execute
+from .memory import empty_memory, empty_semantic, format_for_execute
 from .navigation import normalize_browser_command
 from .observability import browser_command_result_fields, measure_from_snapshot, record, usage_measure
 from .policy import policy_denied_reason
@@ -31,6 +31,7 @@ from .execute_validation import (
     empty_probe_links_only_cover,
     execute_summary_incomplete_reason,
     failed_open_tab_blocks_done,
+    human_judgment_blocks_false_closure,
     open_auth_gate_you,
     open_you_remainder,
     parent_done_blocked_reason,
@@ -120,6 +121,26 @@ class MintItemBody(BaseModel):
 
 class CompleteBody(BaseModel):
     run_id: str
+    viewport_shot: dict[str, Any] | None = None
+    shot_on_agent_tab: bool | None = None
+
+
+class TabCustodyBody(BaseModel):
+    run_id: str
+    action: str  # park | reveal
+    agent_tab_id: int | None = None
+    viewport_shot: dict[str, Any] | None = None
+    flags: dict[str, Any] | None = None
+
+
+class SemanticMemoryBody(BaseModel):
+    op: str
+    key: str | None = None
+    value: str | None = None
+    tags: list[str] | None = None
+    id: str | None = None
+    fact_id: str | None = None
+    source: str | None = None
 
 
 class AcceptBody(BaseModel):
@@ -171,6 +192,58 @@ async def health() -> dict[str, Any]:
         "extension_connected": _extension_connected,
         "policy_version": "1",
     }
+
+
+@app.get("/v1/desk-memory/semantic")
+async def get_semantic_memory() -> dict[str, Any]:
+    _require_extension()
+    snap = await _memory_get("")
+    return {"semantic": snap["semantic"]}
+
+
+@app.patch("/v1/desk-memory/semantic")
+async def patch_semantic_memory(body: SemanticMemoryBody) -> dict[str, Any]:
+    _require_extension()
+    op = (body.op or "").strip()
+    if op not in ("upsert_fact", "delete_fact"):
+        raise HTTPException(
+            status_code=400,
+            detail="op must be upsert_fact or delete_fact",
+        )
+    patch_op: dict[str, Any] = {"op": op}
+    if body.key is not None:
+        patch_op["key"] = body.key
+    if body.value is not None:
+        patch_op["value"] = body.value
+    if body.tags is not None:
+        patch_op["tags"] = body.tags
+    if body.id is not None:
+        patch_op["id"] = body.id
+    if body.fact_id is not None:
+        patch_op["fact_id"] = body.fact_id
+    patch_op["source"] = body.source or "host"
+    if op == "upsert_fact" and (not body.key or not body.value):
+        raise HTTPException(status_code=400, detail="upsert_fact requires key and value")
+    if op == "delete_fact" and not body.key and not body.id and not body.fact_id:
+        raise HTTPException(status_code=400, detail="delete_fact requires key or id")
+    sent = await _memory_patch([patch_op])
+    if not sent:
+        raise HTTPException(status_code=503, detail="extension not connected")
+    # Brief yield so extension can apply before optional follow-up GET.
+    await asyncio.sleep(0)
+    snap = await _memory_get("")
+    semantic = snap["semantic"]
+    fact_count = len((semantic or {}).get("facts") or [])
+    record(
+        "memory.semantic_patched",
+        "",
+        cfg=get_config(),
+        measure={"semantic_fact_count": fact_count},
+        flags={"upsert": op == "upsert_fact", "delete": op == "delete_fact"},
+        op=op,
+        key=body.key,
+    )
+    return {"ok": True, "semantic": semantic}
 
 
 @app.post("/v1/handoff")
@@ -247,7 +320,7 @@ async def _handle_handoff(payload: dict[str, Any]) -> dict[str, Any]:
 
 
 async def _memory_get(run_id: str, *, timeout: float = 5.0) -> dict[str, Any]:
-    """Ask extension for virgil_desk_memory_v1 snapshot; empty on failure."""
+    """Ask extension for memory + semantic snapshot; empty defaults on failure."""
     request_id = uuid.uuid4().hex
     loop = asyncio.get_running_loop()
     fut: asyncio.Future[dict[str, Any]] = loop.create_future()
@@ -261,11 +334,14 @@ async def _memory_get(run_id: str, *, timeout: float = 5.0) -> dict[str, Any]:
             }
         )
         if not sent:
-            return {"global_recent": [], "by_run_id": {}}
+            return {"memory": empty_memory(), "semantic": empty_semantic()}
         snap = await asyncio.wait_for(fut, timeout=timeout)
-        return snap.get("memory") or {"global_recent": [], "by_run_id": {}}
+        return {
+            "memory": snap.get("memory") or empty_memory(),
+            "semantic": snap.get("semantic") or empty_semantic(),
+        }
     except (asyncio.TimeoutError, ExtensionNotConnectedError):
-        return {"global_recent": [], "by_run_id": {}}
+        return {"memory": empty_memory(), "semantic": empty_semantic()}
     finally:
         _memory_waiters.pop(request_id, None)
 
@@ -404,6 +480,7 @@ async def _patch_work_item(
     run_id: str,
     evidence: dict[str, Any] | None = None,
     last_error: str | None = None,
+    clear_last_error: bool = False,
 ) -> dict[str, Any] | None:
     item = _work_items.get(item_id)
     if not item:
@@ -413,6 +490,8 @@ async def _patch_work_item(
         updated["evidence"] = {**(item.get("evidence") or {}), **evidence}
     if last_error is not None:
         updated["last_error"] = last_error
+    elif clear_last_error:
+        updated.pop("last_error", None)
     _work_items[item_id] = updated
     patch_id = uuid.uuid4().hex
     await _send_board_patch(
@@ -816,7 +895,10 @@ async def mint_item(body: MintItemBody) -> dict[str, Any]:
     if resume:
         item["resume"] = True
     # Agent subtasks share the parent's agent tab when present (no new collage).
-    if body.column == "agent" and parent.get("agent_tab_id") is not None:
+    # auth_gate You parks also get agent_tab_id so the panel can Show that tab.
+    if parent.get("agent_tab_id") is not None and (
+        body.column == "agent" or park_kind == "auth_gate"
+    ):
         item["agent_tab_id"] = parent["agent_tab_id"]
 
     _work_items[item_id] = item
@@ -827,6 +909,7 @@ async def mint_item(body: MintItemBody) -> dict[str, Any]:
             "status": "awaiting_human",
             "run_id": body.run_id,
         }
+        parent_updated.pop("last_error", None)
         _work_items[body.parent_id] = parent_updated
         patch_ops.append({"op": "update", "item": parent_updated})
 
@@ -880,19 +963,22 @@ async def execute_item(item_id: str, body: ExecuteBody) -> dict[str, Any]:
         "human_tab_id": item.get("human_tab_id") or meta.get("human_tab_id"),
         "handoff_url": _handoff_urls.get(body.run_id, ""),
     }
-    memory = await _memory_get(body.run_id)
-    ctx.update(
-        format_for_execute(
-            memory,
-            body.run_id,
-            decomposition=str(meta.get("decomposition") or ""),
-        )
+    snap = await _memory_get(body.run_id)
+    cfg = get_config()
+    memory_slice = format_for_execute(
+        snap["memory"],
+        body.run_id,
+        decomposition=str(meta.get("decomposition") or ""),
+        semantic=snap["semantic"],
+        packet_max_facts=cfg.memory.semantic_packet_max_facts,
+        max_key_chars=cfg.memory.semantic_max_key_chars,
+        max_value_chars=cfg.memory.semantic_max_value_chars,
     )
+    ctx.update(memory_slice)
     backend = get_backend()
     execute_fn = getattr(backend, "execute_item", None)
     if not execute_fn:
         raise HTTPException(status_code=501, detail="backend does not support execute")
-    cfg = get_config()
     browser_before = _browser_results_for_run(body.run_id)
     _execute_ops[body.run_id] = []
     _failed_ops[body.run_id] = []
@@ -919,7 +1005,22 @@ async def execute_item(item_id: str, body: ExecuteBody) -> dict[str, Any]:
         human_tab_id=ctx.get("human_tab_id"),
         handoff_url=str(ctx.get("handoff_url") or ""),
     )
-    record("agent.execute_started", body.run_id, cfg=cfg, item_id=item_id)
+    record(
+        "agent.execute_started",
+        body.run_id,
+        cfg=cfg,
+        item_id=item_id,
+        measure={
+            "semantic_fact_count": len(memory_slice.get("semantic_facts") or []),
+            "recent_execution_count": len(memory_slice.get("recent_executions") or []),
+            "notepad_bullet_count": len(
+                (memory_slice.get("run_notepad") or {}).get("bullets") or []
+            ),
+        },
+        flags={
+            "has_semantic_facts": bool(memory_slice.get("semantic_facts")),
+        },
+    )
     http_exc: HTTPException | None = None
     preserve_tabs = False
     try:
@@ -999,8 +1100,29 @@ async def execute_item(item_id: str, body: ExecuteBody) -> dict[str, Any]:
         if not incomplete:
             incomplete = auth_gate_blocks_false_closure(
                 str(evidence["summary"] or ""),
-                has_auth_gate_you=bool(remainder_you),
+                has_auth_gate_you=bool(gate_you or remainder_you),
             )
+        if not incomplete:
+            incomplete = human_judgment_blocks_false_closure(
+                str(evidence["summary"] or ""),
+                item_title=str(item.get("title") or current.get("title") or ""),
+                has_you_remainder=bool(remainder_you or gate_you),
+            )
+        # Auth-gate You already parked: keep awaiting_human (Resume path), never fail→Retry.
+        if incomplete and gate_you:
+            incomplete = None
+            park_for_gate = True
+        else:
+            park_for_gate = False
+        # human_remainder You already minted: waive open-only observation only
+        # (do not waive false-closure / openTab-failed / empty-probe gates).
+        if (
+            incomplete
+            and remainder_you
+            and not gate_you
+            and "open-only observation" in incomplete
+        ):
+            incomplete = None
         if incomplete:
             err = incomplete if incomplete.lower().startswith("partial:") else f"Partial: {incomplete}"
             record(
@@ -1061,12 +1183,19 @@ async def execute_item(item_id: str, body: ExecuteBody) -> dict[str, Any]:
             }
 
         # Auth/challenge park: halt parent until human clears gate (not Completed).
-        if gate_you or current.get("status") == "awaiting_human":
+        # Keep agent tab open for Show-tab custody until Mark done → Resume.
+        if (
+            park_for_gate
+            or gate_you
+            or current.get("status") == "awaiting_human"
+        ):
+            preserve_tabs = True
             await _patch_work_item(
                 item_id,
                 status="awaiting_human",
                 run_id=body.run_id,
                 evidence=evidence,
+                clear_last_error=True,
             )
             await _record_execute_memory(
                 run_id=body.run_id,
@@ -1083,7 +1212,7 @@ async def execute_item(item_id: str, body: ExecuteBody) -> dict[str, Any]:
                     "exit_code": (result or {}).get("exit_code"),
                     **usage,
                 },
-                flags={"awaiting_human": True},
+                flags={"awaiting_human": True, "preserve_tabs": True},
                 item_id=item_id,
                 summary_snippet=evidence["summary"][
                     : cfg.prompts.event_summary_snippet_max_chars
@@ -1101,6 +1230,7 @@ async def execute_item(item_id: str, body: ExecuteBody) -> dict[str, Any]:
             status="done",
             run_id=body.run_id,
             evidence=evidence,
+            clear_last_error=True,
         )
         await _record_execute_memory(
             run_id=body.run_id,
@@ -1131,6 +1261,10 @@ async def execute_item(item_id: str, body: ExecuteBody) -> dict[str, Any]:
         return {"ok": True, "work_item_id": item_id, "status": "done", "result": result}
     finally:
         _executing_item_ids.discard(item_id)
+        # Auth-gate You may have been minted mid-execute even if the run later
+        # failed (no browser evidence / exception). Keep the agent tab for Show.
+        if not preserve_tabs and open_auth_gate_you(item_id, _work_items):
+            preserve_tabs = True
         await _execute_cleanup(
             run_id=body.run_id,
             item_id=item_id,
@@ -1153,7 +1287,27 @@ async def complete_item(item_id: str, body: CompleteBody) -> dict[str, Any]:
     except ExtensionNotConnectedError as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
     await _patch_work_item(item_id, status="done", run_id=body.run_id)
-    record("item.completed", body.run_id, cfg=get_config(), item_id=item_id, column="you")
+
+    shot = body.viewport_shot if isinstance(body.viewport_shot, dict) else None
+    shot_b64 = (shot or {}).get("base64") or ""
+    complete_measure: dict[str, Any] = {}
+    complete_flags: dict[str, Any] = {}
+    if shot_b64:
+        complete_measure["viewport_shot_bytes"] = len(shot_b64)
+        complete_flags["has_viewport_shot"] = True
+    elif body.viewport_shot is not None:
+        complete_flags["has_viewport_shot"] = False
+    if body.shot_on_agent_tab is not None:
+        complete_flags["shot_on_agent_tab"] = bool(body.shot_on_agent_tab)
+    record(
+        "item.completed",
+        body.run_id,
+        cfg=get_config(),
+        item_id=item_id,
+        column="you",
+        measure=complete_measure or None,
+        flags=complete_flags or None,
+    )
 
     resume_parent_id = None
     parent_id = item.get("parent_id")
@@ -1165,6 +1319,7 @@ async def complete_item(item_id: str, body: CompleteBody) -> dict[str, Any]:
                 parent_id,
                 status="proposed",
                 run_id=body.run_id,
+                clear_last_error=True,
             )
             # Flag for panel Resume label (cleared on next execute start implicitly via status flow).
             parent_now = _work_items.get(parent_id)
@@ -1180,12 +1335,13 @@ async def complete_item(item_id: str, body: CompleteBody) -> dict[str, Any]:
                     }
                 )
                 parent_now["cleared_gates"] = gates[-20:]
+                parent_now.pop("last_error", None)
                 _work_items[parent_id] = parent_now
                 await _send_board_patch(
                     body.run_id,
                     uuid.uuid4().hex,
                     [{"op": "update", "item": parent_now}],
-                    required=False,
+                    required=True,
                 )
             resume_parent_id = parent_id
             try:
@@ -1200,18 +1356,52 @@ async def complete_item(item_id: str, body: CompleteBody) -> dict[str, Any]:
                 )
             except Exception:
                 pass
+            resume_flags: dict[str, Any] = {"from_you": item_id}
+            resume_flags.update(complete_flags)
             record(
                 "agent.resume_ready",
                 body.run_id,
                 cfg=get_config(),
                 item_id=parent_id,
-                flags={"from_you": item_id},
+                measure=complete_measure or None,
+                flags=resume_flags,
             )
 
     out: dict[str, Any] = {"ok": True, "work_item_id": item_id, "status": "done"}
     if resume_parent_id:
         out["resume_parent_id"] = resume_parent_id
     return out
+
+
+@app.post("/v1/items/{item_id}/tab_custody")
+async def tab_custody(item_id: str, body: TabCustodyBody) -> dict[str, Any]:
+    """Extension reports park/reveal of agent tab lent to human (observability only)."""
+    item = _work_items.get(item_id)
+    if not item:
+        raise HTTPException(status_code=404, detail="work item not found")
+    action = (body.action or "").strip().lower()
+    if action not in ("park", "reveal"):
+        raise HTTPException(status_code=400, detail="action must be park|reveal")
+    shot = body.viewport_shot if isinstance(body.viewport_shot, dict) else None
+    shot_b64 = (shot or {}).get("base64") or ""
+    measure: dict[str, Any] = {}
+    if shot_b64:
+        measure["viewport_shot_bytes"] = len(shot_b64)
+    flags: dict[str, Any] = {"action": action, "has_viewport_shot": bool(shot_b64)}
+    if isinstance(body.flags, dict):
+        for k, v in body.flags.items():
+            if k not in flags:
+                flags[k] = v
+    record(
+        "tab.custody",
+        body.run_id,
+        cfg=get_config(),
+        item_id=item_id,
+        agent_tab_id=body.agent_tab_id,
+        measure=measure or None,
+        flags=flags,
+    )
+    return {"ok": True, "item_id": item_id, "action": action}
 
 
 @app.websocket("/v1/extension")

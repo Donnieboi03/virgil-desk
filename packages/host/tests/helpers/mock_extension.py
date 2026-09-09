@@ -7,7 +7,12 @@ from typing import Any
 
 from starlette.testclient import TestClient
 
-from desk_host.memory import apply_memory_patch, empty_memory
+from desk_host.memory import (
+    apply_memory_patch,
+    apply_semantic_patch,
+    empty_memory,
+    empty_semantic,
+)
 from desk_host.observe_excerpt import decide_excerpt
 
 
@@ -115,11 +120,28 @@ class MockExtensionSession:
         reg = self.ws.receive_json()
         assert reg.get("type") == "registered"
         self.memory: dict[str, Any] = empty_memory()
+        self.semantic: dict[str, Any] = empty_semantic()
         self.messages: list[dict[str, Any]] = []
         self._excerpt_baselines: dict[str, str] = {}
 
     def close(self) -> None:
         self._ws_ctx.__exit__(None, None, None)
+
+    def _apply_patch_ops(self, ops: list[dict[str, Any]]) -> None:
+        memory_ops = [
+            op
+            for op in ops
+            if isinstance(op, dict) and op.get("op") not in ("upsert_fact", "delete_fact")
+        ]
+        semantic_ops = [
+            op
+            for op in ops
+            if isinstance(op, dict) and op.get("op") in ("upsert_fact", "delete_fact")
+        ]
+        if memory_ops:
+            self.memory = apply_memory_patch(self.memory, memory_ops)
+        if semantic_ops:
+            self.semantic = apply_semantic_patch(self.semantic, semantic_ops)
 
     def handoff(self, handoff: dict[str, Any]) -> dict[str, Any]:
         self.ws.send_json({"type": "handoff_started", "handoff": handoff})
@@ -128,7 +150,7 @@ class MockExtensionSession:
         assert patch["ops"][0]["op"] == "clear", patch["ops"]
         mem_patch = self.ws.receive_json()
         assert mem_patch["type"] == "memory_patch", mem_patch
-        self.memory = apply_memory_patch(self.memory, mem_patch.get("ops") or [])
+        self._apply_patch_ops(mem_patch.get("ops") or [])
         self.messages.append(mem_patch)
         result = self.ws.receive_json()
         assert result["type"] == "handoff_result", result
@@ -143,6 +165,7 @@ class MockExtensionSession:
                 "request_id": msg["request_id"],
                 "run_id": msg.get("run_id"),
                 "memory": self.memory,
+                "semantic": self.semantic,
             }
         )
         self.messages.append(msg)
@@ -180,9 +203,14 @@ class MockExtensionSession:
     def receive_memory_patch(self) -> dict[str, Any]:
         msg = self.ws.receive_json()
         assert msg["type"] == "memory_patch", msg
-        self.memory = apply_memory_patch(self.memory, msg.get("ops") or [])
+        self._apply_patch_ops(msg.get("ops") or [])
         self.messages.append(msg)
         return msg
+
+    def drain_semantic_patch_then_get(self) -> dict[str, Any]:
+        """Handle PATCH /v1/desk-memory/semantic: memory_patch then memory_get."""
+        self.receive_memory_patch()
+        return self.respond_memory_get()
 
     def respond_next_browser_command(
         self,

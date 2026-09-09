@@ -9,7 +9,7 @@ npm run test:e2e
 Coverage:
 
 1. WS handoff → board patch → `POST /v1/browser` (wait) → `command_result` with screenshot
-2. `navigate` + same URL → `duplicateTab`; different URL → `openTab`
+2. `navigate` → always `openTab` (background create; never `tabs.duplicate`)
 3. Calendar Accept after mock handoff
 4. Hermes backend path with calendar proposal + browser verify
 5. Handoff **without** `agent_tab_id` still decomposes (defer tabs until Run agent / PATCH)

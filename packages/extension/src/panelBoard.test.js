@@ -4,6 +4,9 @@ import {
   itemsForColumn,
   groupsForFollowColumn,
   followGroupShouldOpen,
+  openYouParkUnder,
+  agentRunButtonLabel,
+  shouldRevealAgentTab,
 } from "./panelBoard.js";
 
 describe("itemsForColumn", () => {
@@ -60,5 +63,47 @@ describe("groupsForFollowColumn", () => {
     expect(
       followGroupShouldOpen([{ status: "done" }, { status: "denied" }]),
     ).toBe(false);
+  });
+});
+
+describe("openYouParkUnder + agentRunButtonLabel", () => {
+  it("finds open auth_gate You under parent", () => {
+    const items = [
+      {
+        id: "y1",
+        parent_id: "a1",
+        column: "you",
+        park_kind: "auth_gate",
+        status: "proposed",
+      },
+      {
+        id: "y2",
+        parent_id: "a1",
+        column: "you",
+        park_kind: "auth_gate",
+        status: "done",
+      },
+    ];
+    expect(openYouParkUnder("a1", items)?.id).toBe("y1");
+    expect(openYouParkUnder("other", items)).toBeNull();
+  });
+
+  it("labels Resume when resume_ready or open You park", () => {
+    expect(agentRunButtonLabel({ status: "proposed", resume_ready: true })).toBe(
+      "Resume agent",
+    );
+    expect(
+      agentRunButtonLabel({ status: "failed" }, true),
+    ).toBe("Resume agent");
+    expect(agentRunButtonLabel({ status: "failed" }, false)).toBe("Retry agent");
+    expect(agentRunButtonLabel({ status: "proposed" }, false)).toBe("Run agent");
+  });
+});
+
+describe("shouldRevealAgentTab", () => {
+  it("re-exports auth_gate tab reveal", () => {
+    expect(shouldRevealAgentTab({ park_kind: "auth_gate", agent_tab_id: 3 })).toBe(
+      true,
+    );
   });
 });

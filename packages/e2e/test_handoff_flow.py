@@ -96,7 +96,7 @@ def test_handoff_without_agent_tab_id_still_decomposes():
             ext.close()
 
 
-def test_navigate_same_url_becomes_duplicate_tab():
+def test_navigate_same_url_becomes_open_tab():
     handoff_payload = {
         "url": "https://example.com/job/1",
         "human_tab_id": 5,
@@ -118,7 +118,7 @@ def test_navigate_same_url_becomes_duplicate_tab():
                 },
             )
             handled = ext.respond_next_browser_command(run_id=run_id)
-            assert handled["command"]["op"] == "duplicateTab"
+            assert handled["command"]["op"] == "openTab"
             pending["thread"].join(timeout=5)
             assert pending["holder"][0]["status"] == 200
         finally:

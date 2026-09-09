@@ -95,6 +95,10 @@ class MemoryConfig:
     recent_max: int
     notepad_max_bullets: int
     notepad_max_chars: int
+    semantic_max_facts: int
+    semantic_packet_max_facts: int
+    semantic_max_value_chars: int
+    semantic_max_key_chars: int
 
 
 @dataclass
@@ -219,6 +223,10 @@ def config_for_extension(cfg: DeskConfig | None = None) -> dict[str, Any]:
             "recent_max": c.memory.recent_max,
             "notepad_max_bullets": c.memory.notepad_max_bullets,
             "notepad_max_chars": c.memory.notepad_max_chars,
+            "semantic_max_facts": c.memory.semantic_max_facts,
+            "semantic_packet_max_facts": c.memory.semantic_packet_max_facts,
+            "semantic_max_value_chars": c.memory.semantic_max_value_chars,
+            "semantic_max_key_chars": c.memory.semantic_max_key_chars,
         },
     }
 

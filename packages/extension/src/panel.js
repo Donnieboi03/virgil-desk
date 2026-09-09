@@ -3,6 +3,10 @@ import {
   itemsForColumn,
   groupsForFollowColumn,
   followGroupShouldOpen,
+  openYouParkUnder,
+  agentRunButtonLabel,
+  shouldRevealAgentTab,
+  resolveParkAgentTabId,
 } from "./panelBoard.js";
 
 function truncateUrl(url) {
@@ -21,8 +25,63 @@ function statusLabel(status) {
   return status || "proposed";
 }
 
-/** Clickable destination URL for You parks (URL-first handoff). */
-function appendSourceUrl(container, url) {
+/** Clickable destination: Show agent tab for auth_gate, else open page URL. */
+function appendSourceUrl(container, item, allItems = []) {
+  const url = item?.source?.url;
+  const tabId = resolveParkAgentTabId(item, allItems);
+  const reveal = shouldRevealAgentTab(item) || (item?.park_kind === "auth_gate" && tabId != null);
+
+  if (reveal && tabId != null) {
+    const meta = document.createElement("div");
+    meta.className = "item-meta";
+    const link = document.createElement("a");
+    const revealUrl = chrome.runtime.getURL(
+      `reveal.html?tab=${encodeURIComponent(String(tabId))}&item=${encodeURIComponent(item.id || "")}&run=${encodeURIComponent(item.run_id || "")}`,
+    );
+    link.href = revealUrl;
+    link.className = "item-url";
+    link.textContent = "Show tab";
+    link.title = "Open the existing agent tab (no duplicate)";
+    link.addEventListener("click", async (ev) => {
+      ev.preventDefault();
+      const result = await chrome.runtime.sendMessage({
+        type: "revealAgentTab",
+        tabId,
+        itemId: item.id,
+        runId: item.run_id || "",
+      });
+      if (!result?.ok && url) {
+        try {
+          await chrome.tabs.create({ url, active: true });
+        } catch {
+          window.open(url, "_blank", "noopener,noreferrer");
+        }
+      }
+    });
+    meta.appendChild(link);
+    if (url) {
+      const sep = document.createElement("span");
+      sep.textContent = " · ";
+      meta.appendChild(sep);
+      const page = document.createElement("a");
+      page.href = url;
+      page.className = "item-url";
+      page.textContent = truncateUrl(url);
+      page.title = url;
+      page.addEventListener("click", async (ev) => {
+        ev.preventDefault();
+        try {
+          await chrome.tabs.create({ url, active: true });
+        } catch {
+          window.open(url, "_blank", "noopener,noreferrer");
+        }
+      });
+      meta.appendChild(page);
+    }
+    container.appendChild(meta);
+    return;
+  }
+
   if (!url) return;
   const meta = document.createElement("div");
   meta.className = "item-meta";
@@ -45,6 +104,8 @@ function appendSourceUrl(container, url) {
 
 let panelWsConnected = false;
 let handoffTargetTabId = null;
+/** Agent item ids with an in-flight Run — survives boardUpdated re-renders. */
+const runningAgentItemIds = new Set();
 
 async function resolveHandoffTabId() {
   const [tab] = await chrome.tabs.query({ active: true, lastFocusedWindow: true });
@@ -72,16 +133,9 @@ function appendEvidence(li, item) {
   li.appendChild(el);
 }
 
-async function findBoardItem(itemId) {
-  const { board } = await chrome.runtime.sendMessage({ type: "getBoard" });
-  for (const col of ["you", "agent", "waiting"]) {
-    const hit = (board[col] || []).find((i) => i.id === itemId);
-    if (hit) return hit;
-  }
-  return null;
-}
-
 async function runAgentAction(item, li, runBtn) {
+  if (runBtn.disabled) return;
+  runningAgentItemIds.add(item.id);
   runBtn.disabled = true;
   runBtn.textContent = "Running…";
   appendItemError(li, "");
@@ -97,28 +151,21 @@ async function runAgentAction(item, li, runBtn) {
   } catch (err) {
     appendItemError(li, String(err));
   } finally {
+    runningAgentItemIds.delete(item.id);
     await refreshStatus();
     await refreshBoard();
-    const updated = await findBoardItem(item.id);
-    const status = updated?.status || item.status;
-    if (updated?.last_error) {
-      appendItemError(li, updated.last_error);
-    }
-    if (status === "failed") runBtn.textContent = "Retry agent";
-    else if (status === "proposed" && updated?.resume_ready) runBtn.textContent = "Resume agent";
-    else runBtn.textContent = "Run agent";
-    runBtn.disabled = !panelWsConnected || status === "done" || status === "awaiting_human";
+    // refreshBoard rebuilds the DOM — do not touch runBtn after this.
   }
 }
 
-function appendChildRow(ul, child) {
+function appendChildRow(ul, child, allItems = []) {
   const cli = document.createElement("li");
   const cb = document.createElement("span");
   cb.className = `badge ${child.status || "proposed"}`;
   cb.textContent = statusLabel(child.status);
   cli.appendChild(cb);
   cli.appendChild(document.createTextNode(` ${child.title || "(untitled)"}`));
-  appendSourceUrl(cli, child.source?.url);
+  appendSourceUrl(cli, child, allItems);
   if (child.last_error) {
     const err = document.createElement("div");
     err.className = "item-error";
@@ -128,7 +175,7 @@ function appendChildRow(ul, child) {
   ul.appendChild(cli);
 }
 
-function appendItemActions(li, item, column) {
+function appendItemActions(li, item, column, allItems = []) {
   if (column === "agent") {
     const canRun =
       !item.parent_id &&
@@ -138,7 +185,7 @@ function appendItemActions(li, item, column) {
     if (item.status === "awaiting_human") {
       const note = document.createElement("div");
       note.className = "item-meta item-awaiting";
-      note.textContent = "Waiting on you — open You card URL, then Mark done to Resume";
+      note.textContent = "Waiting on you — Show tab on the You card, then Mark done to Resume";
       li.appendChild(note);
       return;
     }
@@ -146,10 +193,15 @@ function appendItemActions(li, item, column) {
       const actions = document.createElement("div");
       actions.className = "item-actions";
       const runBtn = document.createElement("button");
-      if (item.status === "failed") runBtn.textContent = "Retry agent";
-      else if (item.status === "proposed" && item.resume_ready) runBtn.textContent = "Resume agent";
-      else runBtn.textContent = "Run agent";
-      runBtn.disabled = !panelWsConnected;
+      const inFlight = runningAgentItemIds.has(item.id);
+      const hasPark = !!openYouParkUnder(item.id, allItems);
+      if (inFlight) {
+        runBtn.textContent = "Running…";
+        runBtn.disabled = true;
+      } else {
+        runBtn.textContent = agentRunButtonLabel(item, hasPark);
+        runBtn.disabled = !panelWsConnected;
+      }
       runBtn.title = panelWsConnected ? "" : "Connect extension WS first";
       runBtn.onclick = () => runAgentAction(item, li, runBtn);
       actions.appendChild(runBtn);
@@ -165,7 +217,9 @@ function appendItemActions(li, item, column) {
     doneBtn.disabled = !panelWsConnected;
     doneBtn.title = panelWsConnected ? "" : "Connect extension WS first";
     doneBtn.onclick = async () => {
+      if (doneBtn.disabled) return;
       doneBtn.disabled = true;
+      doneBtn.textContent = "Saving…";
       appendItemError(li, "");
       try {
         const result = await chrome.runtime.sendMessage({
@@ -173,14 +227,23 @@ function appendItemActions(li, item, column) {
           itemId: item.id,
           runId: item.run_id || "",
         });
-        if (result.error || result.detail) {
-          appendItemError(li, result.error || result.detail);
+        if (!result || result.error || result.detail || result.ok === false) {
+          appendItemError(li, result?.error || result?.detail || "Mark done failed");
+          doneBtn.textContent = "Mark done";
+          doneBtn.disabled = !panelWsConnected;
+          return;
         }
+        const badge = li.querySelector(".badge");
+        if (badge) {
+          badge.className = "badge done";
+          badge.textContent = statusLabel("done");
+        }
+        doneBtn.remove();
+        await refresh();
       } catch (err) {
         appendItemError(li, String(err));
-      } finally {
+        doneBtn.textContent = "Mark done";
         doneBtn.disabled = !panelWsConnected;
-        refresh();
       }
     };
     actions.appendChild(doneBtn);
@@ -196,26 +259,46 @@ function appendItemActions(li, item, column) {
       accept.textContent = "Accept";
       accept.disabled = !panelWsConnected;
       accept.onclick = async () => {
-        await chrome.runtime.sendMessage({
-          type: "acceptProposal",
-          itemId: item.id,
-          proposalId: proposals[0]?.id || "",
-          runId: item.run_id || "",
-        });
-        refresh();
+        if (accept.disabled) return;
+        accept.disabled = true;
+        deny.disabled = true;
+        accept.textContent = "Saving…";
+        try {
+          await chrome.runtime.sendMessage({
+            type: "acceptProposal",
+            itemId: item.id,
+            proposalId: proposals[0]?.id || "",
+            runId: item.run_id || "",
+          });
+          await refresh();
+        } catch {
+          accept.textContent = "Accept";
+          accept.disabled = !panelWsConnected;
+          deny.disabled = !panelWsConnected;
+        }
       };
       const deny = document.createElement("button");
       deny.textContent = "Deny";
       deny.disabled = !panelWsConnected;
       deny.onclick = async () => {
-        await chrome.runtime.sendMessage({
-          type: "denyProposal",
-          itemId: item.id,
-          proposalId: proposals[0]?.id || "",
-          runId: item.run_id || "",
-          reason: "operator denied",
-        });
-        refresh();
+        if (deny.disabled) return;
+        accept.disabled = true;
+        deny.disabled = true;
+        deny.textContent = "Saving…";
+        try {
+          await chrome.runtime.sendMessage({
+            type: "denyProposal",
+            itemId: item.id,
+            proposalId: proposals[0]?.id || "",
+            runId: item.run_id || "",
+            reason: "operator denied",
+          });
+          await refresh();
+        } catch {
+          deny.textContent = "Deny";
+          accept.disabled = !panelWsConnected;
+          deny.disabled = !panelWsConnected;
+        }
       };
       actions.appendChild(accept);
       actions.appendChild(deny);
@@ -240,7 +323,7 @@ function appendItemActions(li, item, column) {
   }
 }
 
-function renderItemCard(item, column, columnItems, { showFrom = false, byId = {} } = {}) {
+function renderItemCard(item, column, columnItems, { showFrom = false, byId = {}, allItems = [] } = {}) {
   const li = document.createElement("li");
   li.dataset.itemId = item.id || "";
   if (column === "agent") {
@@ -254,7 +337,7 @@ function renderItemCard(item, column, columnItems, { showFrom = false, byId = {}
   title.appendChild(badge);
   title.appendChild(document.createTextNode(item.title || "(untitled)"));
   li.appendChild(title);
-  appendSourceUrl(li, item.source?.url);
+  appendSourceUrl(li, item, allItems);
   if (showFrom && item.parent_id && byId[item.parent_id]) {
     const from = document.createElement("div");
     from.className = "item-meta item-from";
@@ -277,25 +360,32 @@ function renderItemCard(item, column, columnItems, { showFrom = false, byId = {}
       const ul = document.createElement("ul");
       ul.className = "item-children";
       for (const child of kids) {
-        appendChildRow(ul, child);
+        appendChildRow(ul, child, allItems);
       }
       details.appendChild(ul);
       li.appendChild(details);
     }
   }
-  appendItemActions(li, item, column);
+  appendItemActions(li, item, column, allItems);
   return li;
 }
 
 function renderColumn(el, items, column, allItems) {
   el.innerHTML = "";
   const columnItems = items || [];
-  const byId = Object.fromEntries((allItems || columnItems).map((i) => [i.id, i]));
+  const boardAll = allItems || columnItems;
+  const byId = Object.fromEntries(boardAll.map((i) => [i.id, i]));
 
   if (column === "you" || column === "waiting") {
-    const { roots, groups } = groupsForFollowColumn(columnItems, allItems || columnItems);
+    const { roots, groups } = groupsForFollowColumn(columnItems, boardAll);
     for (const item of roots) {
-      el.appendChild(renderItemCard(item, column, columnItems, { showFrom: false, byId }));
+      el.appendChild(
+        renderItemCard(item, column, columnItems, {
+          showFrom: false,
+          byId,
+          allItems: boardAll,
+        }),
+      );
     }
     for (const group of groups) {
       const wrap = document.createElement("li");
@@ -312,6 +402,7 @@ function renderColumn(el, items, column, allItems) {
         const childLi = renderItemCard(child, column, columnItems, {
           showFrom: false,
           byId,
+          allItems: boardAll,
         });
         ul.appendChild(childLi);
       }
@@ -325,7 +416,11 @@ function renderColumn(el, items, column, allItems) {
   const visible = itemsForColumn(column, columnItems);
   for (const item of visible) {
     el.appendChild(
-      renderItemCard(item, column, columnItems, { showFrom: true, byId }),
+      renderItemCard(item, column, columnItems, {
+        showFrom: true,
+        byId,
+        allItems: boardAll,
+      }),
     );
   }
 }
@@ -431,6 +526,23 @@ async function refresh() {
 }
 
 const handoffBtn = document.getElementById("handoff");
+let selectedIntentChip = "all visible";
+
+function readHandoffIntent() {
+  const extra = (document.getElementById("intent-extra")?.value || "").trim();
+  const chip = selectedIntentChip || "all visible";
+  if (extra) return `${chip}: ${extra}`;
+  return chip;
+}
+
+document.querySelectorAll(".intent-chip").forEach((btn) => {
+  btn.addEventListener("click", () => {
+    document.querySelectorAll(".intent-chip").forEach((b) => b.classList.remove("active"));
+    btn.classList.add("active");
+    selectedIntentChip = btn.dataset.intent || "all visible";
+  });
+});
+
 handoffBtn.addEventListener("click", async () => {
   if (!panelWsConnected) {
     await refreshStatus();
@@ -444,7 +556,12 @@ handoffBtn.addEventListener("click", async () => {
   showHandoffError("");
   try {
     const tabId = handoffTargetTabId || (await resolveHandoffTabId());
-    const result = await chrome.runtime.sendMessage({ type: "handoffTab", tabId });
+    const intent = readHandoffIntent();
+    const result = await chrome.runtime.sendMessage({
+      type: "handoffTab",
+      tabId,
+      intent,
+    });
     if (!result) {
       showHandoffError("Handoff failed — background did not respond (reload extension)");
     } else if (result.error || result.ok === false) {

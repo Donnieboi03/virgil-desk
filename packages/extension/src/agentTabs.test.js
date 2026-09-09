@@ -14,29 +14,29 @@ describe("planAgentTabForItem", () => {
     });
   });
 
-  it("requires duplicate when unmapped (no snapshot reuse)", () => {
+  it("requires create when unmapped (no snapshot reuse)", () => {
     expect(planAgentTabForItem("desk_run_agent_0", 0, { agentTabId: 200 })).toEqual({
       tabId: null,
-      source: "duplicate",
+      source: "create",
     });
   });
 
-  it("requires duplicate for second agent item", () => {
+  it("requires create for second agent item", () => {
     expect(planAgentTabForItem("desk_run_agent_1", 1, { agentTabId: 200 })).toEqual({
       tabId: null,
-      source: "duplicate",
+      source: "create",
     });
   });
 });
 
 describe("planAgentTabAssignments", () => {
-  it("plans duplicate for each unmapped agent item", () => {
+  it("plans create for each unmapped agent item", () => {
     const adds = [
       { item: { id: "a0", column: "agent" } },
       { item: { id: "a1", column: "agent" } },
     ];
     const plans = planAgentTabAssignments(adds, { agentTabId: 42 });
-    expect(plans[0]).toEqual({ itemId: "a0", tabId: null, source: "duplicate" });
-    expect(plans[1]).toEqual({ itemId: "a1", tabId: null, source: "duplicate" });
+    expect(plans[0]).toEqual({ itemId: "a0", tabId: null, source: "create" });
+    expect(plans[1]).toEqual({ itemId: "a1", tabId: null, source: "create" });
   });
 });

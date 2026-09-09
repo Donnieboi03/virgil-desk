@@ -87,3 +87,45 @@ export function groupsForFollowColumn(columnItems, allItems) {
 export function followGroupShouldOpen(children) {
   return (children || []).some((c) => c.status !== "done" && c.status !== "denied");
 }
+
+/**
+ * Open You park under an agent parent (auth_gate / human_remainder / resume).
+ * @param {string} parentId
+ * @param {Array<{ parent_id?: string, column?: string, status?: string, park_kind?: string, resume?: boolean }>} allItems
+ */
+export function openYouParkUnder(parentId, allItems) {
+  const pid = String(parentId || "");
+  if (!pid) return null;
+  for (const item of allItems || []) {
+    if (String(item.parent_id || "") !== pid) continue;
+    if (item.column && item.column !== "you") continue;
+    if (item.status === "done" || item.status === "denied") continue;
+    const kind = item.park_kind;
+    if (kind === "auth_gate" || kind === "human_remainder" || item.resume) {
+      return item;
+    }
+  }
+  return null;
+}
+
+/**
+ * Agent column run button label.
+ * @param {{ status?: string, resume_ready?: boolean, cleared_gates?: unknown[] }} item
+ * @param {boolean} hasOpenYouPark
+ */
+export function agentRunButtonLabel(item, hasOpenYouPark = false) {
+  const status = item?.status || "proposed";
+  if (status === "proposed" && item?.resume_ready) return "Resume agent";
+  if (
+    status === "failed" &&
+    (item?.resume_ready ||
+      (Array.isArray(item?.cleared_gates) && item.cleared_gates.length > 0) ||
+      hasOpenYouPark)
+  ) {
+    return "Resume agent";
+  }
+  if (status === "failed") return "Retry agent";
+  return "Run agent";
+}
+
+export { shouldRevealAgentTab, resolveParkAgentTabId } from "./tabCustody.js";

@@ -192,7 +192,7 @@ def test_hermes_execute_invokes_browser_command(hermes_backend, monkeypatch):
                 "tab_id": ctx.get("agent_tab_id"),
             }
         )
-        return {"summary": "Single closure: reviewed page scrape; no further action.", "exit_code": 0}
+        return {"summary": "Single closure: extracted page scrape facts; no further action.", "exit_code": 0}
 
     monkeypatch.setattr(HermesBackend, "execute_item", fake_execute)
     handoff = {

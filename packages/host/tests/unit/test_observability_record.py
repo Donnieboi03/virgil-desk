@@ -39,6 +39,8 @@ def test_limits_from_config_includes_prompts():
     assert limits["prompts"]["decompose_items_max"] == cfg.prompts.decompose_items_max
     assert "browser" in limits
     assert "hermes" in limits
+    assert limits["memory"]["semantic_max_facts"] == cfg.memory.semantic_max_facts
+    assert limits["memory"]["recent_max"] == cfg.memory.recent_max
 
 
 def test_usage_measure_keeps_numeric_fields_only():

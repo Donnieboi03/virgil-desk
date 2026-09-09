@@ -36,6 +36,7 @@ Set agent backend: `DESK_AGENT_BACKEND=mock|hermes|openclaw`
 - [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) — Done / park / mint / locks
 - [docs/PROTOCOL.md](docs/PROTOCOL.md)
 - [docs/BROWSER_LAYER.md](docs/BROWSER_LAYER.md) — Path B Eyes/Hands
+- [docs/HANDOFF_CAPTURE.md](docs/HANDOFF_CAPTURE.md) — viewport handoff, virtualization, JS heap
 - [docs/ENV.md](docs/ENV.md) — environment variables
 - [docs/HERMES_SETUP.md](docs/HERMES_SETUP.md) — Hermes profile, decompose, browser tools
 - [docs/OBSERVABILITY.md](docs/OBSERVABILITY.md) · [docs/TESTING.md](docs/TESTING.md)

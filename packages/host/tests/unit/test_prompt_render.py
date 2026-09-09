@@ -44,6 +44,8 @@ def test_execute_prompt_dom_primary_playbooks():
     assert "eyes_mode" in text
     assert "eyes_hints" in text
     assert "Verified terminal" in text or "verified terminal" in text.lower()
+    assert "human_remainder" in text
+    assert "Human is source of closure" in text or "human is source of closure" in text.lower()
     assert "Completed" in text or "no further action" in text.lower()
     assert "awaiting_human" in text or "auth_gate" in text
     assert "park_kind" in text

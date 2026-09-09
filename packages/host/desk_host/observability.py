@@ -30,6 +30,7 @@ def limits_from_config(cfg: DeskConfig | None = None) -> dict[str, Any]:
         "browser": asdict(c.browser),
         "host": asdict(c.host),
         "hermes": asdict(c.hermes),
+        "memory": asdict(c.memory),
         "prompts": asdict(c.prompts),
     }
 
@@ -91,6 +92,12 @@ def measure_from_snapshot(snap: dict[str, Any]) -> tuple[dict[str, Any], dict[st
         "links_capped": cap.get("links_capped"),
     }
     flags = {k: v for k, v in flags.items() if v is not None}
+    scrape_tab = cap.get("used_scrape_tab")
+    if scrape_tab is None:
+        scrape_tab = cap.get("used_duplicate_tab")
+    if scrape_tab is not None:
+        flags["used_scrape_tab"] = bool(scrape_tab)
+        flags["used_duplicate_tab"] = bool(scrape_tab)  # legacy alias
     return measure, flags
 
 

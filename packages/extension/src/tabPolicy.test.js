@@ -3,20 +3,18 @@ import {
   applyBoardPatch,
   childrenOf,
   chooseNavigationOp,
-  openTabPlacement,
   policyBlock,
   selectBoardRoots,
-  urlsMatchForPark,
 } from "./tabPolicy.js";
 
 describe("chooseNavigationOp", () => {
-  it("duplicates when same origin and path", () => {
+  it("always opens via create (no duplicate)", () => {
     expect(
       chooseNavigationOp(
         "https://example.com/job/1?q=a",
         "https://example.com/job/1#section",
       ),
-    ).toBe("duplicateTab");
+    ).toBe("openTab");
   });
 
   it("opens new tab for different URL", () => {
@@ -37,31 +35,6 @@ describe("policyBlock", () => {
     expect(
       policyBlock({ op: "captureHandoffSnapshot", human_tab_id: 3 }, 3),
     ).toBeNull();
-  });
-});
-
-describe("openTabPlacement", () => {
-  it("defaults to agent", () => {
-    expect(openTabPlacement({ op: "openTab" })).toBe("agent");
-    expect(openTabPlacement({ op: "openTab", params: {} })).toBe("agent");
-  });
-
-  it("accepts human placement", () => {
-    expect(
-      openTabPlacement({ op: "openTab", params: { placement: "human" } }),
-    ).toBe("human");
-  });
-});
-
-describe("urlsMatchForPark", () => {
-  it("matches same origin path query ignoring hash and trailing slash", () => {
-    expect(
-      urlsMatchForPark(
-        "https://ex.com/path/?q=1#a",
-        "https://ex.com/path?q=1",
-      ),
-    ).toBe(true);
-    expect(urlsMatchForPark("https://ex.com/a", "https://ex.com/b")).toBe(false);
   });
 });
 
@@ -102,5 +75,41 @@ describe("applyBoardPatch", () => {
     ]);
     expect(selectBoardRoots(out.agent).map((i) => i.id)).toEqual(["p1"]);
     expect(childrenOf(out.agent, "p1").map((i) => i.id)).toEqual(["c1"]);
+  });
+
+  it("updates in place without moving item to end", () => {
+    const board = {
+      you: [],
+      agent: [
+        { id: "a1", column: "agent", title: "First", status: "proposed" },
+        { id: "a2", column: "agent", title: "Second", status: "proposed" },
+        { id: "a3", column: "agent", title: "Third", status: "proposed" },
+      ],
+      waiting: [],
+    };
+    const out = applyBoardPatch(board, [
+      {
+        op: "update",
+        item: { id: "a1", column: "agent", title: "First", status: "done" },
+      },
+    ]);
+    expect(out.agent.map((i) => i.id)).toEqual(["a1", "a2", "a3"]);
+    expect(out.agent[0].status).toBe("done");
+  });
+
+  it("moves item when column changes", () => {
+    const board = {
+      you: [],
+      agent: [{ id: "a1", column: "agent", title: "Move me", status: "proposed" }],
+      waiting: [],
+    };
+    const out = applyBoardPatch(board, [
+      {
+        op: "update",
+        item: { id: "a1", column: "you", title: "Move me", status: "proposed" },
+      },
+    ]);
+    expect(out.agent).toHaveLength(0);
+    expect(out.you.map((i) => i.id)).toEqual(["a1"]);
   });
 });

@@ -26,7 +26,7 @@ High-frequency `browser.command` / `browser.command_result` omit `limits` (still
 
 ## Event kinds
 
-`handoff.started`, `handoff.snapshot`, `handoff.decomposed`, `handoff.decompose_failed`, `agent.execute_started`, `agent.executed`, `agent.execute_failed`, `item.minted`, `item.completed`, `board.patch_dropped`, `browser.command`, `browser.command_result`, `execute.cleanup_done`, `proposal.accepted`, `proposal.denied`, `run.finished`, `policy.denied`
+`handoff.started`, `handoff.snapshot`, `handoff.decomposed`, `handoff.decompose_failed`, `agent.execute_started`, `agent.executed`, `agent.execute_failed`, `item.minted`, `item.completed`, `tab.custody`, `board.patch_dropped`, `browser.command`, `browser.command_result`, `execute.cleanup_done`, `proposal.accepted`, `proposal.denied`, `run.finished`, `policy.denied`, `memory.semantic_patched`
 
 ### Eyes / Done measurement
 
@@ -35,10 +35,16 @@ High-frequency `browser.command` / `browser.command_result` omit `limits` (still
 | `eyes_mode`, `eyes_empty` | `browser.command_result` flags | Ladder coverage |
 | `eyes_settle_ms`, `eyes_settle_attempts` | measure | Settle budget health |
 | `eyes_hints` | detail | Soft URL hints when mode 2 |
-| `agent.executed` + `flags.awaiting_human` | execute | Auth gate halt |
-| `agent.resume_ready` | complete You | Parent unblocked for Resume |
+| `agent.executed` + `flags.awaiting_human` | execute | Auth gate halt; `preserve_tabs` soft-ends session (tab kept for Show) |
+| `agent.resume_ready` | complete You | Parent unblocked for Resume; may include `has_viewport_shot` / `shot_on_agent_tab` |
+| `tab.custody` | extension park/reveal | `flags.action` park\|reveal; `has_viewport_shot`; optional `shot_skipped_inactive` |
+| `item.completed` | Mark done | Optional `viewport_shot_bytes` / `shot_on_agent_tab` when human still on agent tab |
 | `policy.denied` `human_park_tab_denied` / `open_tab_url_required` | browser | Bad park / blank openTab |
 | `agent.execute_failed` 409-class detail | execute lock | Double-run attempts (HTTP 409) |
+| `semantic_fact_count` / `has_semantic_facts` | `agent.execute_started` measure/flags | Packet semantic inject size (Desk memory, not Hermes RAG) |
+| `memory.semantic_patched` | REST PATCH | `op` upsert/delete; `measure.semantic_fact_count` after patch |
+
+`limits` on lifecycle events now include the `memory` section from [`config/desk.yaml`](../config/desk.yaml) (recent/notepad/semantic caps). Map: [`MEMORY.md`](MEMORY.md).
 
 Framework narrative: [`ARCHITECTURE.md`](ARCHITECTURE.md).
 

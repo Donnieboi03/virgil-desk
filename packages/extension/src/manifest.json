@@ -11,7 +11,7 @@
   "options_page": "options.html",
   "web_accessible_resources": [
     {
-      "resources": ["interactObserve.bundle.js"],
+      "resources": ["interactObserve.bundle.js", "reveal.html", "reveal.js"],
       "matches": ["<all_urls>"]
     }
   ],
