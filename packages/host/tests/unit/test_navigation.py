@@ -27,3 +27,15 @@ def test_normalize_navigate():
         }
     )
     assert cmd["op"] == "duplicateTab"
+
+
+def test_normalize_promotes_params_url():
+    cmd = normalize_browser_command(
+        {
+            "op": "openTab",
+            "params": {"url": "https://jobs.example.com/apply"},
+            "handoff_url": "https://mail.google.com/mail/u/0/",
+        }
+    )
+    assert cmd["url"] == "https://jobs.example.com/apply"
+    assert cmd["op"] == "openTab"

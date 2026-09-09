@@ -28,6 +28,7 @@ def policy_denied_reason(
     human_tab_id: int | None,
     text: str = "",
     params: dict | None = None,
+    url: str | None = None,
 ) -> str | None:
     if op != "captureHandoffSnapshot" and is_human_tab_target(op, tab_id, human_tab_id):
         return "human_tab_blocked"
@@ -38,6 +39,13 @@ def policy_denied_reason(
             placement = params.get("placement")
         if placement == "human":
             return "human_park_tab_denied"
+        target = (url or "").strip()
+        if isinstance(params, dict) and not target:
+            target = str(params.get("url") or "").strip()
+        if not target or target == "about:blank" or not target.startswith(
+            ("http://", "https://")
+        ):
+            return "open_tab_url_required"
     if FORBIDDEN_PATTERNS.search(text or ""):
         return "forbidden_action_token"
     return None

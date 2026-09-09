@@ -19,8 +19,17 @@ def choose_navigation_op(handoff_url: str, target_url: str) -> str:
 
 
 def normalize_browser_command(command: dict) -> dict:
-    """Map navigate + url to duplicateTab or openTab using handoff_url."""
+    """Map navigate + url to duplicateTab or openTab using handoff_url.
+
+    Promote params.url → top-level url when CLI/Hermes put the destination
+    only in --params (common misuse that otherwise opens about:blank).
+    """
     out = dict(command)
+    params = out.get("params")
+    if isinstance(params, dict):
+        nested = params.get("url")
+        if nested and not out.get("url"):
+            out["url"] = nested
     op = out.get("op", "")
     url = out.get("url")
     handoff_url = out.get("handoff_url") or ""

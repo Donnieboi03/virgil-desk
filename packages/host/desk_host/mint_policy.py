@@ -70,7 +70,8 @@ def find_idempotent_mint(
     Return an existing child under parent with same column and source URL
     Open statuses only (proposed/running/awaiting_human).
 
-    When gate_dedupe=True (You auth parks), match on origin+path only.
+    When gate_dedupe=True (You auth parks), match on origin+path only,
+    including already-done auth/resume parks so Resume cannot remint the same destination.
     """
     norm_fn = normalize_gate_url if gate_dedupe else normalize_resource_url
     norm = norm_fn(source_url)
@@ -81,7 +82,15 @@ def find_idempotent_mint(
             continue
         if item.get("column") != column:
             continue
-        if item.get("status") not in open_statuses:
+        status = item.get("status")
+        if gate_dedupe:
+            if status not in open_statuses and status != "done":
+                continue
+            if status == "done" and item.get("park_kind") != "auth_gate" and not item.get(
+                "resume"
+            ):
+                continue
+        elif status not in open_statuses:
             continue
         item_url = norm_fn((item.get("source") or {}).get("url"))
         if norm and item_url and norm == item_url:

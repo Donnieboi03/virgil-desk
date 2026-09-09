@@ -30,7 +30,21 @@ def test_human_park_tab_denied():
         )
         == "human_park_tab_denied"
     )
-    assert policy_denied_reason("openTab", 87, 42, params={}) is None
+    assert policy_denied_reason("openTab", 87, 42, params={}, url="https://ex.com") is None
     assert (
-        policy_denied_reason("openTab", 87, 42, params={"placement": "agent"}) is None
+        policy_denied_reason("openTab", 87, 42, params={"placement": "agent"}, url="https://ex.com")
+        is None
+    )
+
+
+def test_open_tab_url_required():
+    assert policy_denied_reason("openTab", 87, 42, params={}) == "open_tab_url_required"
+    assert (
+        policy_denied_reason("openTab", 87, 42, url="about:blank") == "open_tab_url_required"
+    )
+    assert (
+        policy_denied_reason(
+            "openTab", 87, 42, params={"url": "https://jobs.example.com/apply"}
+        )
+        is None
     )

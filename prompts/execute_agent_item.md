@@ -40,7 +40,7 @@ For inbox / email / message-list work items:
 
 After the thread/body is open, **follow relevant in-body links** (shared folders, docs, attachments, job pages, readable agreement viewers) that are part of the task:
 
-1. `openTab` **without** `placement:human` (agent tab) → `observe` → read/summarize (or mint an **agent** child and pursue it in this run).
+1. `openTab` **with `--url 'https://…'`** (agent tab; never omit URL — host rejects blank/`about:blank`) → `observe` → read/summarize (or mint an **agent** child and pursue it in this run).
 2. Do **not** crawl every link. An **empty** `probe_links` is not “links checked” — re-`observe` or click visible link targets.
 3. Still never send/pay/post/sign/submit.
 
@@ -67,7 +67,7 @@ desk-browser --run-id RUN --op mint_item --params '{
 
 Park **only when**:
 
-- **Login / CAPTCHA / auth / challenge wall** — after one settle/re-observe → **`auth_gate` You** (not bare `Partial:`). Parent stays `awaiting_human`.
+- **Login / CAPTCHA / auth / challenge wall** — after a real open of the destination (`--url`) and one settle/re-observe → **`auth_gate` You**. Do **not** park `auth_gate` after a failed/blank `openTab` or without trying the destination URL first.
 - **Forbidden action** — outbound social connect/message, public post, pay/charge, sign/submit forms, send email without Accept → park You (or Waiting proposal).
 - **Hostile / empty Eyes with no verified fact** — soft-help You when human must still act; else `Partial:`. If observe/open reports **`eyes_mode: 1`**, treat the promoted `scrape_excerpt` as authoritative. If Eyes verify a **terminal** page, that is **Completed** — do not park. If **`eyes_empty`** / **`eyes_mode: 2`** with no usable fact, do **not** invent page copy from the URL alone — use `eyes_hints.url_path_hint` only as a soft signal.
 - **Stuck** after one re-`observe` (`stall_detected` / repeated `used:none`) → `Partial:` or soft-help You if human action remains.

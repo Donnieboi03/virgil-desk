@@ -627,6 +627,7 @@ async def dispatch_browser_command(command: dict[str, Any]) -> None:
         command.get("tab_id"),
         command.get("human_tab_id"),
         params=command.get("params") if isinstance(command.get("params"), dict) else None,
+        url=command.get("url") if isinstance(command.get("url"), str) else None,
     )
     if reason:
         record(

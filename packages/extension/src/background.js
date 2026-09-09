@@ -865,13 +865,22 @@ async function resolveAgentTab(command) {
     await chrome.storage.session.set({ [PAIRS_KEY]: pairs });
     return { tabId: dup.id, tabMode: "duplicate", placement: "agent" };
   }
-  if (command.op === "openTab") {
+    if command.op === "openTab") {
+    const targetUrl = (command.url || "").trim();
+    if (!targetUrl || targetUrl === "about:blank" || !/^https?:\/\//i.test(targetUrl)) {
+      return {
+        tabId: null,
+        tabMode: "error",
+        placement: "agent",
+        error: "openTab requires http(s) url",
+      };
+    }
     const human = command.human_tab_id
       ? await chrome.tabs.get(command.human_tab_id)
       : null;
     const windowId = human?.windowId;
     const tab = await chrome.tabs.create({
-      url: command.url || "about:blank",
+      url: targetUrl,
       active: false,
       windowId,
     });
@@ -1484,6 +1493,14 @@ async function runBrowserCommand(command) {
       await settleTabAfterOpen(tabId);
     } else if (command.op === "openTab") {
       const resolved = await resolveAgentTab({ ...command, op: "openTab" });
+      if (resolved.error || !resolved.tabId) {
+        return {
+          ...base,
+          ok: false,
+          error: resolved.error || "openTab requires http(s) url",
+          duration_ms: Date.now() - started,
+        };
+      }
       tabId = resolved.tabId;
       await settleTabAfterOpen(tabId);
     }

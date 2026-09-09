@@ -78,6 +78,30 @@ def test_gate_dedupe_collapses_query_variants():
     assert hit and hit["id"] == "c1"
 
 
+def test_gate_dedupe_includes_done_auth_gate():
+    items = {
+        "c1": {
+            "id": "c1",
+            "parent_id": "p1",
+            "column": "you",
+            "status": "done",
+            "title": "Cleared",
+            "park_kind": "auth_gate",
+            "resume": True,
+            "source": {"url": "https://jobs.example.com/apply"},
+        }
+    }
+    hit = find_idempotent_mint(
+        items,
+        parent_id="p1",
+        column="you",
+        source_url="https://jobs.example.com/apply?x=1",
+        title="Again",
+        gate_dedupe=True,
+    )
+    assert hit and hit["id"] == "c1"
+
+
 def test_find_idempotent_mint_by_title_when_no_url():
     items = {
         "c1": {
