@@ -28,6 +28,23 @@ _OPEN_ONLY_SUMMARY_RE = re.compile(
     r"(?i)^\s*(observed|opened)\b",
 )
 
+# Verified terminal outcomes (review/check goals) count as Completed — not Partial/park.
+_VERIFIED_TERMINAL_DONE_RE = re.compile(
+    r"(?i)\b("
+    r"verified\s+(?:expired|terminal|status|outcome|page|already\s+submitted)"
+    r"|already\s+submitted"
+    r"|deadline\s+(?:has\s+)?passed"
+    r"|7[\s-]?day\s+deadline"
+    r"|expired[\s-]?or[\s-]?not[\s-]?found"
+    r"|link\s+(?:has\s+)?expired"
+    r"|invitation\s+(?:has\s+)?expired"
+    r"|no\s+longer\s+(?:available|valid)"
+    r"|screening\s+(?:link\s+)?(?:expired|already\s+submitted)"
+    r"|review\s+(?:complete|completed|done)\b"
+    r"|completed\s+review\b"
+    r")\b",
+)
+
 _EXPLICIT_DONE_CLAIM_RE = re.compile(
     r"(?i)\b("
     r"single[\s-]?closure"
@@ -55,22 +72,34 @@ def execute_summary_indicates_failure(text: str) -> bool:
     return bool(EXECUTE_FAILURE_RE.search(text or ""))
 
 
+def execute_summary_claims_done(text: str) -> bool:
+    """True when summary has park/mint/single-closure or verified-terminal language."""
+    body = strip_max_iter_banner(text or "")
+    if not body:
+        return False
+    return bool(
+        _EXPLICIT_DONE_CLAIM_RE.search(body) or _VERIFIED_TERMINAL_DONE_RE.search(body)
+    )
+
+
 def execute_summary_incomplete_reason(text: str) -> str | None:
     """
     Host/Hermes gate: open-only “Observed/Opened …” is not done.
-    Allow explicit single-closure / parked claims; Partial: handled as failure elsewhere.
+    Allow explicit single-closure / parked / verified-terminal claims.
+    Partial: handled as failure elsewhere.
     """
     body = strip_max_iter_banner(text or "")
     if not body:
         return "empty execute summary"
     if execute_summary_indicates_failure(body):
         return None
-    if _EXPLICIT_DONE_CLAIM_RE.search(body):
+    if execute_summary_claims_done(body):
         return None
     if _OPEN_ONLY_SUMMARY_RE.search(body):
         return (
-            "open-only observation is not done — finish work, park remainder "
-            "(mint_item / openTab placement=human), claim single-closure, or Partial:"
+            "open-only observation is not done — finish work, verify terminal "
+            "page state, park remainder (mint_item / openTab placement=human), "
+            "claim single-closure, or Partial:"
         )
     return None
 
@@ -115,7 +144,7 @@ def failed_open_tab_blocks_done(
 ) -> str | None:
     """
     Reject success summaries when openTab/duplicateTab failed mid-run
-    (unless Partial / parked / single-closure / minted).
+    (unless Partial / parked / single-closure / minted / verified-terminal).
     """
     if not any(op in ("openTab", "duplicateTab") for op in failed_ops):
         return None
@@ -124,7 +153,7 @@ def failed_open_tab_blocks_done(
         return None
     if execute_summary_indicates_failure(body):
         return None
-    if _EXPLICIT_DONE_CLAIM_RE.search(body):
+    if execute_summary_claims_done(body):
         return None
     return (
         "openTab/duplicateTab failed mid-run — Partial:, park You (mint_item), or retry"

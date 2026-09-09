@@ -462,6 +462,27 @@ def test_mint_item_board_patch_and_parent_done_blocked(monkeypatch):
             assert patch["type"] == "board_patch"
             assert patch["ops"][0]["item"]["id"] == child["id"]
 
+            # Idempotent remint: same parent+column+source.url returns existing child.
+            from desk_host import app as desk_app
+
+            desk_app._work_items[child["id"]]["source"] = {
+                "url": "https://drive.example/doc/1"
+            }
+            mint_again = client.post(
+                "/v1/items/mint",
+                json={
+                    "run_id": run_id,
+                    "parent_id": agent["id"],
+                    "column": "agent",
+                    "title": "Open nested Drive doc again",
+                    "source": {"url": "https://drive.example/doc/1"},
+                },
+            )
+            assert mint_again.status_code == 200
+            body_again = mint_again.json()
+            assert body_again.get("idempotent") is True
+            assert body_again["item"]["id"] == child["id"]
+
             holder: list = []
 
             def _execute():

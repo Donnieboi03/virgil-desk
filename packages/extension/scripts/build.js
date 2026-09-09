@@ -31,6 +31,7 @@ const files = [
   "actStall.js",
   "observeExcerpt.js",
   "eyesSettle.js",
+  "eyesEscalate.js",
   "scrapeResult.js",
   "background.js",
   "targetMap.js",

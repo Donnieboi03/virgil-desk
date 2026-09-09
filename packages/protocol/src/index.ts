@@ -171,12 +171,18 @@ export interface ScreenshotPayload {
   height: number;
 }
 
+export interface EyesHints {
+  url_path_hint?: string;
+}
+
 export interface CommandResult {
   command_id: string;
   ok: boolean;
   url?: string;
   title?: string;
   scrape_excerpt?: string;
+  text_omitted?: boolean;
+  excerpt_note?: string;
   screenshot?: ScreenshotPayload;
   observe?: ObservePayload;
   interact_targets?: InteractTarget[];
@@ -191,6 +197,16 @@ export interface CommandResult {
   error?: string;
   duration_ms: number;
   tab_id?: number;
+  /** Eyes settle: true when T0 text/targets/links all thin after budget. */
+  eyes_empty?: boolean;
+  eyes_settle_ms?: number;
+  eyes_settle_attempts?: number;
+  /**
+   * Fail-only Eyes ladder: 0 default innerText/targets, 1 deep text/tree
+   * promote, 2 soft hints (still empty). Not soft site tiers A–D.
+   */
+  eyes_mode?: 0 | 1 | 2;
+  eyes_hints?: EyesHints;
 }
 
 export interface HandoffSnapshot {

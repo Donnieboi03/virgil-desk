@@ -9,7 +9,16 @@ from typing import Any
 _TARGET_KEEP = frozenset({"id", "ref", "kind", "label", "frame_id"})
 # Nested observe keeps metadata only — targets/tree/excerpt live at top-level.
 _OBSERVE_META_KEEP = frozenset(
-    {"url", "title", "text_omitted", "excerpt_note", "viewport", "device_pixel_ratio"}
+    {
+        "url",
+        "title",
+        "text_omitted",
+        "excerpt_note",
+        "viewport",
+        "device_pixel_ratio",
+        "eyes_mode",
+        "eyes_hints",
+    }
 )
 
 

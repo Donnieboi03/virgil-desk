@@ -3,18 +3,18 @@ name: desk-browser-bridge
 description: >-
   Virgil Desk browser bridge: desk-browser CLI, Path B extension Eyes/Hands
   (default) or harness CDP rollback, You/Agent/Waiting board, Accept/Deny proposals.
-version: 1.12.0
+version: 1.14.0
 metadata:
   hermes:
     tags: [virgil-desk, browser, handoff]
-    keywords: [mint_item, subtask, auth_wall, soft_help, park_last_resort, eyes_empty]
+    keywords: [mint_item, subtask, auth_wall, soft_help, park_last_resort, eyes_empty, eyes_mode, verified_terminal]
 ---
 
 # Desk browser bridge
 
 Use when executing a **Virgil Desk** handoff via Host `POST /v1/browser` or the **`desk-browser`** CLI.
 
-**Primary model = DOM Eyes → `target_id` Hands.** URL open/construct is a **secondary workaround** (hostile/empty Eyes) — not the default path. **Park to You is last resort**, not a general Done option.
+**Primary model = DOM Eyes → `target_id` Hands.** URL open/construct is a **secondary workaround** (hostile/empty Eyes) — not the default path. **Park to You is last resort**, not a general Done option. **Verified terminal page state** (expired / already submitted / deadline passed) after Eyes read = **Completed** — not Partial, not park.
 
 ## CLI (Hermes `terminal`)
 
@@ -60,7 +60,7 @@ See [`docs/BROWSER_LAYER.md`](../docs/BROWSER_LAYER.md).
 
 | Driver | Eyes | Hands |
 |--------|------|-------|
-| **`extension` (default)** | slim `interact_targets`, optional `page_tree`, excerpt omit on same URL | `target_id` via content script |
+| **`extension` (default)** | slim `interact_targets`, optional `page_tree`, excerpt omit on same URL; fail-only `eyes_mode` 0→1→2 | `target_id` via content script |
 | `harness` | url/title/viewport; empty targets | `{x,y}`, `selector` via CDP |
 
 ## Tab rules
@@ -75,7 +75,7 @@ See [`docs/BROWSER_LAYER.md`](../docs/BROWSER_LAYER.md).
 
 **Continue as agent** when links are readable: Drive folders/Docs, thread bodies, job pages — `openTab` (agent) → observe → read/summarize; mint **agent** children for multi-closure.
 
-**Park You only when:** login/CAPTCHA/auth wall; forbidden send/connect/pay/sign/submit; hostile/empty Eyes soft-help; or stuck after re-observe. Soft-help = `mint_item` → You (keywords/draft/checklist). Do not claim Observed success from blank scrape. If Eyes return **`eyes_empty`** (or blank excerpt + no targets after host settle), do not invent page copy from the URL alone — `Partial:` or last-resort park.
+**Park You only when:** login/CAPTCHA/auth wall; forbidden send/connect/pay/sign/submit; hostile/empty Eyes when human action is still required; or stuck after re-observe. Soft-help = `mint_item` → You (keywords/draft/checklist). Do not claim Observed success from blank scrape. If Eyes return **`eyes_mode: 1`**, trust the promoted excerpt. If Eyes **verify a terminal** outcome (expired / already submitted), stop with Completed — do not mint You. If **`eyes_empty`** / **`eyes_mode: 2`** with no usable fact, do not invent page copy from the URL alone — use `eyes_hints.url_path_hint` only as a soft signal, then `Partial:` or last-resort park when human action remains. Mint is **idempotent** on parent+column+`source.url`; human `openTab placement=human` **reuses** same-URL tabs.
 
 ## Observe–act–observe
 
@@ -102,7 +102,7 @@ Check `act_resolved.url_before` vs `url_after` when opening threads or navigatin
 
 ## Mid-flight subtasks
 
-When Eyes / non-empty probes show **multiple closures**, **must** `mint_item` before success stop. Prefer **agent** column for readable follow-ups; You/Waiting only under last-resort park. Host blocks parent `done` while agent children are open. Truly one closure: say “Single closure: …” after finishing it.
+When Eyes / non-empty probes show **multiple actionable closures**, **must** `mint_item` before success stop (not for terminal verified dead-ends). Prefer **agent** column for readable follow-ups; You/Waiting only under last-resort park. Host blocks parent `done` while agent children are open. Truly one closure or verified terminal: say “Single closure: …” / “Verified expired …; no further action.” after finishing.
 
 Last-resort park example:
 

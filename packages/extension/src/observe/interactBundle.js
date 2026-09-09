@@ -644,7 +644,64 @@ function axStructural(el) {
   );
 }
 
-/** Compact accessibility-ish tree for Eyes (URL-change only). */
+/**
+ * Deep visible text for Eyes escalation (light DOM + open shadow).
+ * Used when body.innerText settle is empty — not the default scrape path.
+ */
+export function deskDeepText(opts = {}) {
+  const maxChars = opts.maxChars ?? 4000;
+  const SKIP = new Set(["SCRIPT", "STYLE", "NOSCRIPT", "LINK", "META", "BR", "HR", "SVG", "PATH"]);
+  const parts = [];
+  let used = 0;
+
+  function pushText(raw) {
+    if (used >= maxChars) return;
+    const t = (raw || "").replace(/\s+/g, " ").trim();
+    if (!t || t.length < 2) return;
+    const slice = t.slice(0, Math.min(200, maxChars - used));
+    if (!slice) return;
+    parts.push(slice);
+    used += slice.length + 1;
+  }
+
+  function walk(node) {
+    if (used >= maxChars || !node) return;
+    if (node.nodeType === Node.TEXT_NODE) {
+      pushText(node.textContent);
+      return;
+    }
+    if (node.nodeType !== Node.ELEMENT_NODE) return;
+    const el = node;
+    if (!axVisible(el)) return;
+    const tag = el.tagName;
+    if (SKIP.has(tag)) return;
+    // Prefer element-level labels for status/alerts/headings before descending.
+    if (
+      /^H[1-6]$/.test(tag) ||
+      ["MAIN", "ARTICLE", "DIALOG"].includes(tag) ||
+      ["status", "alert", "heading"].includes((el.getAttribute("role") || "").toLowerCase())
+    ) {
+      const label = axLabel(el);
+      if (label) pushText(label);
+    }
+    for (const child of el.childNodes) walk(child);
+    if (el.shadowRoot) {
+      for (const child of el.shadowRoot.childNodes) walk(child);
+    }
+  }
+
+  if (document.body) walk(document.body);
+  let text = parts.join("\n");
+  if (text.length > maxChars) text = text.slice(0, maxChars);
+  return {
+    text,
+    chars: text.length,
+    url: location.href,
+    title: document.title,
+  };
+}
+
+/** Compact accessibility-ish tree for Eyes (URL-change / empty escalate). */
 export function deskPageTree(opts = {}) {
   const maxNodes = opts.maxNodes ?? 400;
   const maxChars = opts.maxChars ?? 2000;
@@ -684,8 +741,12 @@ export function deskPageTree(opts = {}) {
       if (tag === "A" && el.href) parts.push(`href=${String(el.href).slice(0, 80)}`);
       lines.push(`${" ".repeat(depth)}[${parts.join(" ")}]`);
     }
-    const kids = el.shadowRoot ? el.shadowRoot.childNodes : el.childNodes;
-    for (const child of kids) walk(child, should ? depth + 1 : depth);
+    const nextDepth = should ? depth + 1 : depth;
+    // Walk light children always; also open-shadow kids (do not replace light).
+    for (const child of el.childNodes) walk(child, nextDepth);
+    if (el.shadowRoot) {
+      for (const child of el.shadowRoot.childNodes) walk(child, nextDepth);
+    }
   }
 
   if (document.body) walk(document.body, 0);
@@ -761,6 +822,7 @@ if (typeof globalThis !== "undefined") {
   globalThis.deskUnmark = deskUnmark;
   globalThis.deskAct = deskAct;
   globalThis.deskPageTree = deskPageTree;
+  globalThis.deskDeepText = deskDeepText;
   globalThis.deskProbeForm = deskProbeForm;
   globalThis.deskProbeLinks = deskProbeLinks;
   globalThis.deskProbeTable = deskProbeTable;

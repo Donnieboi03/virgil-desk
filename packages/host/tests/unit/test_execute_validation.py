@@ -68,6 +68,30 @@ def test_opened_summary_incomplete_unless_single_closure():
     )
 
 
+def test_verified_terminal_opened_summary_is_done():
+    """Review goals that verify expired/submitted pages are Completed, not park."""
+    assert (
+        execute_summary_incomplete_reason(
+            "Opened Western Digital update email; screening questionnaire link "
+            "redirected to expired-or-not-found (deadline has passed or already "
+            "submitted); verified expired; no further action."
+        )
+        is None
+    )
+    assert (
+        execute_summary_incomplete_reason(
+            "Verified expired screening link (7-day deadline passed / already submitted)."
+        )
+        is None
+    )
+    assert (
+        execute_summary_incomplete_reason(
+            "Followed the screening questionnaire link; already submitted; review complete."
+        )
+        is None
+    )
+
+
 def test_engevity_opened_with_park_to_you_column_is_done():
     """Open-only gate must not false-fail real park language after 'Opened…'."""
     summary = (

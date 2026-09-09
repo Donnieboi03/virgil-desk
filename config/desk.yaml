@@ -11,6 +11,7 @@ browser:
   eyes_settle_budget_ms: 2000
   eyes_settle_poll_ms: 250
   eyes_settle_min_text_chars: 40
+  eyes_deep_text_max_chars: 4000
   interact_targets_max: 40
   observe_annotate_default: true
   act_stall_max: 3

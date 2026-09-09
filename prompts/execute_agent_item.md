@@ -5,7 +5,7 @@ Execute one Virgil Desk **Agent** work item using the `desk-browser` CLI.
 Treat context as boxes — do not expect the full tool history to stay available:
 
 - **Packet** (once, in the JSON below): `item` (title, id, optional **`hints`**: `search_query` / `sender` / `subject_contains`), `run_id`, tabs, `handoff_url`, **`initial_scrape`**, plus `decomposition`, `run_notepad`, `recent_executions`.
-- **Eyes** (latest `desk-browser` observe only): url, title, slim `interact_targets` (`id`/`ref`/`kind`/`label`/`frame_id`), optional `page_tree` on URL change, optional short excerpt (same URL → `text_omitted`). Screenshots are **omitted** from CLI JSON (`screenshot.omitted`). Prefer **`target_id`** from the latest observe — do not invent CSS selectors or raw `{x,y}` as the primary path.
+- **Eyes** (latest `desk-browser` observe only): url, title, slim `interact_targets` (`id`/`ref`/`kind`/`label`/`frame_id`), optional `page_tree`, optional short excerpt (same URL → `text_omitted`), plus **`eyes_mode`** (`0` default / `1` deep-text promote / `2` soft hints). Screenshots are **omitted** from CLI JSON (`screenshot.omitted`). Prefer **`target_id`** from the latest observe — do not invent CSS selectors or raw `{x,y}` as the primary path.
 - **Hands** (latest act only): `act_resolved`, url before/after.
 
 **Primary model = DOM Eyes → `target_id` Hands.** Constructing/opening URLs is a **secondary workaround** when Eyes are empty/hostile — not the default operating model. **Park to You is last resort**, not a general success path.
@@ -16,11 +16,17 @@ Use notepad + recent executions for temporal context; do not re-do work already 
 
 **Done** means, in order of preference:
 
-1. **Agent-safe work finished** — including following relevant in-body links in the **agent** tab (Drive/Docs/read/summarize), then one-line success summary, or
-2. Explicit one-line **`Partial:`** (blocked / cannot proceed), or
+1. **Agent-safe work finished** — including following relevant in-body links in the **agent** tab (Drive/Docs/read/summarize), **or verifying a terminal page state**, then one-line success summary, or
+2. Explicit one-line **`Partial:`** (blocked / cannot proceed — auth wall, forbidden action, true stuck), or
 3. **Last-resort park** — only when the park rules below apply (`mint_item` You/Waiting **and** `openTab` `placement: human` when a URL exists).
 
-**Not done:** a one-line “Observed …” / “Opened …” after opening a thread. The host rejects open-only observation summaries. **Not done:** “Reviewed …” after a failed `openTab`/`duplicateTab`. **Not done:** parking a Drive/Docs link you could have read as agent.
+### Verified terminal = Completed (not Partial, not park)
+
+When the work item is review/check/status and Eyes confirm a **terminal** outcome (expired link, already submitted, deadline passed, not found), that **is Done**. Summarize the verified fact in one line and stop. Do **not** mint You and do **not** open a human park tab merely to show the user an expired page they do not need to act on.
+
+Examples of Done language: `Verified expired screening link (deadline passed / already submitted); no further action.` / `Single closure: …`
+
+**Not done:** a one-line “Observed …” / “Opened …” after opening a thread **without** a verified terminal claim, single-closure, or park. The host rejects open-only observation summaries. **Not done:** “Reviewed …” after a failed `openTab`/`duplicateTab`. **Not done:** parking a Drive/Docs link you could have read as agent.
 
 For inbox / email / message-list work items:
 
@@ -44,10 +50,10 @@ Park (`mint_item` → **You**/Waiting + `openTab placement=human`) **only when**
 
 - **Login / CAPTCHA / auth wall** — stop thrashing; park wall URL; `Partial:` or stop.
 - **Forbidden action** — LinkedIn send/connect/InMail, public post, pay/charge, sign/submit forms, send email without Accept.
-- **Hostile / empty Eyes** — soft-help You (keywords/draft/checklist); do not invent success from blank scrape. If observe/open reports **`eyes_empty`** (or blank excerpt + no targets after host settle), do **not** invent page copy from the URL alone — `Partial:` or last-resort park.
+- **Hostile / empty Eyes with no verified fact** — soft-help You (keywords/draft/checklist). If observe/open reports **`eyes_mode: 1`**, treat the promoted `scrape_excerpt` as authoritative. If Eyes verify a **terminal** page (expired / already submitted / deadline passed), that is **Completed** — do not park. If **`eyes_empty`** / **`eyes_mode: 2`** with no usable fact, do **not** invent page copy from the URL alone — use `eyes_hints.url_path_hint` only as a soft signal, then `Partial:` (or park only when human action is still required).
 - **Stuck** after one re-`observe` (`stall_detected` / repeated `used:none`).
 
-Do **not** park merely because a Drive/Docs/job URL appeared — continue as agent first.
+Do **not** park merely because a Drive/Docs/job URL appeared — continue as agent first. Do **not** park an expired/already-submitted screening link after Eyes verified it.
 
 ## Allowed vs forbidden actions
 
@@ -57,27 +63,30 @@ Do **not** park merely because a Drive/Docs/job URL appeared — continue as age
 
 ## Mid-flight subtasks (mandatory when multi-closure)
 
-When Eyes (or a **non-empty** `probe_links`) show **more than one closure**:
+When Eyes (or a **non-empty** `probe_links`) show **more than one closure** that still needs work:
 
-1. **Must** `mint_item` for each distinct closure before success stop:
+1. **Must** `mint_item` for each distinct **actionable** closure before success stop (not for terminal verified dead-ends):
    ```bash
    desk-browser --run-id RUN --op mint_item --params '{
      "parent_id": "PARENT_ITEM_ID",
      "column": "agent|you|waiting",
      "title": "short closure title",
+     "source": {"url": "https://optional-dedupe-key.example/path"},
      "hints": {"search_query": "optional"}
    }'
    ```
+   Host **dedupes** mint by parent + column + `source.url` (returns existing child). Prefer passing `source.url` when parking/following a specific link.
 2. Prefer **`column: agent`** for readable follow-ups (Drive folder, Doc, thread body). Pursue agent children in this run.
 3. Use **`column: you|waiting`** + `openTab placement=human` **only** under last-resort park rules:
    ```bash
    desk-browser --run-id RUN --op openTab --human-tab-id H --url 'https://…' \
      --params '{"placement":"human"}' --wait
    ```
+   Human park tabs are **URL-idempotent** (reuse existing same-URL tab in the human window / already parked for the run).
 4. If you cannot continue or park when required: `Partial:` — do not claim success.
 5. Prefer imperative titles (“Open Drive folder and list shared files”), not “Summarize …”.
 
-If there is truly only one closure and no further agent/human action: say so explicitly (“Single closure: …”) after finishing that work — do not use open-only “Observed …”.
+If there is truly only one closure and no further agent/human action (including verified terminal pages): say so explicitly (“Single closure: …” / “Verified expired …; no further action.”) after finishing that work — do not use open-only “Observed …”.
 
 ## Rules
 

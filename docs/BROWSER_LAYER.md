@@ -13,20 +13,26 @@ Harness daemon isolation: `BU_NAME=virgil-desk` (never Virgil tick `:9223` / `BU
 
 ## Path B execute (extension default)
 
-Three Eyes channels (no vision by default):
+Eyes channels (no vision / screenshot by default):
 
 | Channel | When | Hermes sees |
 |---------|------|-------------|
 | Slim WebMarker targets | every `observe` | `{id, ref, kind, label, frame_id?}` (max 40; conversation rows prioritized) |
-| AX `page_tree` | URL change only | capped role/label tree (≤2k chars; open shadow + allFrames) |
+| Default excerpt | settle ready | capped `body.innerText` (`eyes_mode: 0`) |
+| Escalation deep text + AX `page_tree` | fail-only when T0 empty | promoted into `scrape_excerpt` (`eyes_mode: 1`); tree also kept when URL change / empty |
+| Soft URL hints | still empty after escalate | `eyes_mode: 2`, `eyes_empty: true`, optional `eyes_hints.url_path_hint` |
 | Probes | on demand | `probe_form` / `probe_links` / `probe_table` |
 
 - Hands: **`target_id`** only (coords kept in extension `targetMap`, stripped from CLI).
 - Execute observe defaults `skip_screenshot: true` (`observe_skip_screenshot_default`) — no `captureVisibleTab` tab flicker.
-- Same-URL follow-up observe: `text_omitted` + no `page_tree` when content unchanged; keep slim targets.
-- **Eyes settle (fast):** after open/scrape/observe, poll until excerpt/targets ready or `eyes_settle_budget_ms` (default 2s, poll 250ms). Happy path exits on first scrape. Empty first scrape does **not** lock omit baseline. Still-empty → `eyes_empty` + forced AX `page_tree` (no screenshot / no tab focus).
+- Same-URL follow-up observe: `text_omitted` + no `page_tree` when content unchanged; keep slim targets. Mode-1 promote forces a non-omitted excerpt.
+- **Eyes settle (fast):** after open/scrape/observe, poll until excerpt/targets ready or `eyes_settle_budget_ms` (default 2s, poll 250ms). Happy path exits on first scrape. Empty first scrape does **not** lock omit baseline. Still-empty → one-shot deep text (`eyes_deep_text_max_chars`) + forced DIY `page_tree` → promote or soft hints (no screenshot / no tab focus).
 
-Implementation: [WebMarker](https://github.com/reidbarber/webmarker) + `deskPageTree` / probes in `interactObserve.bundle.js`. `allFrames: true` stamps `frame_id`; act uses `frameIds`.
+**`eyes_mode` is not soft site tiers A–D** (those remain expectation-only below).
+
+Done/park rules for verified terminal pages, mint/tab idempotency, and execute lock: [`ARCHITECTURE.md`](ARCHITECTURE.md).
+
+Implementation: [WebMarker](https://github.com/reidbarber/webmarker) + `deskDeepText` / `deskPageTree` / probes in `interactObserve.bundle.js`. `allFrames: true` stamps `frame_id`; act uses `frameIds`.
 
 ## Harness execute (rollback)
 

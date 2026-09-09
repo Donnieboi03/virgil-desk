@@ -38,12 +38,13 @@ Run once with a real tab ([`packages/e2e/README.md`](../packages/e2e/README.md))
 5. **Run agent** on one Agent **root** → provisions that item’s tab only → `browser.command` events in log
 6. Mid-flight children: Agent accordion under parent; You/Waiting nest parks under **From: {parent}** groups (parent may live in Agent)
 7. Human remainder URL → `openTab` with `placement: human` (tab outside **Virgil · Agent**, not focused)
-8. Auth wall / empty Eyes (`eyes_empty` after settle) → You mint + soft-help or `Partial:`; do not invent page copy from URL alone
-9. **Accept** on a Waiting calendar proposal
-10. **Mark done** on a You item
-11. Reload Chrome — board persists (`storage.local`)
-12. Failed ops show `error` / `tab_id` / `url` in `desk-events --summary`
-13. When backends expose usage, `desk-events --summary` may include rolled-up `cost_usd` / token totals (optional; omit when absent)
+8. Auth wall / empty Eyes with no verified fact (`eyes_empty` / `eyes_mode: 2`) → You mint + soft-help or `Partial:`; do not invent page copy from URL alone (`eyes_hints` soft only). Mode `1` promoted excerpt is authoritative. **Verified terminal** (expired / already submitted) after Eyes = Agent **Completed** — not park. Framework: [`ARCHITECTURE.md`](ARCHITECTURE.md).
+9. Mint You for the same link twice → host returns existing child (`idempotent`). Human park `openTab` reuses same-URL tabs. Concurrent double **Run agent** on one item → HTTP 409.
+10. **Accept** on a Waiting calendar proposal
+11. **Mark done** on a You item
+12. Reload Chrome — board persists (`storage.local`)
+13. Failed ops show `error` / `tab_id` / `url` in `desk-events --summary`
+14. When backends expose usage, `desk-events --summary` may include rolled-up `cost_usd` / token totals (optional; omit when absent)
 
 ## Hub Q-mapping (Desk)
 

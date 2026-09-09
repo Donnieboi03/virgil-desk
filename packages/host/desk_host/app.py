@@ -32,6 +32,7 @@ from .execute_validation import (
     failed_open_tab_blocks_done,
     parent_done_blocked_reason,
 )
+from .mint_policy import find_idempotent_mint
 from .screenshot_store import persist_handoff_screenshot, persist_screenshot
 
 # In-memory proposal + extension connection state
@@ -48,6 +49,7 @@ _command_results: dict[str, dict[str, Any]] = {}
 _command_waiters: dict[str, asyncio.Future[dict[str, Any]]] = {}
 _memory_waiters: dict[str, asyncio.Future[dict[str, Any]]] = {}
 _browser_result_counts: dict[str, int] = {}
+_executing_item_ids: set[str] = set()
 _command_evidence_flags: dict[str, bool] = {}
 _execute_ops: dict[str, list[str]] = {}
 _failed_ops: dict[str, list[str]] = {}
@@ -448,6 +450,7 @@ def reset_state_for_tests() -> None:
     _failed_ops.clear()
     _command_ops.clear()
     _last_probe_links_empty.clear()
+    _executing_item_ids.clear()
     _extension_ws = None
     _extension_connected = False
     harness_reset_for_tests()
@@ -772,11 +775,32 @@ async def mint_item(body: MintItemBody) -> dict[str, Any]:
     except ExtensionNotConnectedError as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
 
-    short = uuid.uuid4().hex[:8]
-    item_id = f"{body.parent_id}_sub_{short}"
     source = body.source or dict(parent.get("source") or {"kind": "handoff"})
     if body.source and body.source.get("url"):
         source = {**source, "url": body.source["url"]}
+    source_url = (source or {}).get("url") if isinstance(source, dict) else None
+
+    existing = find_idempotent_mint(
+        _work_items,
+        parent_id=body.parent_id,
+        column=body.column,
+        source_url=source_url,
+        title=body.title,
+    )
+    if existing:
+        record(
+            "item.minted",
+            body.run_id,
+            cfg=get_config(),
+            item_id=existing["id"],
+            parent_id=body.parent_id,
+            column=body.column,
+            flags={"idempotent_reuse": True},
+        )
+        return {"ok": True, "item": existing, "idempotent": True}
+
+    short = uuid.uuid4().hex[:8]
+    item_id = f"{body.parent_id}_sub_{short}"
     item: dict[str, Any] = {
         "id": item_id,
         "column": body.column,
@@ -815,7 +839,7 @@ async def mint_item(body: MintItemBody) -> dict[str, Any]:
         parent_id=body.parent_id,
         column=body.column,
     )
-    return {"ok": True, "item": item}
+    return {"ok": True, "item": item, "idempotent": False}
 
 
 @app.post("/v1/items/{item_id}/execute")
@@ -825,6 +849,11 @@ async def execute_item(item_id: str, body: ExecuteBody) -> dict[str, Any]:
         raise HTTPException(status_code=404, detail="work item not found")
     if item.get("column") != "agent":
         raise HTTPException(status_code=400, detail="execute only for agent column")
+    if item_id in _executing_item_ids:
+        raise HTTPException(
+            status_code=409,
+            detail="execute already in progress for this item",
+        )
     try:
         _require_extension()
     except ExtensionNotConnectedError as exc:
@@ -855,6 +884,7 @@ async def execute_item(item_id: str, body: ExecuteBody) -> dict[str, Any]:
     _execute_ops[body.run_id] = []
     _failed_ops[body.run_id] = []
     _last_probe_links_empty[body.run_id] = False
+    _executing_item_ids.add(item_id)
     await _execute_session_start(
         run_id=body.run_id,
         item_id=item_id,
@@ -1029,6 +1059,7 @@ async def execute_item(item_id: str, body: ExecuteBody) -> dict[str, Any]:
         )
         return {"ok": True, "work_item_id": item_id, "status": "done", "result": result}
     finally:
+        _executing_item_ids.discard(item_id)
         await _execute_cleanup(
             run_id=body.run_id,
             item_id=item_id,

@@ -123,6 +123,31 @@ def test_browser_command_result_fields_eyes_settle():
     assert fields["measure"]["eyes_settle_attempts"] == 8
 
 
+def test_browser_command_result_fields_eyes_mode():
+    from desk_host.observability import browser_command_result_fields
+
+    fields = browser_command_result_fields(
+        {
+            "command_id": "c3",
+            "ok": True,
+            "op": "observe",
+            "scrape_excerpt": "",
+            "interact_targets": [],
+            "eyes_empty": True,
+            "eyes_mode": 2,
+            "eyes_hints": {"url_path_hint": "expired_or_stale"},
+            "eyes_settle_ms": 2006,
+            "eyes_settle_attempts": 9,
+            "duration_ms": 2100,
+        },
+        op="observe",
+    )
+    assert fields["flags"]["eyes_empty"] is True
+    assert fields["flags"]["eyes_mode"] == 2
+    assert fields["detail"]["eyes_hints"] == {"url_path_hint": "expired_or_stale"}
+    assert fields["measure"]["eyes_settle_ms"] == 2006
+
+
 def test_limits_reflect_cfg_override():
     cfg = load_config()
     cfg = replace(cfg, prompts=replace(cfg.prompts, decompose_items_max=7))

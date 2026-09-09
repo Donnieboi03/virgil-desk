@@ -158,6 +158,10 @@ def browser_command_result_fields(
     }
     if result.get("eyes_empty") is not None:
         flags["eyes_empty"] = bool(result.get("eyes_empty"))
+    if result.get("eyes_mode") is not None:
+        flags["eyes_mode"] = result.get("eyes_mode")
+    if result.get("eyes_hints") is not None:
+        detail["eyes_hints"] = result.get("eyes_hints")
     return {
         "measure": measure,
         "flags": flags,

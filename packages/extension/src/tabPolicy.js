@@ -31,6 +31,24 @@ export function openTabPlacement(command) {
   return raw === "human" ? "human" : "agent";
 }
 
+/** Normalize URL for human-park tab reuse (origin+path+search; drop hash). */
+export function urlsMatchForPark(a, b) {
+  if (!a || !b) return false;
+  try {
+    const ua = new URL(a);
+    const ub = new URL(b);
+    const pathA = ua.pathname === "/" ? "/" : ua.pathname.replace(/\/$/, "");
+    const pathB = ub.pathname === "/" ? "/" : ub.pathname.replace(/\/$/, "");
+    return (
+      ua.origin === ub.origin &&
+      pathA === pathB &&
+      ua.search === ub.search
+    );
+  } catch {
+    return String(a) === String(b);
+  }
+}
+
 /** Root items: no parent_id. */
 export function selectBoardRoots(items) {
   return (items || []).filter((i) => !i.parent_id);

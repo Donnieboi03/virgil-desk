@@ -6,6 +6,7 @@ import {
   openTabPlacement,
   policyBlock,
   selectBoardRoots,
+  urlsMatchForPark,
 } from "./tabPolicy.js";
 
 describe("chooseNavigationOp", () => {
@@ -49,6 +50,18 @@ describe("openTabPlacement", () => {
     expect(
       openTabPlacement({ op: "openTab", params: { placement: "human" } }),
     ).toBe("human");
+  });
+});
+
+describe("urlsMatchForPark", () => {
+  it("matches same origin path query ignoring hash and trailing slash", () => {
+    expect(
+      urlsMatchForPark(
+        "https://ex.com/path/?q=1#a",
+        "https://ex.com/path?q=1",
+      ),
+    ).toBe(true);
+    expect(urlsMatchForPark("https://ex.com/a", "https://ex.com/b")).toBe(false);
   });
 });
 

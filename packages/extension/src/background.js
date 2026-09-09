@@ -3,7 +3,7 @@ const PAIRS_KEY = "virgil_desk_tab_pairs";
 const AGENT_GROUP_TITLE = "Virgil · Agent";
 const DEFAULT_HOST = "http://127.0.0.1:8787";
 
-import { applyBoardPatch, chooseNavigationOp, policyBlock as tabPolicyBlock, openTabPlacement } from "./tabPolicy.js";
+import { applyBoardPatch, chooseNavigationOp, policyBlock as tabPolicyBlock, openTabPlacement, urlsMatchForPark } from "./tabPolicy.js";
 import { withProvisionLock, planAgentTabForItem } from "./agentTabs.js";
 import {
   storeTargetMap,
@@ -32,6 +32,7 @@ import {
   scrapeEyesReady,
   observeEyesReady,
 } from "./eyesSettle.js";
+import { promoteEyesExcerpt, urlPathHint } from "./eyesEscalate.js";
 
 const BUNDLE_FILE = "interactObserve.bundle.js";
 
@@ -53,6 +54,7 @@ let deskConfig = {
     eyes_settle_budget_ms: 2000,
     eyes_settle_poll_ms: 250,
     eyes_settle_min_text_chars: 40,
+    eyes_deep_text_max_chars: 4000,
     interact_targets_max: 40,
     observe_annotate_default: true,
     act_stall_max: 3,
@@ -802,8 +804,38 @@ async function resolveAgentTab(command) {
       ? await chrome.tabs.get(command.human_tab_id)
       : null;
     const windowId = human?.windowId;
+    const targetUrl = command.url || "about:blank";
+
+    // Idempotent park: reuse existing human-parked / same-URL tab in window.
+    const parkedLists = Object.values(pairs[runId]?.humanParkedByItem || {});
+    const parkedIds = parkedLists.flat();
+    for (const tid of parkedIds) {
+      try {
+        const t = await chrome.tabs.get(tid);
+        if (t?.url && urlsMatchForPark(t.url, targetUrl)) {
+          return { tabId: t.id, tabMode: "reuse", placement: "human" };
+        }
+      } catch {
+        /* tab closed */
+      }
+    }
+    if (windowId != null && targetUrl !== "about:blank") {
+      try {
+        const inWindow = await chrome.tabs.query({ windowId });
+        const hit = inWindow.find((t) => t.url && urlsMatchForPark(t.url, targetUrl));
+        if (hit?.id != null) {
+          if (activeExecute?.itemId && runId) {
+            await trackHumanParkedTab(runId, activeExecute.itemId, hit.id);
+          }
+          return { tabId: hit.id, tabMode: "reuse", placement: "human" };
+        }
+      } catch {
+        /* query failed — fall through to create */
+      }
+    }
+
     const tab = await chrome.tabs.create({
-      url: command.url || "about:blank",
+      url: targetUrl,
       active: false,
       windowId,
     });
@@ -924,6 +956,125 @@ function eyesMetaFromSettle(settled, { targetCount = 0, minChars = 40 } = {}) {
     eyes_settle_ms: settled?.elapsedMs ?? 0,
     eyes_settle_attempts: settled?.attempts ?? 0,
     eyes_empty: Boolean(empty),
+  };
+}
+
+async function runDeepText(tabId) {
+  const allFrames = observeAllFrames();
+  await injectInteractBundle(tabId, { allFrames });
+  const maxChars = deskConfig.browser?.eyes_deep_text_max_chars ?? 4000;
+  try {
+    const results = await chrome.scripting.executeScript({
+      target: allFrames ? { tabId, allFrames: true } : { tabId },
+      world: "MAIN",
+      func: (o) => globalThis.deskDeepText(o),
+      args: [{ maxChars }],
+    });
+    const chunks = [];
+    let used = 0;
+    let title = "";
+    let url = "";
+    for (const entry of results || []) {
+      const text = entry.result?.text;
+      if (!text) continue;
+      if (!title && entry.result?.title) title = entry.result.title;
+      if (!url && entry.result?.url) url = entry.result.url;
+      const header =
+        (entry.frameId ?? 0) === 0 ? "" : `\n--- frame ${entry.frameId} ---\n`;
+      const piece = `${header}${text}`;
+      if (used + piece.length > maxChars) {
+        chunks.push(piece.slice(0, Math.max(0, maxChars - used)));
+        break;
+      }
+      chunks.push(piece);
+      used += piece.length;
+    }
+    return {
+      text: chunks.length ? chunks.join("\n") : "",
+      title,
+      url,
+    };
+  } catch {
+    return { text: "", title: "", url: "" };
+  }
+}
+
+/**
+ * Fail-only Eyes ladder after T0 settle. Returns mode + possibly promoted excerpt.
+ * @returns {Promise<{
+ *   eyes_mode: 0|1|2,
+ *   eyes_empty: boolean,
+ *   scrape_excerpt: string,
+ *   text_omitted: boolean,
+ *   excerpt_note?: string,
+ *   page_tree: string|null|undefined,
+ *   eyes_hints?: { url_path_hint: string },
+ * }>}
+ */
+async function applyEyesEscalation({
+  tabId,
+  runId,
+  url,
+  title,
+  eyesMeta,
+  excerpt,
+  includeTreeAlready,
+  pageTreeAlready,
+}) {
+  const minChars = deskConfig.browser?.eyes_settle_min_text_chars ?? 40;
+  const maxExcerpt = deskConfig.browser?.scrape_excerpt_max_chars ?? 4000;
+
+  if (!eyesMeta?.eyes_empty) {
+    return {
+      eyes_mode: 0,
+      eyes_empty: false,
+      scrape_excerpt: excerpt?.text || "",
+      text_omitted: Boolean(excerpt?.text_omitted),
+      excerpt_note: excerpt?.note,
+      page_tree: pageTreeAlready,
+    };
+  }
+
+  // T1: one deep text + forced tree; promote into excerpt (replace, don't stack).
+  const deep = await runDeepText(tabId).catch(() => ({ text: "" }));
+  let page_tree = pageTreeAlready;
+  if (!includeTreeAlready || !page_tree) {
+    page_tree = await runPageTree(tabId, { includeTree: true }).catch(() => null);
+  }
+  const promoted = promoteEyesExcerpt(deep.text, page_tree, {
+    minChars,
+    maxChars: maxExcerpt,
+  });
+
+  if (promoted) {
+    // Force non-omitted so same-URL omit does not swallow the first useful excerpt.
+    excerptBaselineMap = setLastFullTextUrl(
+      excerptBaselineMap,
+      runId,
+      tabId,
+      url || "",
+    );
+    return {
+      eyes_mode: 1,
+      eyes_empty: false,
+      scrape_excerpt: promoted,
+      text_omitted: false,
+      excerpt_note: "eyes_mode_1_promoted",
+      page_tree: page_tree || undefined,
+    };
+  }
+
+  // T2: soft URL/title hints only.
+  const hint = urlPathHint(url, title || deep.title);
+  const eyes_hints = hint ? { url_path_hint: hint } : undefined;
+  return {
+    eyes_mode: 2,
+    eyes_empty: true,
+    scrape_excerpt: excerpt?.text || "",
+    text_omitted: Boolean(excerpt?.text_omitted),
+    excerpt_note: excerpt?.note,
+    page_tree: page_tree || undefined,
+    eyes_hints,
   };
 }
 
@@ -1402,17 +1553,28 @@ async function runBrowserCommand(command) {
           minChars,
         },
       );
-      // Force AX tree when Eyes still empty (no screenshot / no focus).
+      // Force AX tree when Eyes still empty or URL change (no screenshot / no focus).
       const includeTree = !excerpt.text_omitted || eyesMeta.eyes_empty;
-      const page_tree = await runPageTree(tabId, { includeTree }).catch(() => null);
+      let page_tree = await runPageTree(tabId, { includeTree }).catch(() => null);
+      const escalated = await applyEyesEscalation({
+        tabId,
+        runId: command.run_id,
+        url: pageUrl,
+        title: pageObserve?.title || snap.title,
+        eyesMeta,
+        excerpt,
+        includeTreeAlready: includeTree,
+        pageTreeAlready: page_tree,
+      });
+      page_tree = escalated.page_tree ?? page_tree;
       const interact_targets = interact_targets_full.map(slimTargetForEyes);
       const observe = {
         url: pageUrl,
         title: pageObserve?.title || snap.title,
         viewport: pageObserve?.viewport || { w: 0, h: 0 },
         device_pixel_ratio: pageObserve?.device_pixel_ratio ?? 1,
-        text_excerpt: excerpt.text,
-        text_omitted: excerpt.text_omitted,
+        text_excerpt: escalated.scrape_excerpt,
+        text_omitted: escalated.text_omitted,
         interact_targets,
         scroll_containers: (pageObserve?.scroll_containers || []).map((s) => ({
           id: s.id,
@@ -1423,16 +1585,16 @@ async function runBrowserCommand(command) {
           frame_id: s.frame_id,
         })),
       };
-      if (excerpt.note) observe.excerpt_note = excerpt.note;
+      if (escalated.excerpt_note) observe.excerpt_note = escalated.excerpt_note;
       if (page_tree) observe.page_tree = page_tree;
-      return {
+      const out = {
         ...base,
         tab_id: tabId,
         url: observe.url,
         title: observe.title,
         scrape_excerpt: observe.text_excerpt,
-        text_omitted: excerpt.text_omitted,
-        excerpt_note: excerpt.note,
+        text_omitted: escalated.text_omitted,
+        excerpt_note: escalated.excerpt_note,
         observe,
         interact_targets,
         scroll_containers: observe.scroll_containers,
@@ -1440,9 +1602,14 @@ async function runBrowserCommand(command) {
         device_pixel_ratio: observe.device_pixel_ratio,
         page_tree: page_tree || undefined,
         screenshot: shot,
-        ...eyesMeta,
+        eyes_settle_ms: eyesMeta.eyes_settle_ms,
+        eyes_settle_attempts: eyesMeta.eyes_settle_attempts,
+        eyes_empty: escalated.eyes_empty,
+        eyes_mode: escalated.eyes_mode,
         duration_ms: Date.now() - started,
       };
+      if (escalated.eyes_hints) out.eyes_hints = escalated.eyes_hints;
+      return out;
     }
 
     if (
@@ -1785,7 +1952,7 @@ async function runBrowserCommand(command) {
       const eyesMeta = settled
         ? eyesMetaFromSettle(settled, { minChars })
         : {};
-      const out = {
+      let out = {
         ...base,
         tab_id: tabId,
         url: snap.url,
@@ -1798,6 +1965,31 @@ async function runBrowserCommand(command) {
         ...eyesMeta,
         duration_ms: Date.now() - started,
       };
+      if (settled && eyesMeta.eyes_empty) {
+        const escalated = await applyEyesEscalation({
+          tabId,
+          runId: command.run_id,
+          url: snap.url,
+          title: snap.title,
+          eyesMeta,
+          excerpt,
+          includeTreeAlready: false,
+          pageTreeAlready: null,
+        });
+        out = {
+          ...out,
+          scrape_excerpt: escalated.scrape_excerpt,
+          text_omitted: escalated.text_omitted,
+          excerpt_note: escalated.excerpt_note,
+          eyes_empty: escalated.eyes_empty,
+          eyes_mode: escalated.eyes_mode,
+          page_tree: escalated.page_tree || undefined,
+          duration_ms: Date.now() - started,
+        };
+        if (escalated.eyes_hints) out.eyes_hints = escalated.eyes_hints;
+      } else if (settled) {
+        out.eyes_mode = 0;
+      }
       if (command.op === "scrape" || command.op === "screenshot") return out;
       return out;
     }

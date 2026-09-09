@@ -26,7 +26,19 @@ High-frequency `browser.command` / `browser.command_result` omit `limits` (still
 
 ## Event kinds
 
-`handoff.started`, `handoff.snapshot`, `handoff.decomposed`, `handoff.decompose_failed`, `agent.execute_started`, `agent.executed`, `agent.execute_failed`, `item.completed`, `board.patch_dropped`, `browser.command`, `browser.command_result`, `execute.cleanup_done`, `proposal.accepted`, `proposal.denied`, `run.finished`, `policy.denied`
+`handoff.started`, `handoff.snapshot`, `handoff.decomposed`, `handoff.decompose_failed`, `agent.execute_started`, `agent.executed`, `agent.execute_failed`, `item.minted`, `item.completed`, `board.patch_dropped`, `browser.command`, `browser.command_result`, `execute.cleanup_done`, `proposal.accepted`, `proposal.denied`, `run.finished`, `policy.denied`
+
+### Eyes / Done measurement
+
+| Signal | Where | Use |
+|--------|-------|-----|
+| `eyes_mode`, `eyes_empty` | `browser.command_result` flags | Ladder coverage |
+| `eyes_settle_ms`, `eyes_settle_attempts` | measure | Settle budget health |
+| `eyes_hints` | detail | Soft URL hints when mode 2 |
+| `item.minted` + `flags.idempotent_reuse` | mint | Deduped parks |
+| `agent.execute_failed` 409-class detail | execute lock | Double-run attempts (HTTP 409) |
+
+Framework narrative: [`ARCHITECTURE.md`](ARCHITECTURE.md).
 
 ## Examples
 

@@ -41,3 +41,7 @@ def test_execute_prompt_dom_primary_playbooks():
     assert "last resort" in text.lower()
     assert "agent-continue" in text.lower() or "Agent-continue" in text or "agent tab" in text
     assert "eyes_empty" in text or "invent page copy" in text.lower()
+    assert "eyes_mode" in text
+    assert "eyes_hints" in text
+    assert "Verified terminal" in text or "verified terminal" in text.lower()
+    assert "Completed" in text or "no further action" in text.lower()

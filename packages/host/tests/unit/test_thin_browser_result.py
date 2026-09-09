@@ -139,3 +139,37 @@ def test_dedupes_nested_observe_eyes_fields():
     assert "scroll_containers" not in obs
     assert "page_tree" not in obs
     assert "text_excerpt" not in obs
+
+
+def test_preserves_eyes_mode_and_hints():
+    payload = {
+        "ok": True,
+        "result": {
+            "ok": True,
+            "scrape_excerpt": "",
+            "eyes_empty": True,
+            "eyes_mode": 2,
+            "eyes_hints": {"url_path_hint": "login_or_auth"},
+            "eyes_settle_ms": 2000,
+            "eyes_settle_attempts": 8,
+            "page_tree": "[main]",
+            "observe": {
+                "url": "https://example.com/login",
+                "title": "Sign in",
+                "text_omitted": False,
+                "eyes_mode": 2,
+                "eyes_hints": {"url_path_hint": "login_or_auth"},
+                "viewport": {"w": 1, "h": 1},
+                "device_pixel_ratio": 1,
+            },
+        },
+    }
+    out = thin_browser_response(payload)
+    result = out["result"]
+    assert result["eyes_mode"] == 2
+    assert result["eyes_empty"] is True
+    assert result["eyes_hints"]["url_path_hint"] == "login_or_auth"
+    assert result["eyes_settle_ms"] == 2000
+    assert result["page_tree"] == "[main]"
+    assert result["observe"]["eyes_mode"] == 2
+    assert result["observe"]["eyes_hints"]["url_path_hint"] == "login_or_auth"
