@@ -1,0 +1,63 @@
+browser:
+  scrape_text_max_chars: 100000
+  scrape_links_max: 200
+  scrape_excerpt_max_chars: 4000
+  handoff_excerpt_max_chars: 12000
+  # Default 0 = viewport capture (excerpt + screenshot of what’s on screen).
+  # Set >0 only for advanced nested-list experiments — does not equal “full inbox.”
+  handoff_scroll_loops: 0
+  handoff_scroll_viewport_ratio: 0.85
+  screenshot_mode: captureVisibleTab
+  screenshot_max_per_run: 40
+  default_wait_ms: 500
+  eyes_settle_budget_ms: 2000
+  eyes_settle_poll_ms: 250
+  eyes_settle_min_text_chars: 40
+  eyes_challenge_extra_ms: 8000
+  eyes_deep_text_max_chars: 4000
+  interact_targets_max: 40
+  observe_annotate_default: true
+  act_stall_max: 3
+  observe_followup_excerpt_max_chars: 2000
+  observe_skip_screenshot_default: true
+  observe_all_frames: true
+  page_tree_max_chars: 2000
+  page_tree_max_nodes: 400
+  # execute browser ops: extension (Path B) | harness (CDP rollback)
+  driver: extension
+  harness_bin: browser-harness
+  harness_bu_name: virgil-desk
+host:
+  browser_wait_timeout_sec: 30
+hermes:
+  decompose_timeout_sec: 120
+  execute_timeout_sec: 240
+  execute_require_browser_evidence: true
+  decompose_fallback_stub: true
+  decompose_enabled: true
+  decompose_model: google/gemini-3.7-flash
+  execute_model: google/gemini-3.7-flash
+  execute_toolsets:
+    - terminal
+    - skills
+  execute_accept_hooks: false
+  execute_max_turns: 40
+observability:
+  persist_screenshots: false
+memory:
+  recent_max: 3
+  notepad_max_bullets: 20
+  notepad_max_chars: 4000
+  semantic_max_facts: 20
+  semantic_packet_max_facts: 10
+  semantic_max_value_chars: 200
+  semantic_max_key_chars: 64
+prompts:
+  decompose_items_max: 10
+  decompose_summary_sentences_max: 3
+  work_item_title_max_chars: 200
+  execute_summary_max_chars: 2000
+  event_snippet_max_chars: 500
+  event_summary_snippet_max_chars: 200
+  thin_scrape_threshold_chars: 200
+  agent_scroll_stall_loops: 2

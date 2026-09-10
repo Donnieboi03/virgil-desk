@@ -9,14 +9,23 @@ npm run test:e2e
 Coverage:
 
 1. WS handoff → board patch → `POST /v1/browser` (wait) → `command_result` with screenshot
-2. `navigate` + same URL → `duplicateTab`; different URL → `openTab`
+2. `navigate` → always `openTab` (background create; never `tabs.duplicate`)
 3. Calendar Accept after mock handoff
 4. Hermes backend path with calendar proposal + browser verify
+5. Handoff **without** `agent_tab_id` still decomposes (defer tabs until Run agent / PATCH)
+6. `openTab` with `params.placement=human` is **denied** (`human_park_tab_denied`; URL-first You park)
+7. Host integration: `mint_item` board_patch + parent done blocked while agent children open; auth_gate mint → awaiting_human → complete resumes parent (see `packages/host/tests/integration/test_execute_agent.py`)
+8. `openTab` result includes `tab_id`; failed scrape logs `error`/`tab_id`; `closeTab` without `tab_id` rejected
 
 Helper: `packages/host/tests/helpers/mock_extension.py`
 
 ## Manual Chrome checklist (M2+)
 
-See items 1–9 in the plan manual validation section — run after loading `packages/extension/dist` unpacked.
+See [`docs/OPERATOR.md`](../../docs/OPERATOR.md) § Manual checklist — run after loading `packages/extension/dist` unpacked:
 
-Playwright against a real unpacked extension is deferred to nightly CI.
+1. Handoff scrape-then-close (no per-task agent collage)
+2. **Run agent** on one root → provisions that item only
+3. Mid-run `mint_item` children appear under Agent accordion / You-Waiting columns
+4. You child with clickable `source.url` (URL-first park; no agent `placement=human`)
+
+Playwright smoke (`packages/e2e/playwright`) loads the unpacked extension in CI.

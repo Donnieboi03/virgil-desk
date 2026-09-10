@@ -15,8 +15,13 @@
         "scroll",
         "scrape",
         "screenshot",
+        "observe",
+        "probe_form",
+        "probe_links",
+        "probe_table",
         "click",
         "fill",
+        "key",
         "wait",
         "focusTab"
       ]
@@ -24,6 +29,18 @@
     "human_tab_id": { "type": "integer" },
     "tab_id": { "type": "integer" },
     "url": { "type": "string" },
-    "verify_level": { "enum": ["read", "action", "handoff"] }
+    "handoff_url": { "type": "string" },
+    "verify_level": { "enum": ["read", "action", "handoff"] },
+    "params": {
+      "type": "object",
+      "properties": {
+        "placement": {
+          "enum": ["agent", "human"],
+          "description": "openTab only: agent (default, Virgil · Agent group) or human (outside group)"
+        }
+      },
+      "additionalProperties": true
+    },
+    "skip_screenshot": { "type": "boolean" }
   }
 }

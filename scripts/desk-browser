@@ -1,0 +1,7 @@
+#!/usr/bin/env python3
+"""Thin wrapper — delegates to desk_host.desk_browser_cli."""
+
+from desk_host.desk_browser_cli import main
+
+if __name__ == "__main__":
+    raise SystemExit(main())

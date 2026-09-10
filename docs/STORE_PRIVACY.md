@@ -5,6 +5,8 @@ Virgil Desk collects and processes data as follows:
 ## Data stored locally
 
 - **Board state** (`chrome.storage.local`): work items you see in the side panel (You / Agent / Waiting).
+- **Desk memory** (`chrome.storage.local` key `virgil_desk_memory_v1`): last few execute summaries and per-handoff notepad bullets shared across agent tasks.
+- **Desk semantic facts** (`chrome.storage.local` key `virgil_desk_semantic_v1`): optional standing prefs/decisions (key/value/tags). Do **not** store secrets, passwords, or payment data. See [`MEMORY.md`](MEMORY.md).
 - **Tab session map** (`chrome.storage.session`): pairs human tab ↔ agent tab for the current browser session only.
 - **Host URL** (`chrome.storage.sync`): optional setting for your local Virgil Host address (default `http://127.0.0.1:8787`).
 

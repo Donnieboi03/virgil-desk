@@ -3,12 +3,18 @@
   "name": "Virgil Desk",
   "version": "0.1.0",
   "description": "Allocate work between you and agents in your browser.",
-  "permissions": ["storage", "sidePanel", "activeTab", "tabs", "tabGroups", "scripting"],
+  "permissions": ["storage", "sidePanel", "activeTab", "tabs", "tabGroups", "scripting", "alarms"],
   "host_permissions": ["http://127.0.0.1/*", "http://localhost/*", "<all_urls>"],
   "background": { "service_worker": "background.js", "type": "module" },
   "side_panel": { "default_path": "panel.html" },
   "action": { "default_title": "Virgil Desk" },
   "options_page": "options.html",
+  "web_accessible_resources": [
+    {
+      "resources": ["interactObserve.bundle.js", "reveal.html", "reveal.js"],
+      "matches": ["<all_urls>"]
+    }
+  ],
   "content_scripts": [
     {
       "matches": ["<all_urls>"],

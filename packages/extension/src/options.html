@@ -1,8 +1,100 @@
 <!DOCTYPE html>
 <html>
+  <head>
+    <meta charset="utf-8" />
+    <title>Virgil Desk options</title>
+    <style>
+      body {
+        font-family: system-ui, sans-serif;
+        max-width: 40rem;
+        margin: 1.5rem;
+        line-height: 1.4;
+      }
+      label {
+        display: block;
+        margin: 0.75rem 0 0.25rem;
+      }
+      input,
+      select {
+        width: 100%;
+        box-sizing: border-box;
+        padding: 0.35rem 0.5rem;
+      }
+      button {
+        margin-top: 0.5rem;
+        margin-right: 0.35rem;
+      }
+      #facts {
+        margin-top: 1rem;
+        border-top: 1px solid #ccc;
+        padding-top: 0.75rem;
+      }
+      .fact {
+        display: flex;
+        gap: 0.5rem;
+        align-items: flex-start;
+        padding: 0.5rem 0;
+        border-bottom: 1px solid #eee;
+      }
+      .fact-body {
+        flex: 1;
+        min-width: 0;
+      }
+      .fact-key {
+        font-weight: 600;
+      }
+      .fact-meta {
+        color: #666;
+        font-size: 0.85rem;
+      }
+      .row {
+        display: flex;
+        gap: 0.5rem;
+        align-items: end;
+      }
+      .row > div {
+        flex: 1;
+      }
+      .status {
+        color: #066;
+        font-size: 0.9rem;
+        min-height: 1.2em;
+      }
+    </style>
+  </head>
   <body>
+    <h1>Virgil Desk</h1>
     <label>Host URL <input id="hostUrl" value="http://127.0.0.1:8787" /></label>
-    <button id="save">Save</button>
-    <script src="options.js"></script>
+    <button id="save">Save Host URL</button>
+    <p class="status" id="hostStatus"></p>
+
+    <h2>Semantic facts</h2>
+    <p>
+      Standing prefs and decisions injected into each Run agent Packet (capped). Stored locally —
+      no secrets.
+    </p>
+    <div class="row">
+      <div>
+        <label>Key <input id="factKey" placeholder="prefer_concise" /></label>
+      </div>
+      <div>
+        <label>Value <input id="factValue" placeholder="Prefer concise board summaries" /></label>
+      </div>
+      <div>
+        <label
+          >Tags
+          <select id="factTags">
+            <option value="user">user</option>
+            <option value="decision">decision</option>
+            <option value="user,decision">user,decision</option>
+          </select>
+        </label>
+      </div>
+    </div>
+    <button id="addFact">Add / update fact</button>
+    <p class="status" id="factStatus"></p>
+    <div id="facts"></div>
+
+    <script type="module" src="options.js"></script>
   </body>
 </html>

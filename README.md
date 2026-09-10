@@ -1,6 +1,6 @@
 # Virgil Desk
 
-**Virgil Desk** is a Chrome extension + local Host that allocates work between **you** and **agents** in the browser you already use. Sibling to [Virgil Hub](https://github.com/Donnieboi03/Virgil) (Notion + tick); standalone at runtime.
+**Virgil Desk** is a Chrome extension + local Host that allocates work between **you** and **agents** in the browser you already use.
 
 ## Problem
 
@@ -31,11 +31,17 @@ Set agent backend: `DESK_AGENT_BACKEND=mock|hermes|openclaw`
 
 ## Docs
 
-- [docs/OPERATOR.md](docs/OPERATOR.md) — first dogfood + Hermes wiring
-- [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)
+- [docs/PRODUCT.md](docs/PRODUCT.md) — product scope and boundaries
+- [docs/OPERATOR.md](docs/OPERATOR.md) — first live check + Hermes wiring
+- [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) — Done / park / mint / locks
 - [docs/PROTOCOL.md](docs/PROTOCOL.md)
-- [docs/BROWSER_LAYER.md](docs/BROWSER_LAYER.md)
-- [docs/AGENT_BACKENDS.md](docs/AGENT_BACKENDS.md)
+- [docs/BROWSER_LAYER.md](docs/BROWSER_LAYER.md) — Path B Eyes/Hands
+- [docs/HANDOFF_CAPTURE.md](docs/HANDOFF_CAPTURE.md) — viewport handoff, virtualization, JS heap
+- [docs/ENV.md](docs/ENV.md) — environment variables
+- [docs/HERMES_SETUP.md](docs/HERMES_SETUP.md) — Hermes profile, decompose, browser tools
+- [docs/OBSERVABILITY.md](docs/OBSERVABILITY.md) · [docs/TESTING.md](docs/TESTING.md)
+- [docs/NEXTSTEPS.md](docs/NEXTSTEPS.md) — follow-up queue
+- [docs/archive/](docs/archive/) — research notes (not living SoT)
 
 ## License
 

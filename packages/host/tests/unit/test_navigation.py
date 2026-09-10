@@ -1,13 +1,13 @@
 from desk_host.navigation import choose_navigation_op, normalize_browser_command
 
 
-def test_duplicate_same_path():
+def test_same_path_is_open_tab():
     assert (
         choose_navigation_op(
             "https://example.com/job/1?q=a",
             "https://example.com/job/1#x",
         )
-        == "duplicateTab"
+        == "openTab"
     )
 
 
@@ -26,4 +26,27 @@ def test_normalize_navigate():
             "handoff_url": "https://example.com/page",
         }
     )
-    assert cmd["op"] == "duplicateTab"
+    assert cmd["op"] == "openTab"
+
+
+def test_normalize_duplicate_becomes_open():
+    cmd = normalize_browser_command(
+        {
+            "op": "duplicateTab",
+            "url": "https://example.com/page",
+            "handoff_url": "https://example.com/page",
+        }
+    )
+    assert cmd["op"] == "openTab"
+
+
+def test_normalize_promotes_params_url():
+    cmd = normalize_browser_command(
+        {
+            "op": "openTab",
+            "params": {"url": "https://jobs.example.com/apply"},
+            "handoff_url": "https://mail.google.com/mail/u/0/",
+        }
+    )
+    assert cmd["url"] == "https://jobs.example.com/apply"
+    assert cmd["op"] == "openTab"

@@ -25,6 +25,8 @@ jobs:
       - run: npm run validate:schema
       - run: pip install -e "./packages/host[dev]"
       - run: pytest packages/host/tests packages/e2e -q
+      - run: cd packages/e2e/playwright && npm install && npx playwright install chromium
+      - run: cd packages/e2e/playwright && xvfb-run -a npm test
       - uses: actions/upload-artifact@v4
         with:
           name: extension-dist

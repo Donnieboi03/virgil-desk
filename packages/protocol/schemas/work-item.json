@@ -7,7 +7,12 @@
     "id": { "type": "string" },
     "column": { "enum": ["you", "agent", "waiting"] },
     "title": { "type": "string" },
-    "status": { "enum": ["proposed", "running", "done", "failed", "denied"] },
+    "status": { "enum": ["proposed", "running", "awaiting_human", "done", "failed", "denied"] },
+    "parent_id": { "type": "string" },
+    "kind": { "enum": ["parent", "subtask"], "default": "parent" },
+    "park_kind": { "enum": ["auth_gate", "human_remainder"] },
+    "resume": { "type": "boolean" },
+    "resume_ready": { "type": "boolean" },
     "source": {
       "type": "object",
       "required": ["kind"],
@@ -15,6 +20,14 @@
         "kind": { "enum": ["handoff", "inbox", "calendar"] },
         "url": { "type": "string" },
         "ref": { "type": "string" }
+      }
+    },
+    "hints": {
+      "type": "object",
+      "properties": {
+        "search_query": { "type": "string" },
+        "sender": { "type": "string" },
+        "subject_contains": { "type": "string" }
       }
     }
   }

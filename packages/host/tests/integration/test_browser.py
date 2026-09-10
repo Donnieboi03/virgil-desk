@@ -13,7 +13,7 @@ def test_policy_blocks_human_tab_click():
 
 
 @pytest.mark.asyncio
-async def test_dispatch_denied_on_human_tab():
+async def test_dispatch_denied_on_human_tab(fake_extension_connected):
     with pytest.raises(PermissionError):
         await dispatch_browser_command(
             {
@@ -28,7 +28,7 @@ async def test_dispatch_denied_on_human_tab():
 
 
 @pytest.mark.asyncio
-async def test_browser_rest_endpoint_policy():
+async def test_browser_rest_endpoint_policy(fake_extension_connected):
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://test") as client:
         r = await client.post(
