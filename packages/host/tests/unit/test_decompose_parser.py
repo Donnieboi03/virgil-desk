@@ -63,7 +63,7 @@ def test_hints_members_kept_and_string_entries_normalized():
                     "hints": {
                         "search_query": "collab OR partnership",
                         "members": [
-                            {"sender": "INNOCN", "subject_contains": "partnership"},
+                            {"sender": "BrandCo", "subject_contains": "partnership"},
                             {"sender": "Acme"},
                             "plain subject fallback",
                             {"junk": True},
@@ -80,7 +80,7 @@ def test_hints_members_kept_and_string_entries_normalized():
     assert out is not None
     members = out["items"][0]["hints"]["members"]
     assert members == [
-        {"sender": "INNOCN", "subject_contains": "partnership"},
+        {"sender": "BrandCo", "subject_contains": "partnership"},
         {"sender": "Acme"},
         {"subject_contains": "plain subject fallback"},
     ]

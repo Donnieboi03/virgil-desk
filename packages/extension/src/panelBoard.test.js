@@ -40,7 +40,7 @@ describe("childChecklist", () => {
 describe("groupsForFollowColumn", () => {
   it("nests you children under agent parent title", () => {
     const all = [
-      { id: "agent1", title: "Western Digital questions", column: "agent" },
+      { id: "agent1", title: "Example Corp questions", column: "agent" },
       {
         id: "you1",
         title: "Complete questionnaire",
@@ -54,7 +54,7 @@ describe("groupsForFollowColumn", () => {
     const { roots, groups } = groupsForFollowColumn(you, all);
     expect(roots.map((r) => r.id)).toEqual(["you_root"]);
     expect(groups).toHaveLength(1);
-    expect(groups[0].parentTitle).toBe("Western Digital questions");
+    expect(groups[0].parentTitle).toBe("Example Corp questions");
     expect(groups[0].children.map((c) => c.id)).toEqual(["you1"]);
     expect(followGroupShouldOpen(groups[0].children)).toBe(true);
   });

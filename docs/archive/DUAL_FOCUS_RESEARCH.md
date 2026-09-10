@@ -1,6 +1,6 @@
 # Dual-focus research — Virgil Desk
 
-**Audience:** Donovan (operator / CS founder).  
+**Audience:** Operator / CS founder.  
 **Status:** **Archive** — research synthesis (Aug 29, 2026). Not living product SoT. Living Path B: [`../BROWSER_LAYER.md`](../BROWSER_LAYER.md).
 **Product stake:** Desk’s value is **dual-work** — agent finishes Gmail (or similar) while you do homework. Focus-steal fights that promise.
 
@@ -122,7 +122,7 @@ P0 (measure steal)
 
 ---
 
-## 6. Hints for Donovan (background: CS BS/MS, ops/product founder)
+## 6. Hints for the operator (background: CS BS/MS, ops/product founder)
 
 Use this section as a taste filter, not a feature checklist.
 
@@ -168,7 +168,7 @@ Dual-focus is a **wedge** if you can demo homework uninterrupted for a full Run.
 - Whether `Emulation.setFocusEmulationEnabled` helps screenshots without OS steal.
 - Whether agent-window + human-window in one profile still SSO-conflicts for school vs personal (policy, not CDP).
 - **T1/B3 crux, unresolved by documentation alone:** is the reported macOS focus-steal a property of specific CDP commands (`activateTarget`/`bringToFront`), or of the raw remote-debugging-port WebSocket transport itself (per chrome-devtools-mcp#1254)? If it's transport-level, `chrome.debugger`'s in-process extension transport is the only thing that could plausibly differ from raw CDP — but no source tested that directly. Needs the T1 → B3 spike pair, not more reading.
-- Whether recent Chrome (post the referenced Puppeteer #14922-style fixes) has changed background-tab `captureScreenshot`/Input behavior on headed macOS Chrome versus the mostly-older reports surveyed here — re-verify against Donovan's actual Chrome version before trusting any single report.
+- Whether recent Chrome (post the referenced Puppeteer #14922-style fixes) has changed background-tab `captureScreenshot`/Input behavior on headed macOS Chrome versus the mostly-older reports surveyed here — re-verify against the operator's actual Chrome version before trusting any single report.
 - Whether Stage Manager (macOS 13+) changes W3's Spaces dynamics — no authoritative source found either way.
 
 **Non-goals (this research)**
