@@ -100,6 +100,12 @@ def _execute_item_timelines(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
             elif kind == "browser.command":
                 commands.append((ts, row))
 
+        # Prefer item_id join when browser events carry it; else time-window (legacy JSONL).
+        stamped = any(_item_id(row) == iid for _, row in results + commands)
+        if stamped:
+            results = [(ts, row) for ts, row in results if _item_id(row) == iid]
+            commands = [(ts, row) for ts, row in commands if _item_id(row) == iid]
+
         ext_ms = 0
         op_ext: list[dict[str, Any]] = []
         for ts, row in results:

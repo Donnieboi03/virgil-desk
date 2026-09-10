@@ -24,7 +24,14 @@ from .harness_backend import (
 )
 from .memory import empty_memory, empty_semantic, format_for_execute
 from .navigation import normalize_browser_command
-from .observability import browser_command_result_fields, measure_from_snapshot, record, usage_measure
+from .observability import (
+    browser_command_result_fields,
+    measure_from_snapshot,
+    record,
+    site_fingerprint,
+    usage_measure,
+)
+from .backends.hermes import HermesExecuteError
 from .policy import policy_denied_reason
 from .execute_validation import (
     auth_gate_blocks_false_closure,
@@ -53,11 +60,20 @@ _command_waiters: dict[str, asyncio.Future[dict[str, Any]]] = {}
 _memory_waiters: dict[str, asyncio.Future[dict[str, Any]]] = {}
 _browser_result_counts: dict[str, int] = {}
 _executing_item_ids: set[str] = set()
+_executing_run_ids: dict[str, str] = {}  # run_id -> item_id (one execute per run)
 _command_evidence_flags: dict[str, bool] = {}
 _execute_ops: dict[str, list[str]] = {}
 _failed_ops: dict[str, list[str]] = {}
 _command_ops: dict[str, str] = {}
 _last_probe_links_empty: dict[str, bool] = {}
+# Execute-scoped obs: stamp browser.* with item_id / op_seq for procedure mining.
+_active_item_by_run: dict[str, str] = {}
+_op_seq_by_key: dict[tuple[str, str], int] = {}
+_pending_command_meta: dict[str, dict[str, Any]] = {}
+
+SCREENSHOT_OPS = frozenset(
+    {"click", "fill", "scroll", "scrape", "screenshot", "openTab", "duplicateTab"}
+)
 
 
 class ExtensionNotConnectedError(Exception):
@@ -68,9 +84,108 @@ def _require_extension() -> None:
     if not _extension_connected or _extension_ws is None:
         raise ExtensionNotConnectedError("extension not connected")
 
-SCREENSHOT_OPS = frozenset(
-    {"click", "fill", "scroll", "scrape", "screenshot", "openTab", "duplicateTab"}
-)
+def _binding_hints_from_command(command: dict[str, Any]) -> dict[str, Any]:
+    """Small mineable params for procedure reconciliation (not full Packet)."""
+    hints: dict[str, Any] = {}
+    if command.get("tab_id") is not None:
+        hints["tab_id"] = command.get("tab_id")
+    if command.get("url"):
+        hints["url"] = str(command.get("url"))[:500]
+    params = command.get("params")
+    if isinstance(params, dict):
+        for key in ("target_id", "ref", "text", "contains", "selector", "frame_id"):
+            if params.get(key) is None:
+                continue
+            val = params.get(key)
+            if isinstance(val, str):
+                hints[key] = val[:200]
+            else:
+                hints[key] = val
+        if params.get("url") and "url" not in hints:
+            hints["url"] = str(params.get("url"))[:500]
+    return hints
+
+
+def _next_op_seq(run_id: str, item_id: str) -> int:
+    key = (run_id, item_id)
+    n = _op_seq_by_key.get(key, 0) + 1
+    _op_seq_by_key[key] = n
+    return n
+
+
+def _execute_obs_context(run_id: str, command: dict[str, Any] | None = None) -> dict[str, Any]:
+    item_id = None
+    if command and command.get("item_id"):
+        item_id = str(command.get("item_id"))
+    if not item_id:
+        item_id = _active_item_by_run.get(run_id)
+    out: dict[str, Any] = {}
+    if item_id:
+        out["item_id"] = item_id
+    return out
+
+
+def _obs_from_pending_command(
+    cid: str | None,
+    *,
+    run_id: str = "",
+    result: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    """Pull item_id/op_seq from pending command meta; fingerprint from result URL."""
+    extra: dict[str, Any] = {}
+    meta = _pending_command_meta.pop(str(cid), None) if cid else None
+    if isinstance(meta, dict):
+        if meta.get("item_id"):
+            extra["item_id"] = meta["item_id"]
+        if meta.get("op_seq") is not None:
+            extra["op_seq"] = meta["op_seq"]
+    if not extra.get("item_id") and run_id:
+        mapped = _active_item_by_run.get(run_id)
+        if mapped:
+            extra["item_id"] = mapped
+    url = None
+    if result:
+        url = result.get("url")
+    if url:
+        fp = site_fingerprint(str(url))
+        if fp:
+            extra["site_fingerprint"] = fp
+    return extra
+
+
+def _record_execute_failed_event(
+    *,
+    run_id: str,
+    item_id: str,
+    err: str,
+    exc: Exception | None = None,
+    measure: dict[str, Any] | None = None,
+    outcome: str = "failed",
+) -> None:
+    cfg = get_config()
+    cap = cfg.prompts.event_snippet_max_chars
+    fields: dict[str, Any] = {
+        "item_id": item_id,
+        "error": err[:cap],
+        "flags": {"outcome": outcome},
+    }
+    merged_measure: dict[str, Any] = dict(measure or {})
+    if isinstance(exc, HermesExecuteError):
+        if exc.exit_code is not None:
+            merged_measure["exit_code"] = exc.exit_code
+        usage = usage_measure(exc.usage or {})
+        if usage:
+            merged_measure.update(usage)
+        if exc.empty_output:
+            fields["flags"]["empty_output"] = True
+            fields["flags"]["outcome"] = "empty_output"
+        if exc.stdout:
+            fields["stdout_snippet"] = exc.stdout[:cap]
+        if exc.stderr:
+            fields["stderr_snippet"] = exc.stderr[:cap]
+    if merged_measure:
+        fields["measure"] = merged_measure
+    record("agent.execute_failed", run_id, cfg=cfg, **fields)
 
 
 def get_config():
@@ -403,6 +518,7 @@ async def _execute_session_start(
     human_tab_id: Any,
     handoff_url: str,
 ) -> None:
+    _active_item_by_run[run_id] = item_id
     await _send_to_extension(
         {
             "type": "execute_session",
@@ -414,6 +530,18 @@ async def _execute_session_start(
             "handoff_url": handoff_url,
         }
     )
+
+
+def _execute_session_end(run_id: str, item_id: str | None = None) -> None:
+    """Clear active-item obs for this execute; only drop map entry if it still matches."""
+    if item_id:
+        _op_seq_by_key.pop((run_id, item_id), None)
+        if _active_item_by_run.get(run_id) == item_id:
+            _active_item_by_run.pop(run_id, None)
+        return
+    popped = _active_item_by_run.pop(run_id, None)
+    if popped:
+        _op_seq_by_key.pop((run_id, popped), None)
 
 
 async def _record_execute_memory(
@@ -534,6 +662,10 @@ def reset_state_for_tests() -> None:
     _command_ops.clear()
     _last_probe_links_empty.clear()
     _executing_item_ids.clear()
+    _executing_run_ids.clear()
+    _active_item_by_run.clear()
+    _op_seq_by_key.clear()
+    _pending_command_meta.clear()
     _extension_ws = None
     _extension_connected = False
     harness_reset_for_tests()
@@ -632,6 +764,7 @@ async def _dispatch_harness_and_record(command: dict[str, Any]) -> dict[str, Any
         screenshot_count_run_total=_screenshot_counts.get(run_id, 0),
     )
     flags = {**fields["flags"], "driver": "harness"}
+    extra = _obs_from_pending_command(cid, run_id=str(run_id or ""), result=result)
     record(
         "browser.command_result",
         run_id,
@@ -641,6 +774,7 @@ async def _dispatch_harness_and_record(command: dict[str, Any]) -> dict[str, Any
         flags=flags,
         driver="harness",
         **fields["detail"],
+        **extra,
     )
     if run_id and result.get("ok"):
         count_evidence = _command_evidence_flags.pop(cid, True)
@@ -732,6 +866,7 @@ async def dispatch_browser_command(command: dict[str, Any]) -> None:
         if run_id:
             _failed_ops.setdefault(run_id, []).append("closeTab")
         fields = browser_command_result_fields(result, op="closeTab")
+        extra = _obs_from_pending_command(cid, run_id=str(run_id or ""), result=result)
         record(
             "browser.command_result",
             run_id,
@@ -740,6 +875,7 @@ async def dispatch_browser_command(command: dict[str, Any]) -> None:
             measure=fields["measure"],
             flags=fields["flags"],
             **fields["detail"],
+            **extra,
         )
         waiter = _command_waiters.get(cid or "")
         if waiter and not waiter.done():
@@ -747,14 +883,32 @@ async def dispatch_browser_command(command: dict[str, Any]) -> None:
         return
 
     driver = "harness" if harness_path else "extension"
+    run_id = str(command.get("run_id") or "")
+    obs_ctx = _execute_obs_context(run_id, command)
+    item_id = obs_ctx.get("item_id") or ""
+    op_seq = _next_op_seq(run_id, item_id) if run_id else None
+    hints = _binding_hints_from_command(command)
+    cid = command.get("command_id")
+    if cid:
+        meta = {"item_id": item_id or None, "op_seq": op_seq}
+        meta.update(hints)
+        _pending_command_meta[str(cid)] = meta
+    cmd_fields: dict[str, Any] = {
+        "command_id": cid,
+        "op": command.get("op"),
+        "driver": driver,
+    }
+    if item_id:
+        cmd_fields["item_id"] = item_id
+    if op_seq is not None:
+        cmd_fields["op_seq"] = op_seq
+    cmd_fields.update(hints)
     record(
         "browser.command",
-        command.get("run_id", ""),
+        run_id,
         cfg=cfg,
         include_limits=False,
-        command_id=command.get("command_id"),
-        op=command.get("op"),
-        driver=driver,
+        **cmd_fields,
     )
 
     if harness_path:
@@ -950,6 +1104,12 @@ async def execute_item(item_id: str, body: ExecuteBody) -> dict[str, Any]:
             status_code=409,
             detail="execute already in progress for this item",
         )
+    if body.run_id in _executing_run_ids:
+        other = _executing_run_ids[body.run_id]
+        raise HTTPException(
+            status_code=409,
+            detail=f"execute already in progress for this run ({other})",
+        )
     try:
         _require_extension()
     except ExtensionNotConnectedError as exc:
@@ -984,6 +1144,7 @@ async def execute_item(item_id: str, body: ExecuteBody) -> dict[str, Any]:
     _failed_ops[body.run_id] = []
     _last_probe_links_empty[body.run_id] = False
     _executing_item_ids.add(item_id)
+    _executing_run_ids[body.run_id] = item_id
     if item.get("resume_ready") or item.get("cleared_gates"):
         cleared_gates = list(item.get("cleared_gates") or [])
         ctx["resume"] = {
@@ -1028,12 +1189,15 @@ async def execute_item(item_id: str, body: ExecuteBody) -> dict[str, Any]:
             result = await execute_fn(item, ctx)
         except Exception as exc:
             err = str(exc)[: cfg.prompts.event_snippet_max_chars]
-            record(
-                "agent.execute_failed",
-                body.run_id,
-                cfg=cfg,
+            outcome = "failed"
+            if isinstance(exc, HermesExecuteError) and exc.empty_output:
+                outcome = "empty_output"
+            _record_execute_failed_event(
+                run_id=body.run_id,
                 item_id=item_id,
-                error=err,
+                err=err,
+                exc=exc,
+                outcome=outcome,
             )
             try:
                 await _patch_work_item(
@@ -1063,6 +1227,7 @@ async def execute_item(item_id: str, body: ExecuteBody) -> dict[str, Any]:
                 item_id=item_id,
                 error=err,
                 measure=usage or None,
+                flags={"outcome": "no_browser_evidence"},
             )
             await _patch_work_item(
                 item_id,
@@ -1105,7 +1270,11 @@ async def execute_item(item_id: str, body: ExecuteBody) -> dict[str, Any]:
         if not incomplete:
             incomplete = human_judgment_blocks_false_closure(
                 str(evidence["summary"] or ""),
-                item_title=str(item.get("title") or current.get("title") or ""),
+                item_title=str(
+                    item.get("title")
+                    or (_work_items.get(item_id) or {}).get("title")
+                    or ""
+                ),
                 has_you_remainder=bool(remainder_you or gate_you),
             )
         # Auth-gate You already parked: keep awaiting_human (Resume path), never fail→Retry.
@@ -1132,6 +1301,7 @@ async def execute_item(item_id: str, body: ExecuteBody) -> dict[str, Any]:
                 item_id=item_id,
                 error=err,
                 measure=usage or None,
+                flags={"outcome": "incomplete"},
             )
             await _patch_work_item(
                 item_id,
@@ -1212,7 +1382,7 @@ async def execute_item(item_id: str, body: ExecuteBody) -> dict[str, Any]:
                     "exit_code": (result or {}).get("exit_code"),
                     **usage,
                 },
-                flags={"awaiting_human": True, "preserve_tabs": True},
+                flags={"awaiting_human": True, "preserve_tabs": True, "outcome": "awaiting_human"},
                 item_id=item_id,
                 summary_snippet=evidence["summary"][
                     : cfg.prompts.event_summary_snippet_max_chars
@@ -1247,6 +1417,7 @@ async def execute_item(item_id: str, body: ExecuteBody) -> dict[str, Any]:
                 "exit_code": (result or {}).get("exit_code"),
                 **usage,
             },
+            flags={"outcome": "done"},
             item_id=item_id,
             summary_snippet=evidence["summary"][: cfg.prompts.event_summary_snippet_max_chars],
         )
@@ -1261,6 +1432,9 @@ async def execute_item(item_id: str, body: ExecuteBody) -> dict[str, Any]:
         return {"ok": True, "work_item_id": item_id, "status": "done", "result": result}
     finally:
         _executing_item_ids.discard(item_id)
+        if _executing_run_ids.get(body.run_id) == item_id:
+            _executing_run_ids.pop(body.run_id, None)
+        _execute_session_end(body.run_id, item_id)
         # Auth-gate You may have been minted mid-execute even if the run later
         # failed (no browser evidence / exception). Keep the agent tab for Show.
         if not preserve_tabs and open_auth_gate_you(item_id, _work_items):
@@ -1470,6 +1644,9 @@ async def extension_ws(ws: WebSocket) -> None:
                     op=str(op_name) if op_name else None,
                     screenshot_count_run_total=_screenshot_counts.get(run_id, 0),
                 )
+                extra = _obs_from_pending_command(
+                    cid, run_id=str(run_id or ""), result=result
+                )
                 record(
                     "browser.command_result",
                     run_id,
@@ -1478,6 +1655,7 @@ async def extension_ws(ws: WebSocket) -> None:
                     measure=fields["measure"],
                     flags=fields["flags"],
                     **fields["detail"],
+                    **extra,
                 )
                 if run_id and result.get("ok"):
                     count_evidence = _command_evidence_flags.pop(cid or "", True)

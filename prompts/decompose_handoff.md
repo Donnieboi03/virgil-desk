@@ -35,6 +35,7 @@ Output **only** valid JSON matching this shape (no markdown, no prose outside JS
 - Use the page URL, title, **intent**, excerpt, links, and screenshot to infer real titles — not generic placeholders.
 - Parent titles are **closures** (do / delegate / schedule) — prefer “Review offer and extract next step”, not “Summarize page”.
 - Up to **{{decompose_items_max}} items** total across columns; prefer the most actionable **visible** items under the cap. Dense list UIs: one item per clearly distinct visible row when under the cap — **only from the snapshot**, not a guessed full mailbox/feed.
+- **Homogeneous clump (allowed):** when several **visible** rows share the **same pattern** (same site, same open→observe→verified-terminal / open→read class of work), prefer **one Agent root** that covers the set instead of N near-identical cards — still viewport-bound (no inventing off-DOM rows). Divergent goals stay separate Agent cards. Cap remains `decompose_items_max`, not “one card = one email forever.”
 - Keep titles under {{work_item_title_max_chars}} characters.
 - **Agent items must not use `"status": "done"`** — only `proposed` or `running` until the operator runs **Run agent**. Host coerces agent status to `proposed`.
 - For **agent** list/mail items, include **`hints`** when inferable (`search_query`, `sender`, `subject_contains`) so execute can re-find the row. Time filters (e.g. mail `newer_than:…`) belong in **`hints.search_query`** when the operator/intent clearly asks — not as a default for every handoff.

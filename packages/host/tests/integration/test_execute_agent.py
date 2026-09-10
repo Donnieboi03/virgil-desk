@@ -1002,3 +1002,105 @@ def test_auth_gate_preserves_tab_when_execute_fails_no_browser_evidence(monkeypa
             assert finished["cleanup"].get("active") is False
         finally:
             ext.close()
+
+
+def test_execute_empty_title_does_not_500(monkeypatch):
+    """Regression: empty title must not UnboundLocalError on human_judgment check."""
+
+    async def ok_execute(_self, item: dict[str, Any], ctx: dict[str, Any]) -> dict[str, Any]:
+        from desk_host.app import dispatch_browser_command_and_wait
+
+        await dispatch_browser_command_and_wait(
+            {
+                "command_id": "c_empty_title",
+                "run_id": ctx["run_id"],
+                "op": "scrape",
+                "human_tab_id": ctx["human_tab_id"],
+                "tab_id": ctx["agent_tab_id"],
+            }
+        )
+        return {
+            "summary": "Verified expired link (deadline passed); no further action.",
+            "exit_code": 0,
+        }
+
+    monkeypatch.setattr(MockBackend, "execute_item", ok_execute)
+    with TestClient(app) as client:
+        ext = MockExtensionSession(client)
+        try:
+            result = ext.handoff(
+                {
+                    "url": "https://example.com/x",
+                    "human_tab_id": 1,
+                    "agent_tab_id": 2,
+                    "window_id": 1,
+                }
+            )
+            run_id = result["run_id"]
+            agent = [i for i in result["items"] if i["column"] == "agent"][0]
+            from desk_host import app as desk_app
+
+            desk_app._work_items[agent["id"]]["title"] = ""
+
+            holder: list = []
+
+            def _execute():
+                holder.append(
+                    client.post(
+                        f"/v1/items/{agent['id']}/execute",
+                        json={"run_id": run_id},
+                    )
+                )
+
+            thread = threading.Thread(target=_execute, daemon=True)
+            thread.start()
+            ext.begin_execute()
+            ext.respond_next_browser_command(run_id=run_id, op="scrape")
+            ext.finish_execute_messages()
+            thread.join(timeout=5)
+            assert holder[0].status_code == 200, holder[0].text
+            assert holder[0].json()["status"] == "done"
+        finally:
+            ext.close()
+
+
+def test_execute_second_item_same_run_returns_409():
+    """One active execute per run — overlapping Run agent must 409."""
+    from desk_host import app as desk_app
+
+    with TestClient(app) as client:
+        ext = MockExtensionSession(client)
+        try:
+            result = ext.handoff(
+                {
+                    "url": "https://example.com/inbox",
+                    "human_tab_id": 1,
+                    "agent_tab_id": 2,
+                    "window_id": 1,
+                }
+            )
+            run_id = result["run_id"]
+            agent = [i for i in result["items"] if i["column"] == "agent"][0]
+            mint = client.post(
+                "/v1/items/mint",
+                json={
+                    "run_id": run_id,
+                    "parent_id": agent["id"],
+                    "column": "agent",
+                    "title": "Second agent task",
+                },
+            )
+            assert mint.status_code == 200, mint.text
+            ext.ws.receive_json()
+            second_id = mint.json()["item"]["id"]
+
+            desk_app._executing_run_ids[run_id] = agent["id"]
+            desk_app._executing_item_ids.add(agent["id"])
+            second = client.post(
+                f"/v1/items/{second_id}/execute",
+                json={"run_id": run_id},
+            )
+            assert second.status_code == 409, second.text
+            assert "run" in second.json()["detail"].lower()
+        finally:
+            ext.close()

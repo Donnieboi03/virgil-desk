@@ -106,6 +106,39 @@ class HermesRunResult:
         return (self.stdout or self.stderr or "").strip()
 
 
+class HermesExecuteError(RuntimeError):
+    """Execute failed after a Hermes CLI run — carries pipes + usage for obs."""
+
+    def __init__(
+        self,
+        message: str,
+        *,
+        result: HermesRunResult | None = None,
+        empty_output: bool = False,
+    ) -> None:
+        super().__init__(message)
+        self.empty_output = bool(empty_output)
+        if result is None:
+            self.stdout = ""
+            self.stderr = ""
+            self.exit_code = 0
+            self.usage: dict[str, Any] | None = None
+        else:
+            self.stdout = result.stdout or ""
+            self.stderr = result.stderr or ""
+            self.exit_code = int(result.exit_code or 0)
+            self.usage = result.usage
+
+
+def raise_hermes_execute(
+    message: str,
+    *,
+    result: HermesRunResult,
+    empty_output: bool = False,
+) -> None:
+    raise HermesExecuteError(message, result=result, empty_output=empty_output)
+
+
 _DESK_USAGE_LINE = re.compile(r"(?m)^DESK_USAGE:(\{.*\})\s*$")
 _USAGE_WALK_KEYS = frozenset(
     {
@@ -397,24 +430,32 @@ class HermesBackend:
             timeout_sec=cfg.hermes.execute_timeout_sec,
         )
         if result.exit_code != 0:
-            raise RuntimeError(
-                format_hermes_failure(result) or f"hermes exit {result.exit_code}"
+            raise_hermes_execute(
+                format_hermes_failure(result) or f"hermes exit {result.exit_code}",
+                result=result,
             )
         if not result.text:
-            raise RuntimeError("hermes execute returned empty output")
+            raise_hermes_execute(
+                "hermes execute returned empty output",
+                result=result,
+                empty_output=True,
+            )
         summary = format_hermes_summary(result.text, cfg.prompts.execute_summary_max_chars)
         if not summary:
-            raise RuntimeError(
-                format_hermes_failure(result) or "hermes execute returned empty output"
+            raise_hermes_execute(
+                format_hermes_failure(result) or "hermes execute returned empty output",
+                result=result,
+                empty_output=True,
             )
         if execute_summary_indicates_failure(summary):
-            raise RuntimeError(summary)
+            raise_hermes_execute(summary, result=result)
         incomplete = execute_summary_incomplete_reason(summary)
         if incomplete:
-            raise RuntimeError(
+            raise_hermes_execute(
                 incomplete
                 if incomplete.lower().startswith("partial:")
-                else f"Partial: {incomplete}"
+                else f"Partial: {incomplete}",
+                result=result,
             )
         out: dict[str, Any] = {"summary": summary, "exit_code": result.exit_code}
         if result.usage:

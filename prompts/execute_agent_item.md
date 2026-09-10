@@ -101,7 +101,7 @@ Do **not** park merely because a readable link appeared — continue as agent fi
 
 ## Mid-flight subtasks (mandatory when multi-closure)
 
-When Eyes (or a **non-empty** `probe_links`) show **more than one closure** that still needs work:
+When Eyes (or a **non-empty** `probe_links`) show **more than one closure** that still needs work — including a **homogeneous clump** parent covering several same-pattern URLs:
 
 1. **Must** `mint_item` for each distinct **actionable** closure before success stop (not for terminal verified dead-ends):
    ```bash
@@ -116,8 +116,9 @@ When Eyes (or a **non-empty** `probe_links`) show **more than one closure** that
    Prefer passing `source.url` when parking/following a specific link.
 2. Prefer **`column: agent`** for readable follow-ups. Pursue agent children in this run.
 3. Use **`column: you|waiting`** under last-resort park rules (**URL-first** — no `placement:human`).
-4. If you cannot continue or park when required: `Partial:` — do not claim success.
-5. Prefer imperative titles (“Open shared folder and list files”), not “Summarize …”.
+4. **Failure isolation:** if one URL in a clump hits `auth_gate`, empty-stdout / blank Eyes, or timeout — mint that subgoal (You/`Partial:`) and continue or stop with an honest Partial for the parent. **Do not** mark the whole clump Done when only some URLs succeeded.
+5. If you cannot continue or park when required: `Partial:` — do not claim success.
+6. Prefer imperative titles (“Open shared folder and list files”), not “Summarize …”.
 
 If there is truly only one closure and no further agent/**or human** action (including verified terminal pages): say so explicitly (“Verified expired …; no further action.”) after finishing that work — do not use open-only “Observed …”. If the human must still decide or use something, mint `human_remainder` first and acknowledge the park — do not use “Single closure … no further action” after only reading.
 

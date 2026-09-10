@@ -10,7 +10,7 @@ Related: [`BROWSER_LAYER.md`](BROWSER_LAYER.md) (Eyes/Hands), [`PRODUCT.md`](PRO
 | :--- | :--- | :--- |
 | **Capture** | Viewport **excerpt** + **links** + **screenshot**; **`handoff_scroll_loops: 0`** | Faithful “what’s on screen” |
 | **Intent** | Panel chips: **All visible** / **This item** (+ optional detail) → `handoff.intent` | Steers decompose; not a time API |
-| **Board budget** | `prompts.decompose_items_max` (ceiling) | Caps cards, not “how much of the inbox exists” |
+| **Board budget** | `prompts.decompose_items_max` (ceiling) | Caps cards, not “how much of the inbox exists”; homogeneous clumps may use one Agent root for same-pattern visible rows |
 | **Advanced** | `handoff_scroll_loops > 0`, nested-list scroll, site search via `hints.search_query` | Opt-in; easy to overfit mail UIs |
 
 **Do not** treat past-day / unread / “full mailbox” as the product spine. Most sites are not temporal; common jobs are **everything visible** or **this one thing**. Mail time filters belong in **`hints.search_query`** (or a future site adapter), not first-class intent modes.

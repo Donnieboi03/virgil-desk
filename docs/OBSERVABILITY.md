@@ -66,17 +66,49 @@ Framework narrative: [`ARCHITECTURE.md`](ARCHITECTURE.md).
 
 Optional usage fields on `measure` when present — never required; missing usage does not fail the run. Hermes execute usage is best-effort from `DESK_USAGE:` stdout, session JSON, or profile `state.db` `sessions` (`input_tokens`/`output_tokens`/`actual|estimated_cost_usd`).
 
+**`agent.execute_failed` (empty stdout / Hermes pipes):** when Host raises `HermesExecuteError`, the event carries:
+
+| Field | Role |
+|-------|------|
+| `measure.exit_code` | Hermes CLI exit |
+| `measure` usage keys | Same as executed when available |
+| `flags.outcome` | `empty_output` \| `failed` \| … |
+| `flags.empty_output` | True when stdout/summary stripped empty under exit 0 |
+| `stdout_snippet` / `stderr_snippet` | Capped like `handoff.decompose_failed` |
+
+Done policy still fails the item — **no** silent `state.db` last-assistant recovery.
+
+**Terminal outcome labels** (`flags.outcome` on executed/failed): `done` \| `failed` \| `empty_output` \| `no_browser_evidence` \| `incomplete` \| `awaiting_human` \| …
+
+### `browser.command` / `browser.command_result` (mine-ready)
+
+Additive stamps for procedure mining (do **not** slim Eyes):
+
+| Field | On | Notes |
+|-------|-----|--------|
+| `item_id` | command + result | Active execute item for the run |
+| `op_seq` | command + result | Monotonic per `(run_id, item_id)` |
+| Binding hints | command | `tab_id`, `url`, truncated `target_id` / `ref` / `text`\|`contains` / `selector` |
+| `site_fingerprint` | result when `url` present | `netloc` + first path segment |
+| `act_resolved` | result | Keep as today |
+
+**Mining rule:** Eyes-rebind from live observe — do **not** replay ephemeral `t14`-style refs from JSONL.
+
+`desk-events --run-id … --summary` includes `failed_command_count` and up to 20 `failed_ops` (`op`/`error`/`tab_id`/`url`). When any event carried usage, summary also rolls up `prompt_tokens` / `completion_tokens` / `total_tokens` / `cost_usd` (omit keys that are zero/absent).
+
+Per-item EXT/GAP (when execute windows exist): `items[]` with `wall_ms`, `ext_ms` (Σ `duration_ms` on `browser.command_result`), `gap_ms_sum` / `gap_first_ms` / `gap_later_avg` (result → next `browser.command`), `residual_ms`, `op_ext` (per-op duration + optional inject/frame), optional per-item `usage`. Prefer **`item_id` join** when browser events stamp `item_id`; fall back to execute start→end time window for older JSONL. Run skew: `ext_ms_max` / `ext_ms_min` / `ext_ms_median` / `ext_ms_max_item_id`. Summary with `--run-id` reads up to 100k events so windows are not truncated at the default 100-line limit.
+
+### Procedure mine contract
+
+Join shape for a future procedure store (docs only — **no Host runtime** yet): see [`PROCEDURES.md`](PROCEDURES.md).
+
 ### `browser.command_result`
 
 `measure`: `duration_ms`, `scrape_bytes`, `target_count`, optional `eyes_settle_ms` / `eyes_settle_attempts` / `inject_ms` / `frame_count`, …
 
 `flags`: `ok`, `has_screenshot`, `has_interact_targets`, optional `eyes_empty` / `eyes_mode` / `challenge_extended` (harness adds `driver: harness`)
 
-Top-level detail: `command_id`, `op`, `act_resolved`, and when present **`error`**, **`tab_id`**, **`url`**.
-
-`desk-events --run-id … --summary` includes `failed_command_count` and up to 20 `failed_ops` (`op`/`error`/`tab_id`/`url`). When any event carried usage, summary also rolls up `prompt_tokens` / `completion_tokens` / `total_tokens` / `cost_usd` (omit keys that are zero/absent).
-
-Per-item EXT/GAP (when execute windows exist): `items[]` with `wall_ms`, `ext_ms` (Σ `duration_ms` on `browser.command_result`), `gap_ms_sum` / `gap_first_ms` / `gap_later_avg` (result → next `browser.command`), `residual_ms`, `op_ext` (per-op duration + optional inject/frame), optional per-item `usage`. Run skew: `ext_ms_max` / `ext_ms_min` / `ext_ms_median` / `ext_ms_max_item_id`. Summary with `--run-id` reads up to 100k events so windows are not truncated at the default 100-line limit.
+Top-level detail: `command_id`, `op`, `act_resolved`, and when present **`error`**, **`tab_id`**, **`url`**, plus mine-ready fields above.
 
 ### `execute.cleanup_done`
 

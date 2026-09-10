@@ -3,11 +3,11 @@ name: desk-browser-bridge
 description: >-
   Virgil Desk browser bridge: desk-browser CLI, Path B extension Eyes/Hands
   (default) or harness CDP rollback, You/Agent/Waiting board, Accept/Deny proposals.
-version: 1.15.3
+version: 1.15.4
 metadata:
   hermes:
     tags: [virgil-desk, browser, handoff]
-    keywords: [mint_item, subtask, auth_wall, soft_help, park_last_resort, url_first_park, awaiting_human, eyes_empty, eyes_mode, verified_terminal, human_remainder, human_judgment]
+    keywords: [mint_item, subtask, auth_wall, soft_help, park_last_resort, url_first_park, awaiting_human, eyes_empty, eyes_mode, verified_terminal, human_remainder, human_judgment, homogeneous_clump]
 ---
 
 # Desk browser bridge
@@ -119,8 +119,9 @@ Check `act_resolved.url_before` vs `url_after` when opening threads or navigatin
 
 ## Mid-flight subtasks
 
-When Eyes / non-empty probes show **multiple actionable closures**, **must** `mint_item` before success stop (not for terminal verified dead-ends). Prefer **agent** column for readable follow-ups; You/Waiting only under last-resort park. Host blocks parent `done` while agent children are open. Truly one closure or verified terminal: say “Single closure: …” / “Verified expired …; no further action.” after finishing. If a You remainder remains, acknowledge parked remainder instead of “no further action.”
+When Eyes / non-empty probes show **multiple actionable closures** (including a homogeneous multi-URL clump parent), **must** `mint_item` before success stop (not for terminal verified dead-ends). Prefer **agent** column for readable follow-ups; You/Waiting only under last-resort park. **Failure isolation:** one URL's `auth_gate` / empty Eyes / timeout → mint that subgoal or `Partial:` — do not Done the whole clump. Host blocks parent `done` while agent children are open. Truly one closure or verified terminal: say “Single closure: …” / “Verified expired …; no further action.” after finishing. If a You remainder remains, acknowledge parked remainder instead of “no further action.”
 
+General-tab / spawn-first (`openTab`, tab custody, mint You) — not a Gmail-specific bot.
 ## Forbidden
 
 - outbound social send/connect/InMail-class actions, public posts, payment/sign submits

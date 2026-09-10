@@ -128,6 +128,30 @@ def record(
     emit(kind, run_id, payload)
 
 
+def site_fingerprint(url: str | None) -> str | None:
+    """Stable-ish host+path prefix for procedure mining (not Eyes ladder mode)."""
+    if not url or not isinstance(url, str):
+        return None
+    text = url.strip()
+    if not text:
+        return None
+    try:
+        from urllib.parse import urlparse
+
+        parsed = urlparse(text)
+    except Exception:
+        return None
+    host = (parsed.netloc or "").lower()
+    if not host:
+        return None
+    path = parsed.path or "/"
+    parts = [p for p in path.split("/") if p]
+    first = parts[0] if parts else ""
+    if first:
+        return f"{host}/{first}"
+    return host
+
+
 def browser_command_result_fields(
     result: dict[str, Any],
     *,

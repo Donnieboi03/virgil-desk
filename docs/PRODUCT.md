@@ -11,6 +11,7 @@ Virgil Desk is a **browser allocation desk**: you hand off the active tab, an ag
 - URL open/construct is a **secondary workaround** (hostile Eyes) — not the primary operating model
 - **Park You** — auth_gate is tab-first (`agent_tab_id` + Show tab) with URL fallback; **human_remainder** when you must still decide/reply/apply/use docs (not agent-only reads). Auth gates leave the parent **`awaiting_human`** until Mark done → Resume agent
 - **Verified terminal** page state (expired / already submitted) after Eyes read = **Completed** for review goals — not automatic You mint
+- **Limited homogeneous clumping** — decompose may put **one Agent root** over a same-pattern multi-URL set (open → observe → verified-terminal class) when safe; free-form Agent remains default when goals diverge. Cap is still `decompose_items_max`, not “one card = one email forever.” Failure isolation: mint per-subgoal or Partial when one URL hits `auth_gate` / empty-stdout / timeout — do not mark the whole clump Done. Gmail is a test surface, not the architecture. Procedure store/router is **docs-only** for now — [`PROCEDURES.md`](PROCEDURES.md).
 
 ## What it is not
 
@@ -18,8 +19,9 @@ Virgil Desk is a **browser allocation desk**: you hand off the active tab, an ag
 - Not a Chrome Web Store product (load unpacked for now)
 - Not an unattended “send/submit/pay” agent — proposals require Accept
 - Not a URL-first or stealth LinkedIn messaging bot
+- Not a Gmail-specific bot (inbox is one test surface)
 - Not multi-user
-
+- Not a procedure-store runtime yet (mine contract only)
 ## Primary flows
 
 1. **Hand off** — viewport excerpt + screenshot on the **human tab** by default (`handoff_scroll_loops: 0`, no duplicate); optional intent chips → backend decomposes → board patch (no Virgil · Agent yet). See [`HANDOFF_CAPTURE.md`](HANDOFF_CAPTURE.md).

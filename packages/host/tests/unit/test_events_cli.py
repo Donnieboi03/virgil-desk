@@ -164,3 +164,41 @@ def test_summarize_run_ext_gap_per_item():
     assert slow["usage"]["prompt_tokens"] == 100
     fast = summary["items"][1]
     assert fast["ext_ms"] == 500
+
+
+def test_summarize_run_prefers_item_id_join_for_ext():
+    """When browser events stamp item_id, ignore other-item ops in the time window."""
+    rows = [
+        {
+            "kind": "agent.execute_started",
+            "item_id": "desk_x_agent_0",
+            "ts": "2026-09-09T17:00:00+00:00",
+        },
+        {
+            "kind": "browser.command_result",
+            "item_id": "desk_x_agent_0",
+            "op": "observe",
+            "ts": "2026-09-09T17:00:05+00:00",
+            "measure": {"duration_ms": 1000},
+            "flags": {"ok": True},
+        },
+        {
+            # Same wall window but different item — must not inflate EXT.
+            "kind": "browser.command_result",
+            "item_id": "desk_x_agent_other",
+            "op": "observe",
+            "ts": "2026-09-09T17:00:06+00:00",
+            "measure": {"duration_ms": 9000},
+            "flags": {"ok": True},
+        },
+        {
+            "kind": "agent.executed",
+            "item_id": "desk_x_agent_0",
+            "ts": "2026-09-09T17:00:10+00:00",
+            "measure": {},
+        },
+    ]
+    summary = _summarize_run(rows)
+    assert len(summary["items"]) == 1
+    assert summary["items"][0]["ext_ms"] == 1000
+    assert summary["ext_ms_max"] == 1000
