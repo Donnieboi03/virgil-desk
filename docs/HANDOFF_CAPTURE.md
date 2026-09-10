@@ -10,10 +10,10 @@ Related: [`BROWSER_LAYER.md`](BROWSER_LAYER.md) (Eyes/Hands), [`PRODUCT.md`](PRO
 | :--- | :--- | :--- |
 | **Capture** | Viewport **excerpt** + **links** + **screenshot**; **`handoff_scroll_loops: 0`** | Faithful “what’s on screen” |
 | **Intent** | Panel chips: **All visible** / **This item** (+ optional detail) → `handoff.intent` | Steers decompose; not a time API |
-| **Board budget** | `prompts.decompose_items_max` (ceiling) | Caps cards; **prefer** one Agent root (or 1–2) for same-pattern visible rows; split when human remainders diverge |
-| **Advanced** | `handoff_scroll_loops > 0`, nested-list scroll, site search via `hints.search_query` | Opt-in; easy to overfit mail UIs |
+| **Board budget** | `prompts.decompose_items_max` (ceiling only) | Correct coverage of distinct visible closures; pattern-class clump merges true clones only — no target card count |
+| **Advanced** | `handoff_scroll_loops > 0`, nested-list scroll, site search via `hints.search_query`, clump inventory via `hints.members[]` | Opt-in scroll/search; members required on pattern-class clumps |
 
-**Do not** treat past-day / unread / “full mailbox” as the product spine. Most sites are not temporal; common jobs are **everything visible** or **this one thing**. Mail time filters belong in **`hints.search_query`** (or a future site adapter), not first-class intent modes.
+**Do not** treat past-day / unread / “full mailbox” as the product spine. Most sites are not temporal; common jobs are **everything visible** or **this one thing**. Mail time filters belong in **`hints.search_query`** (or a future site adapter), not first-class intent modes. Short board titles are fine — put the row inventory in **`hints.members[]`** so execute does not Done-after-one.
 
 ## Pipeline (what runs on Hand off)
 

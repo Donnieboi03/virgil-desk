@@ -60,7 +60,9 @@ Framework narrative: [`ARCHITECTURE.md`](ARCHITECTURE.md).
 
 ### `handoff.decomposed`
 
-`measure.item_count`, optional usage (`prompt_tokens` / `completion_tokens` / `total_tokens` / `cost_usd` when the backend exposes them), `flags.live`, detail `backend`
+`measure.item_count`, optional usage (`prompt_tokens` / `completion_tokens` / `total_tokens` / `cost_usd` when the backend exposes them), `flags.live`, detail `backend`, plus **`item_titles`** (board titles after parse, capped) and **`decomposition_snippet`** for coverage forensics (was a topic omitted from the board?).
+
+`handoff.started` may include top-level **`intent`** when the operator set one.
 
 ### `agent.executed` / `agent.execute_failed` / `run.finished`
 

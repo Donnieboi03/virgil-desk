@@ -63,10 +63,10 @@ Eyes ladder fields on `command_result` (extension Path B): **`eyes_mode`** (`0` 
 
 ## Hermes models + hooks
 
-- Decompose: `hermes.decompose_model` (default `google/gemini-3.1-flash-lite`); no `--accept-hooks`.
+- Decompose: `hermes.decompose_model` (default `google/gemini-3.7-flash`); no `--accept-hooks`.
 - Execute: `hermes.execute_model` (default `google/gemini-3.7-flash`); `hermes.execute_accept_hooks: false` (single-agent `terminal` + `skills` + desk-browser — no compound-topology hooks).
 - Execute tool-loop cap: `hermes.execute_max_turns` (default `40`) → Hermes `--max-turns` (decompose does not set it).
 
 ## WorkItem fields (runtime)
 
-Items carry `run_id`, optional `agent_tab_id` / `human_tab_id`, optional **`hints`** (`search_query`, `sender`, `subject_contains`), optional **`parent_id`** / **`kind`** (`parent` | `subtask`) for mid-flight children, optional **`park_kind`** (`auth_gate` | `human_remainder`) / **`resume`** / **`resume_ready`**, status including **`awaiting_human`**, `evidence` after execute, and `last_error` on failure (Hermes failures prefer stderr / API snippets over a bare `session_id` line). Decompose coerces agent status to `proposed` (execute owns `done` / `awaiting_human`). Host **`POST /v1/items/mint`** (CLI: `desk-browser --op mint_item`) adds children; parent `done` is blocked while agent children are `proposed`/`running`. Auth-gate You Mark done → parent `proposed` + `resume_parent_id`. Done/park framework: [`ARCHITECTURE.md`](ARCHITECTURE.md).
+Items carry `run_id`, optional `agent_tab_id` / `human_tab_id`, optional **`hints`** (`search_query`, `sender`, `subject_contains`, optional **`members[]`** of `{sender, subject_contains}` for pattern-class clumps), optional **`parent_id`** / **`kind`** (`parent` | `subtask`) for mid-flight children, optional **`park_kind`** (`auth_gate` | `human_remainder`) / **`resume`** / **`resume_ready`**, status including **`awaiting_human`**, `evidence` after execute, and `last_error` on failure (Hermes failures prefer stderr / API snippets over a bare `session_id` line). Decompose coerces agent status to `proposed` (execute owns `done` / `awaiting_human`). Host **`POST /v1/items/mint`** (CLI: `desk-browser --op mint_item`) adds children; parent `done` is blocked while agent children are `proposed`/`running`. Auth-gate You Mark done → parent `proposed` + `resume_parent_id`. Done/park framework: [`ARCHITECTURE.md`](ARCHITECTURE.md).

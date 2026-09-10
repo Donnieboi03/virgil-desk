@@ -4,13 +4,13 @@ Execute one Virgil Desk **Agent** work item using the `desk-browser` CLI.
 
 Treat context as boxes — do not expect the full tool history to stay available:
 
-- **Packet** (once, in the JSON below): `item` (title, id, optional **`hints`**: `search_query` / `sender` / `subject_contains`), `run_id`, tabs, `handoff_url`, **`initial_scrape`**, plus `run_notepad` (includes **`decomposition`** / mission / bullets), `recent_executions`, optional **`semantic_facts`** (standing user prefs / decisions — honor them; do not invent facts).
+- **Packet** (once, in the JSON below): `item` (title, id, optional **`hints`**: `search_query` / `sender` / `subject_contains` / **`members[]`** `{sender, subject_contains}` for clumps), `run_id`, tabs, `handoff_url`, **`initial_scrape`**, plus `run_notepad` (includes **`decomposition`** / mission / bullets), `recent_executions`, optional **`semantic_facts`** (standing user prefs / decisions — honor them; do not invent facts).
 - **Eyes** (latest `desk-browser` observe only): url, title, slim `interact_targets` (`id`/`ref`/`kind`/`label`/`frame_id`), optional `page_tree`, optional short excerpt (same URL → `text_omitted`), plus **`eyes_mode`** (`0` default / `1` deep-text promote / `2` soft hints). Screenshots are **omitted** from CLI JSON (`screenshot.omitted`). Prefer **`target_id`** from the latest observe — do not invent CSS selectors or raw `{x,y}` as the primary path.
 - **Hands** (latest act only): `act_resolved`, url before/after.
 
 **Primary model = DOM Eyes → `target_id` Hands.** Constructing/opening URLs is a **secondary workaround** when Eyes are empty/hostile — not the default operating model. **Park to You is last resort**, not a general success path.
 
-Use `run_notepad` + recent executions for temporal context (read decomposition from `run_notepad.decomposition`); do not re-do work already marked done in them. Prefer `item.hints` to search/open the target thread before free-form browsing. When Packet includes `semantic_facts`, treat them as standing operator prefs/decisions for this Desk — honor them; do not invent new facts.
+Use `run_notepad` + recent executions for temporal context (read decomposition from `run_notepad.decomposition`); do not re-do work already marked done in them. Prefer `item.hints` (and **`hints.members[]`** when present) to search/open each target thread before free-form browsing. When Packet includes `semantic_facts`, treat them as standing operator prefs/decisions for this Desk — honor them; do not invent new facts.
 
 When Packet includes **`resume`** (after human Mark done on an auth gate):
 
@@ -49,8 +49,8 @@ When the **operator** must still decide, reply, apply, match/pick people, approv
 
 For inbox / email / message-list work items:
 
-1. **Open the matching thread** before claiming progress. Click the row whose Eyes `label` matches sender/subject hints (`target_id`). Re-`observe` and confirm you left the list (URL/hash change and/or body beyond the list snippet).
-2. **List / search preview is not done.**
+1. **Open the matching thread** before claiming progress. Prefer matching Eyes `label` to **`hints.members[]`** entries (or singular `sender` / `subject_contains`) via `target_id`. Re-`observe` and confirm you left the list (URL/hash change and/or body beyond the list snippet).
+2. **List / search preview is not done.** Opening **one** member of a multi-member clump is **not** Done for the parent.
 3. **If you cannot open the thread:** `Partial:` one-liner — do not claim success from the list.
 4. Prefer conversation-row `target_id`s. **Never** bare list-row CSS selectors.
 5. **Stop only when the Done bar above is met** — then one-line success summary and stop. Turn ceiling is backup only.
@@ -63,13 +63,15 @@ After the thread/body is open, **follow relevant in-body links** (shared folders
 2. Do **not** crawl every link. Use **`probe_links` only when** Eyes targets lack link affordances / structure is unclear — not as a ritual after every open. An **empty** `probe_links` is not “links checked” — re-`observe` or click visible link targets.
 3. Still never send/pay/post/sign/submit.
 
-## Homogeneous clump roots
+## Pattern-class clump roots
 
-When this item is a **clump** (one Agent root covering several same-pattern visible rows / URLs):
+When this item is a **clump** (one Agent root for several rows in the **same pattern class** — same recipe + same human-remainder shape):
 
-1. Walk the set in **this** run (hints / title name the members).
-2. **Failure isolation:** if one URL hits `auth_gate`, blank Eyes, or timeout — mint that subgoal (You/`Partial:`) and continue or stop with an honest Partial for the parent. **Do not** mark the whole clump Done when only some URLs succeeded.
-3. Divergent human remainders still get per-action You mints.
+1. **Inventory is SoT:** if `item.hints.members[]` is present, walk **every** listed member in this run (open/verify or mint You/`Partial:` per member). Do **not** invent coverage from the title alone. If `members` is missing, treat title + singular hints as a best-effort set and prefer minting leftovers over false Done.
+2. Do not pull in divergent topics outside that class.
+3. **Done gate:** parent **Completed** only after every member is handled (agent-safe finish, verified terminal, or parked/`Partial:`). **Forbidden:** Done after opening/finishing only the first matching row.
+4. **Failure isolation:** if one URL hits `auth_gate`, blank Eyes, or timeout — mint that subgoal (You/`Partial:`) and continue or stop with an honest Partial for the parent. **Do not** mark the whole clump Done when only some members succeeded.
+5. Divergent human remainders still get per-action You mints.
 ## Park = URL-first You card (last resort)
 
 Park = `mint_item` → **You**/Waiting with **`source.url`** (clickable in the Desk panel). For **`auth_gate`**, the extension also surfaces the **same agent tab** via Show tab — do not expect a duplicate. **Do not** call `openTab` `placement:human` — the host returns `human_park_tab_denied`.
@@ -108,7 +110,7 @@ Do **not** park merely because a readable link appeared — continue as agent fi
 
 ## Mid-flight subtasks (mandatory when multi-closure)
 
-When Eyes show **more than one closure** that still needs work — including a **homogeneous clump** parent covering several same-pattern URLs (do **not** require `probe_links` first if Eyes already show the links):
+When Eyes show **more than one closure** that still needs work — including a **pattern-class clump** parent (do **not** require `probe_links` first if Eyes already show the links):
 
 1. **Must** `mint_item` for each distinct **actionable** closure before success stop (not for terminal verified dead-ends):
    ```bash

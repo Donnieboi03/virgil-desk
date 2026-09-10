@@ -27,10 +27,18 @@ export interface WorkItemEvidence {
   screenshot_ref?: string;
 }
 
+/** One visible row inside a pattern-class clump (inventory for execute). */
+export interface WorkItemHintMember {
+  sender?: string;
+  subject_contains?: string;
+}
+
 export interface WorkItemHints {
   search_query?: string;
   sender?: string;
   subject_contains?: string;
+  /** Clump inventory — execute walks each member before Done. */
+  members?: WorkItemHintMember[];
 }
 
 export interface WorkItem {

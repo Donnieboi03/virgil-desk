@@ -51,6 +51,41 @@ def test_agent_done_coerced_to_proposed_and_hints_kept():
     assert agent["hints"]["sender"] == "GitHub"
 
 
+def test_hints_members_kept_and_string_entries_normalized():
+    raw = json.dumps(
+        {
+            "decomposition": "Same-pattern collabs.",
+            "items": [
+                {
+                    "column": "agent",
+                    "title": "Review collaboration outreach",
+                    "status": "proposed",
+                    "hints": {
+                        "search_query": "collab OR partnership",
+                        "members": [
+                            {"sender": "INNOCN", "subject_contains": "partnership"},
+                            {"sender": "Acme"},
+                            "plain subject fallback",
+                            {"junk": True},
+                            "",
+                        ],
+                    },
+                }
+            ],
+        }
+    )
+    out = parse_decompose_json(
+        raw, "desk_mem", {"url": "https://mail.google.com", "human_tab_id": 1}
+    )
+    assert out is not None
+    members = out["items"][0]["hints"]["members"]
+    assert members == [
+        {"sender": "INNOCN", "subject_contains": "partnership"},
+        {"sender": "Acme"},
+        {"subject_contains": "plain subject fallback"},
+    ]
+
+
 def test_parse_markdown_wrapped():
     raw = 'Here:\n```json\n{"decomposition":"x","items":[{"column":"waiting","title":"Slot","proposals":[{"kind":"calendar_slot","payload":{"start":"t"}}]}]}\n```'
     out = parse_decompose_json(raw, "desk_x", {"url": "https://a.com"})

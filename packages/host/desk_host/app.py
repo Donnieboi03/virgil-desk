@@ -379,7 +379,13 @@ async def _handle_handoff(payload: dict[str, Any]) -> dict[str, Any]:
     }
     snap = payload.get("snapshot") or {}
     cfg = get_config()
-    record("handoff.started", run_id, cfg=cfg, url=payload.get("url"))
+    record(
+        "handoff.started",
+        run_id,
+        cfg=cfg,
+        url=payload.get("url"),
+        intent=(str(payload.get("intent") or "").strip() or None),
+    )
     measure, flags = measure_from_snapshot(snap)
     record(
         "handoff.snapshot",
@@ -394,22 +400,30 @@ async def _handle_handoff(payload: dict[str, Any]) -> dict[str, Any]:
     decompose_flags: dict[str, Any] | None = None
     if "live" in result:
         decompose_flags = {"live": bool(result["live"])}
+    decomposition = str(result.get("decomposition") or "")
+    items = list(result.get("items") or [])
+    item_titles = [
+        str(it.get("title") or "").strip()
+        for it in items
+        if str(it.get("title") or "").strip()
+    ]
     record(
         "handoff.decomposed",
         run_id,
         cfg=cfg,
         measure={
-            "item_count": len(result.get("items", [])),
+            "item_count": len(items),
             **usage_measure(result.get("usage")),
         },
         flags=decompose_flags,
         backend=os.environ.get("DESK_AGENT_BACKEND", "mock"),
+        item_titles=item_titles[: cfg.prompts.decompose_items_max],
+        decomposition_snippet=decomposition[: cfg.prompts.event_summary_snippet_max_chars],
     )
-    decomposition = str(result.get("decomposition") or "")
     _handoff_meta[run_id]["decomposition"] = decomposition
     patch_id = uuid.uuid4().hex
     ops: list[dict[str, Any]] = [{"op": "clear"}]
-    ops.extend({"op": "add", "item": item} for item in result.get("items", []))
+    ops.extend({"op": "add", "item": item} for item in items)
     await _send_board_patch(run_id, patch_id, ops)
     await _memory_patch(
         [
@@ -421,7 +435,7 @@ async def _handle_handoff(payload: dict[str, Any]) -> dict[str, Any]:
             }
         ]
     )
-    for item in result.get("items", []):
+    for item in items:
         item["run_id"] = run_id
         meta = _handoff_meta.get(run_id, {})
         if meta.get("human_tab_id") is not None and item.get("human_tab_id") is None:

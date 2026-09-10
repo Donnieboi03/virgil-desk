@@ -63,7 +63,7 @@ Mission-progress stop (URL unchanged K acts / repeated targets) — parked (easy
 - **Decompose hints** + agent status coerced to `proposed` (no fake done)
 - **Tab cleanup** on execute end + **off-origin popup quarantine** during execute
 - **Act stall detection** (`browser.act_stall_max`) to stop click spirals
-- **Model cast:** decompose `gemini-3.1-flash-lite` / execute `gemini-3.7-flash`; execute hooks off
+- **Model cast:** decompose + execute `gemini-3.7-flash`; execute hooks off
 - **Slim observe:** same-URL omit full excerpt; URL-change capped follow-up
 - **Clearer execute `last_error`** from Hermes stderr / API snippets
 - **Thin desk-browser CLI envelope** (no screenshot base64 into Hermes transcript)

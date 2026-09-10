@@ -9,10 +9,33 @@ from typing import Any
 from .config import load_config
 
 VALID_COLUMNS = frozenset({"you", "agent", "waiting"})
+_HINT_STR_KEYS = ("search_query", "sender", "subject_contains")
+_MEMBERS_MAX = 20
+_MEMBER_FIELD_MAX = 200
 
 
 class DecomposeError(Exception):
     pass
+
+
+def _clean_hint_members(raw: Any) -> list[dict[str, str]]:
+    if not isinstance(raw, list):
+        return []
+    out: list[dict[str, str]] = []
+    for entry in raw[:_MEMBERS_MAX]:
+        if isinstance(entry, str) and entry.strip():
+            out.append({"subject_contains": entry.strip()[:_MEMBER_FIELD_MAX]})
+            continue
+        if not isinstance(entry, dict):
+            continue
+        member: dict[str, str] = {}
+        for key in ("sender", "subject_contains"):
+            val = entry.get(key)
+            if val is not None and str(val).strip():
+                member[key] = str(val).strip()[:_MEMBER_FIELD_MAX]
+        if member:
+            out.append(member)
+    return out
 
 
 def _extract_json_blob(text: str) -> dict[str, Any] | None:
@@ -83,11 +106,14 @@ def parse_decompose_json(
             item["status"] = "proposed"
         hints = raw_item.get("hints")
         if isinstance(hints, dict) and hints:
-            cleaned: dict[str, str] = {}
-            for key in ("search_query", "sender", "subject_contains"):
+            cleaned: dict[str, Any] = {}
+            for key in _HINT_STR_KEYS:
                 val = hints.get(key)
                 if val is not None and str(val).strip():
                     cleaned[key] = str(val).strip()
+            members = _clean_hint_members(hints.get("members"))
+            if members:
+                cleaned["members"] = members
             if cleaned:
                 item["hints"] = cleaned
         if human_tab_id is not None:
