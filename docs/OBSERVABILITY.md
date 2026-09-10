@@ -34,6 +34,8 @@ High-frequency `browser.command` / `browser.command_result` omit `limits` (still
 |--------|-------|-----|
 | `eyes_mode`, `eyes_empty` | `browser.command_result` flags | Ladder coverage |
 | `eyes_settle_ms`, `eyes_settle_attempts` | measure | Settle budget health |
+| `challenge_extended` | `browser.command_result` flags | Settle used challenge +extra once |
+| `inject_ms`, `frame_count` | `browser.command_result` measure | Interact-bundle inject cost / allFrames count |
 | `eyes_hints` | detail | Soft URL hints when mode 2 |
 | `agent.executed` + `flags.awaiting_human` | execute | Auth gate halt; `preserve_tabs` soft-ends session (tab kept for Show) |
 | `agent.resume_ready` | complete You | Parent unblocked for Resume; may include `has_viewport_shot` / `shot_on_agent_tab` |
@@ -62,17 +64,19 @@ Framework narrative: [`ARCHITECTURE.md`](ARCHITECTURE.md).
 
 ### `agent.executed` / `agent.execute_failed` / `run.finished`
 
-Optional usage fields on `measure` when present — never required; missing usage does not fail the run.
+Optional usage fields on `measure` when present — never required; missing usage does not fail the run. Hermes execute usage is best-effort from `DESK_USAGE:` stdout, session JSON, or profile `state.db` `sessions` (`input_tokens`/`output_tokens`/`actual|estimated_cost_usd`).
 
 ### `browser.command_result`
 
-`measure`: `duration_ms`, `scrape_bytes`, `target_count`, …
+`measure`: `duration_ms`, `scrape_bytes`, `target_count`, optional `eyes_settle_ms` / `eyes_settle_attempts` / `inject_ms` / `frame_count`, …
 
-`flags`: `ok`, `has_screenshot`, `has_interact_targets` (harness adds `driver: harness`)
+`flags`: `ok`, `has_screenshot`, `has_interact_targets`, optional `eyes_empty` / `eyes_mode` / `challenge_extended` (harness adds `driver: harness`)
 
 Top-level detail: `command_id`, `op`, `act_resolved`, and when present **`error`**, **`tab_id`**, **`url`**.
 
-`desk-events --summary` includes `failed_command_count` and up to 20 `failed_ops` (`op`/`error`/`tab_id`/`url`). When any event carried usage, summary also rolls up `prompt_tokens` / `completion_tokens` / `total_tokens` / `cost_usd` (omit keys that are zero/absent).
+`desk-events --run-id … --summary` includes `failed_command_count` and up to 20 `failed_ops` (`op`/`error`/`tab_id`/`url`). When any event carried usage, summary also rolls up `prompt_tokens` / `completion_tokens` / `total_tokens` / `cost_usd` (omit keys that are zero/absent).
+
+Per-item EXT/GAP (when execute windows exist): `items[]` with `wall_ms`, `ext_ms` (Σ `duration_ms` on `browser.command_result`), `gap_ms_sum` / `gap_first_ms` / `gap_later_avg` (result → next `browser.command`), `residual_ms`, `op_ext` (per-op duration + optional inject/frame), optional per-item `usage`. Run skew: `ext_ms_max` / `ext_ms_min` / `ext_ms_median` / `ext_ms_max_item_id`. Summary with `--run-id` reads up to 100k events so windows are not truncated at the default 100-line limit.
 
 ### `execute.cleanup_done`
 

@@ -88,3 +88,79 @@ def test_summarize_run_omits_usage_when_absent():
     summary = _summarize_run(rows)
     assert "cost_usd" not in summary
     assert "prompt_tokens" not in summary
+
+
+def test_summarize_run_ext_gap_per_item():
+    rows = [
+        {
+            "kind": "agent.execute_started",
+            "item_id": "desk_x_agent_0",
+            "ts": "2026-09-09T17:00:00+00:00",
+        },
+        {
+            "kind": "browser.command",
+            "op": "observe",
+            "ts": "2026-09-09T17:00:01+00:00",
+        },
+        {
+            "kind": "browser.command_result",
+            "op": "observe",
+            "ts": "2026-09-09T17:00:14+00:00",
+            "measure": {
+                "duration_ms": 13000,
+                "inject_ms": 12000,
+                "frame_count": 10,
+            },
+            "flags": {"ok": True},
+        },
+        {
+            "kind": "browser.command",
+            "op": "click",
+            "ts": "2026-09-09T17:00:22+00:00",
+        },
+        {
+            "kind": "browser.command_result",
+            "op": "click",
+            "ts": "2026-09-09T17:00:24+00:00",
+            "measure": {"duration_ms": 2000, "inject_ms": 1500},
+            "flags": {"ok": True},
+        },
+        {
+            "kind": "agent.executed",
+            "item_id": "desk_x_agent_0",
+            "ts": "2026-09-09T17:00:30+00:00",
+            "measure": {"prompt_tokens": 100, "completion_tokens": 20, "cost_usd": 0.01},
+        },
+        {
+            "kind": "agent.execute_started",
+            "item_id": "desk_x_agent_1",
+            "ts": "2026-09-09T17:01:00+00:00",
+        },
+        {
+            "kind": "browser.command_result",
+            "op": "observe",
+            "ts": "2026-09-09T17:01:01+00:00",
+            "measure": {"duration_ms": 500},
+            "flags": {"ok": True},
+        },
+        {
+            "kind": "agent.executed",
+            "item_id": "desk_x_agent_1",
+            "ts": "2026-09-09T17:01:03+00:00",
+            "measure": {},
+        },
+    ]
+    summary = _summarize_run(rows)
+    assert summary["ext_ms_max"] == 15000
+    assert summary["ext_ms_min"] == 500
+    assert summary["ext_ms_max_item_id"] == "desk_x_agent_0"
+    assert len(summary["items"]) == 2
+    slow = summary["items"][0]
+    assert slow["item_id"] == "desk_x_agent_0"
+    assert slow["wall_ms"] == 30000
+    assert slow["ext_ms"] == 15000
+    assert slow["gap_first_ms"] == 8000  # 14s → 22s command
+    assert slow["op_ext"][0]["inject_ms"] == 12000
+    assert slow["usage"]["prompt_tokens"] == 100
+    fast = summary["items"][1]
+    assert fast["ext_ms"] == 500

@@ -1080,16 +1080,20 @@ function eyesMetaFromSettle(settled, { targetCount = 0, minChars = 40 } = {}) {
   const empty =
     !observeEyesReady({ text, targetCount }, minChars) &&
     !scrapeEyesReady(snap, minChars);
-  return {
+  const meta = {
     eyes_settle_ms: settled?.elapsedMs ?? 0,
     eyes_settle_attempts: settled?.attempts ?? 0,
     eyes_empty: Boolean(empty),
   };
+  if (settled?.challenge_extended != null) {
+    meta.challenge_extended = Boolean(settled.challenge_extended);
+  }
+  return meta;
 }
 
 async function runDeepText(tabId) {
   const allFrames = observeAllFrames();
-  await injectInteractBundle(tabId, { allFrames });
+  const { inject_ms } = await injectInteractBundle(tabId, { allFrames });
   const maxChars = deskConfig.browser?.eyes_deep_text_max_chars ?? 4000;
   try {
     const results = await chrome.scripting.executeScript({
@@ -1121,9 +1125,11 @@ async function runDeepText(tabId) {
       text: chunks.length ? chunks.join("\n") : "",
       title,
       url,
+      inject_ms,
+      frame_count: (results || []).length,
     };
   } catch {
-    return { text: "", title: "", url: "" };
+    return { text: "", title: "", url: "", inject_ms, frame_count: 0 };
   }
 }
 
@@ -1164,10 +1170,20 @@ async function applyEyesEscalation({
   }
 
   // T1: one deep text + forced tree; promote into excerpt (replace, don't stack).
+  const phase = {};
   const deep = await runDeepText(tabId).catch(() => ({ text: "" }));
+  mergeActPhase(phase, deep);
   let page_tree = pageTreeAlready;
   if (!includeTreeAlready || !page_tree) {
-    page_tree = await runPageTree(tabId, { includeTree: true }).catch(() => null);
+    const treeResult = await runPageTree(tabId, { includeTree: true }).catch(
+      () => null,
+    );
+    if (treeResult && typeof treeResult === "object") {
+      page_tree = treeResult.page_tree ?? null;
+      mergeActPhase(phase, treeResult);
+    } else {
+      page_tree = treeResult;
+    }
   }
   const promoted = promoteEyesExcerpt(deep.text, page_tree, {
     minChars,
@@ -1189,6 +1205,7 @@ async function applyEyesEscalation({
       text_omitted: false,
       excerpt_note: "eyes_mode_1_promoted",
       page_tree: page_tree || undefined,
+      ...phase,
     };
   }
 
@@ -1203,6 +1220,7 @@ async function applyEyesEscalation({
     excerpt_note: excerpt?.note,
     page_tree: page_tree || undefined,
     eyes_hints,
+    ...phase,
   };
 }
 
@@ -1286,11 +1304,13 @@ function isBareAmbiguousRowSelector(selector) {
 }
 
 async function injectInteractBundle(tabId, { allFrames = false } = {}) {
+  const t0 = Date.now();
   await chrome.scripting.executeScript({
     target: allFrames ? { tabId, allFrames: true } : { tabId },
     files: [BUNDLE_FILE],
     world: "MAIN",
   });
+  return { inject_ms: Math.max(0, Date.now() - t0) };
 }
 
 async function readViewportMeta(tabId) {
@@ -1315,15 +1335,44 @@ async function readViewportMeta(tabId) {
   }
 }
 
+
+function mergeActPhase(actPhase, act) {
+  if (!act || typeof act !== "object") return actPhase;
+  if (act.inject_ms != null) {
+    actPhase.inject_ms =
+      (actPhase.inject_ms || 0) + (Number(act.inject_ms) || 0);
+  }
+  if (act.frame_count != null) {
+    const prev = actPhase.frame_count;
+    const next = Number(act.frame_count) || 0;
+    actPhase.frame_count =
+      prev == null ? next : Math.max(Number(prev) || 0, next);
+  }
+  return actPhase;
+}
+
+function actFailResult(base, act, started, actPhase) {
+  mergeActPhase(actPhase, act);
+  return {
+    ...base,
+    ok: false,
+    error: act?.error,
+    act_resolved: act?.act_resolved,
+    ...actPhase,
+    duration_ms: Date.now() - started,
+  };
+}
+
 async function runPageObserve(tabId, opts) {
   const allFrames = observeAllFrames();
-  await injectInteractBundle(tabId, { allFrames });
+  const { inject_ms } = await injectInteractBundle(tabId, { allFrames });
   const results = await chrome.scripting.executeScript({
     target: allFrames ? { tabId, allFrames: true } : { tabId },
     world: "MAIN",
     func: (o) => globalThis.deskObserve(o),
     args: [opts],
   });
+  const frame_count = (results || []).length;
   const maxTargets = opts.maxTargets ?? 40;
   const collected = [];
   const scroll_containers = [];
@@ -1359,13 +1408,15 @@ async function runPageObserve(tabId, opts) {
     ...primary,
     interact_targets,
     scroll_containers,
+    inject_ms,
+    frame_count,
   };
 }
 
 async function runPageTree(tabId, { includeTree }) {
   if (!includeTree) return null;
   const allFrames = observeAllFrames();
-  await injectInteractBundle(tabId, { allFrames });
+  const { inject_ms } = await injectInteractBundle(tabId, { allFrames });
   const maxChars = deskConfig.browser?.page_tree_max_chars ?? 2000;
   const maxNodes = deskConfig.browser?.page_tree_max_nodes ?? 400;
   const results = await chrome.scripting.executeScript({
@@ -1389,7 +1440,11 @@ async function runPageTree(tabId, { includeTree }) {
     chunks.push(piece);
     used += piece.length;
   }
-  return chunks.length ? chunks.join("\n") : null;
+  return {
+    page_tree: chunks.length ? chunks.join("\n") : null,
+    inject_ms,
+    frame_count: (results || []).length,
+  };
 }
 
 async function runPageUnmark(tabId) {
@@ -1413,7 +1468,7 @@ async function runPageAct(tabId, op, params, targets, urlBefore) {
       0,
   );
   const allFrames = observeAllFrames();
-  await injectInteractBundle(tabId, { allFrames });
+  const { inject_ms } = await injectInteractBundle(tabId, { allFrames });
   const target =
     Number.isFinite(frameId) && frameId > 0
       ? { tabId, frameIds: [frameId] }
@@ -1424,12 +1479,21 @@ async function runPageAct(tabId, op, params, targets, urlBefore) {
     func: (operation, p, t, before) => globalThis.deskAct(operation, p, t, before),
     args: [op, params, targets, urlBefore],
   });
-  return scriptInjectionResult(injected) || { ok: false, error: "act inject returned null" };
+  const act =
+    scriptInjectionResult(injected) || {
+      ok: false,
+      error: "act inject returned null",
+    };
+  return {
+    ...act,
+    inject_ms,
+    frame_count: (injected || []).length,
+  };
 }
 
 async function runPageProbe(tabId, kind) {
   const allFrames = observeAllFrames();
-  await injectInteractBundle(tabId, { allFrames });
+  const { inject_ms } = await injectInteractBundle(tabId, { allFrames });
   const results = await chrome.scripting.executeScript({
     target: allFrames ? { tabId, allFrames: true } : { tabId },
     world: "MAIN",
@@ -1441,6 +1505,8 @@ async function runPageProbe(tabId, kind) {
     },
     args: [kind],
   });
+  const frame_count = (results || []).length;
+  const phase = { inject_ms, frame_count };
   if (kind === "probe_form") {
     const form_fields = [];
     for (const entry of results || []) {
@@ -1449,7 +1515,7 @@ async function runPageProbe(tabId, kind) {
         form_fields.push({ ...f, frame_id: entry.frameId ?? 0 });
       }
     }
-    return { form_fields, url: results?.[0]?.result?.url };
+    return { form_fields, url: results?.[0]?.result?.url, ...phase };
   }
   if (kind === "probe_links") {
     const links = [];
@@ -1459,15 +1525,18 @@ async function runPageProbe(tabId, kind) {
         links.push({ ...l, frame_id: entry.frameId ?? 0 });
       }
     }
-    return { links, url: results?.[0]?.result?.url };
+    return { links, url: results?.[0]?.result?.url, ...phase };
   }
   // probe_table: prefer first frame with rows
   for (const entry of results || []) {
     if (entry.result?.found && entry.result?.rows?.length) {
-      return { ...entry.result, frame_id: entry.frameId ?? 0 };
+      return { ...entry.result, frame_id: entry.frameId ?? 0, ...phase };
     }
   }
-  return results?.[0]?.result || { rows: [], found: false };
+  return {
+    ...(results?.[0]?.result || { rows: [], found: false }),
+    ...phase,
+  };
 }
 
 async function screenshotTab(tabId) {
@@ -1687,7 +1756,16 @@ async function runBrowserCommand(command) {
       );
       // Force AX tree when Eyes still empty or URL change (no screenshot / no focus).
       const includeTree = !excerpt.text_omitted || eyesMeta.eyes_empty;
-      let page_tree = await runPageTree(tabId, { includeTree }).catch(() => null);
+      const injectPhase = {};
+      mergeActPhase(injectPhase, pageObserve);
+      const treeResult = await runPageTree(tabId, { includeTree }).catch(
+        () => null,
+      );
+      let page_tree =
+        treeResult && typeof treeResult === "object"
+          ? treeResult.page_tree
+          : treeResult;
+      mergeActPhase(injectPhase, treeResult);
       const escalated = await applyEyesEscalation({
         tabId,
         runId: command.run_id,
@@ -1699,6 +1777,7 @@ async function runBrowserCommand(command) {
         pageTreeAlready: page_tree,
       });
       page_tree = escalated.page_tree ?? page_tree;
+      mergeActPhase(injectPhase, escalated);
       const interact_targets = interact_targets_full.map(slimTargetForEyes);
       const observe = {
         url: pageUrl,
@@ -1740,6 +1819,13 @@ async function runBrowserCommand(command) {
         eyes_mode: escalated.eyes_mode,
         duration_ms: Date.now() - started,
       };
+      if (eyesMeta.challenge_extended != null) {
+        out.challenge_extended = eyesMeta.challenge_extended;
+      }
+      if (injectPhase.inject_ms != null) out.inject_ms = injectPhase.inject_ms;
+      if (injectPhase.frame_count != null) {
+        out.frame_count = injectPhase.frame_count;
+      }
       if (escalated.eyes_hints) out.eyes_hints = escalated.eyes_hints;
       return out;
     }
@@ -1761,6 +1847,7 @@ async function runBrowserCommand(command) {
     }
 
     let actResolved = undefined;
+    let actPhase = {};
     const urlBeforeAct = (await scrapeTab(tabId).catch(() => ({}))).url;
 
     if (command.op === "scroll") {
@@ -1804,9 +1891,10 @@ async function runBrowserCommand(command) {
           urlBeforeAct || fresh.liveUrl,
         );
         if (!act?.ok) {
-          return { ...base, ok: false, error: act.error, act_resolved: act.act_resolved, duration_ms: Date.now() - started };
+          return actFailResult(base, act, started, actPhase);
         }
         actResolved = act.act_resolved;
+        mergeActPhase(actPhase, act);
       } else {
         const dir = command.params?.direction === "up" ? -1 : 1;
         const ratio = scrollViewportRatio();
@@ -1838,15 +1926,10 @@ async function runBrowserCommand(command) {
       if (hasCoords && !needsMap) {
         const act = await runPageAct(tabId, "click", params, [], urlBeforeAct);
         if (!act?.ok) {
-          return {
-            ...base,
-            ok: false,
-            error: act.error,
-            act_resolved: act.act_resolved,
-            duration_ms: Date.now() - started,
-          };
+          return actFailResult(base, act, started, actPhase);
         }
         actResolved = act.act_resolved;
+        mergeActPhase(actPhase, act);
       } else if (needsMap) {
         const fresh = await ensureTargetMapFresh(
           stored,
@@ -1878,15 +1961,10 @@ async function runBrowserCommand(command) {
           urlBeforeAct || fresh.liveUrl,
         );
         if (!act?.ok) {
-          return {
-            ...base,
-            ok: false,
-            error: act.error,
-            act_resolved: act.act_resolved,
-            duration_ms: Date.now() - started,
-          };
+          return actFailResult(base, act, started, actPhase);
         }
         actResolved = act.act_resolved;
+        mergeActPhase(actPhase, act);
       } else if (params.selector) {
         if (isBareAmbiguousRowSelector(params.selector)) {
           return {
@@ -1965,15 +2043,10 @@ async function runBrowserCommand(command) {
           urlBeforeAct || fresh.liveUrl,
         );
         if (!act?.ok) {
-          return {
-            ...base,
-            ok: false,
-            error: act.error,
-            act_resolved: act.act_resolved,
-            duration_ms: Date.now() - started,
-          };
+          return actFailResult(base, act, started, actPhase);
         }
         actResolved = act.act_resolved;
+        mergeActPhase(actPhase, act);
       } else if (params.selector) {
         const sel = params.selector;
         const val = params.value || "";
@@ -2040,15 +2113,10 @@ async function runBrowserCommand(command) {
         urlBeforeAct || stored?.url,
       );
       if (!act?.ok) {
-        return {
-          ...base,
-          ok: false,
-          error: act.error,
-          act_resolved: act.act_resolved,
-          duration_ms: Date.now() - started,
-        };
+        return actFailResult(base, act, started, actPhase);
       }
       actResolved = act.act_resolved;
+      mergeActPhase(actPhase, act);
     } else if (command.op === "wait") {
       await new Promise((r) => setTimeout(r, command.params?.ms || 500));
     }
@@ -2095,6 +2163,7 @@ async function runBrowserCommand(command) {
         screenshot: shot,
         act_resolved: actResolved,
         ...eyesMeta,
+        ...actPhase,
         duration_ms: Date.now() - started,
       };
       if (settled && eyesMeta.eyes_empty) {
@@ -2118,6 +2187,9 @@ async function runBrowserCommand(command) {
           page_tree: escalated.page_tree || undefined,
           duration_ms: Date.now() - started,
         };
+        mergeActPhase(actPhase, escalated);
+        if (actPhase.inject_ms != null) out.inject_ms = actPhase.inject_ms;
+        if (actPhase.frame_count != null) out.frame_count = actPhase.frame_count;
         if (escalated.eyes_hints) out.eyes_hints = escalated.eyes_hints;
       } else if (settled) {
         out.eyes_mode = 0;

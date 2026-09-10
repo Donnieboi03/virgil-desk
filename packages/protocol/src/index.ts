@@ -210,6 +210,12 @@ export interface CommandResult {
   eyes_empty?: boolean;
   eyes_settle_ms?: number;
   eyes_settle_attempts?: number;
+  /** True when settle budget was extended once for challenge markers. */
+  challenge_extended?: boolean;
+  /** Wall ms spent injecting the interact bundle for this op. */
+  inject_ms?: number;
+  /** chrome.scripting.executeScript result frame count (allFrames). */
+  frame_count?: number;
   /**
    * Fail-only Eyes ladder: 0 default innerText/targets, 1 deep text/tree
    * promote, 2 soft hints (still empty). Not soft site tiers A–D.

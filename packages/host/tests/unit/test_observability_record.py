@@ -116,13 +116,19 @@ def test_browser_command_result_fields_eyes_settle():
             "eyes_empty": True,
             "eyes_settle_ms": 1800,
             "eyes_settle_attempts": 8,
+            "inject_ms": 12000,
+            "frame_count": 14,
+            "challenge_extended": False,
             "duration_ms": 1900,
         },
         op="observe",
     )
     assert fields["flags"]["eyes_empty"] is True
+    assert fields["flags"]["challenge_extended"] is False
     assert fields["measure"]["eyes_settle_ms"] == 1800
     assert fields["measure"]["eyes_settle_attempts"] == 8
+    assert fields["measure"]["inject_ms"] == 12000
+    assert fields["measure"]["frame_count"] == 14
 
 
 def test_browser_command_result_fields_eyes_mode():
@@ -140,12 +146,14 @@ def test_browser_command_result_fields_eyes_mode():
             "eyes_hints": {"url_path_hint": "expired_or_stale"},
             "eyes_settle_ms": 2006,
             "eyes_settle_attempts": 9,
+            "challenge_extended": True,
             "duration_ms": 2100,
         },
         op="observe",
     )
     assert fields["flags"]["eyes_empty"] is True
     assert fields["flags"]["eyes_mode"] == 2
+    assert fields["flags"]["challenge_extended"] is True
     assert fields["detail"]["eyes_hints"] == {"url_path_hint": "expired_or_stale"}
     assert fields["measure"]["eyes_settle_ms"] == 2006
 

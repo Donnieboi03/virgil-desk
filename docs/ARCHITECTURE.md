@@ -21,7 +21,7 @@ Related: [`MEMORY.md`](MEMORY.md), [`BROWSER_LAYER.md`](BROWSER_LAYER.md) (Path 
 
 Fail-only **`eyes_mode`** `0|1|2` on observe/open/scrape. Ladder, settle/challenge budgets, and caps live in [`BROWSER_LAYER.md`](BROWSER_LAYER.md). This doc owns Done / park / mint / locks only.
 
-Measure (on `browser.command_result`): flags `eyes_mode`, `eyes_empty`; measures `eyes_settle_ms` / `eyes_settle_attempts`; optional `detail.eyes_hints`.
+Measure (on `browser.command_result`): flags `eyes_mode`, `eyes_empty`, optional `challenge_extended`; measures `eyes_settle_ms` / `eyes_settle_attempts`, optional `inject_ms` / `frame_count`; optional `detail.eyes_hints`.
 
 ---
 

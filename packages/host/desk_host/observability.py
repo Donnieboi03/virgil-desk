@@ -158,6 +158,10 @@ def browser_command_result_fields(
         measure["eyes_settle_ms"] = result.get("eyes_settle_ms")
     if result.get("eyes_settle_attempts") is not None:
         measure["eyes_settle_attempts"] = result.get("eyes_settle_attempts")
+    if result.get("inject_ms") is not None:
+        measure["inject_ms"] = result.get("inject_ms")
+    if result.get("frame_count") is not None:
+        measure["frame_count"] = result.get("frame_count")
     flags: dict[str, Any] = {
         "ok": result.get("ok"),
         "has_screenshot": bool(result.get("screenshot")),
@@ -167,6 +171,8 @@ def browser_command_result_fields(
         flags["eyes_empty"] = bool(result.get("eyes_empty"))
     if result.get("eyes_mode") is not None:
         flags["eyes_mode"] = result.get("eyes_mode")
+    if result.get("challenge_extended") is not None:
+        flags["challenge_extended"] = bool(result.get("challenge_extended"))
     if result.get("eyes_hints") is not None:
         detail["eyes_hints"] = result.get("eyes_hints")
     return {

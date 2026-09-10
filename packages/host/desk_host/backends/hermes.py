@@ -6,7 +6,9 @@ import asyncio
 import json
 import os
 import re
+import sqlite3
 import subprocess
+import time
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -120,13 +122,24 @@ _USAGE_WALK_KEYS = frozenset(
 def _coerce_usage_dict(raw: dict[str, Any]) -> dict[str, Any] | None:
     """Normalize common token/cost keys into usage_measure-compatible shape."""
     mapped: dict[str, Any] = {}
-    if "prompt_tokens" in raw:
-        mapped["prompt_tokens"] = raw["prompt_tokens"]
-    if "completion_tokens" in raw:
-        mapped["completion_tokens"] = raw["completion_tokens"]
+    prompt = raw.get("prompt_tokens", raw.get("input_tokens"))
+    if prompt is not None:
+        mapped["prompt_tokens"] = prompt
+    completion = raw.get("completion_tokens", raw.get("output_tokens"))
+    if completion is not None:
+        mapped["completion_tokens"] = completion
     if "total_tokens" in raw:
         mapped["total_tokens"] = raw["total_tokens"]
+    elif "input_tokens" in raw or "output_tokens" in raw:
+        try:
+            mapped["total_tokens"] = int(prompt or 0) + int(completion or 0)
+        except (TypeError, ValueError):
+            pass
     cost = raw.get("cost_usd", raw.get("cost"))
+    if cost is None:
+        actual = raw.get("actual_cost_usd")
+        estimated = raw.get("estimated_cost_usd")
+        cost = actual if actual is not None else estimated
     if cost is not None:
         mapped["cost_usd"] = cost
     cleaned = usage_measure(mapped)
@@ -159,6 +172,72 @@ def _walk_usage(obj: Any, *, depth: int = 0) -> dict[str, Any] | None:
     return None
 
 
+def _usage_from_state_db(
+    home: Path,
+    *,
+    started_at: float | None,
+    session_id: str | None = None,
+) -> dict[str, Any] | None:
+    """Read Hermes sessions table from profile state.db (best-effort)."""
+    db_path = home / "state.db"
+    if not db_path.is_file():
+        return None
+    now = time.time()
+    window_start = (started_at or now) - 2.0
+    try:
+        con = sqlite3.connect(f"file:{db_path}?mode=ro", uri=True, timeout=1.0)
+    except sqlite3.Error:
+        return None
+    try:
+        con.row_factory = sqlite3.Row
+        row = None
+        if session_id:
+            cur = con.execute(
+                "SELECT input_tokens, output_tokens, estimated_cost_usd, "
+                "actual_cost_usd FROM sessions WHERE id = ? LIMIT 1",
+                (session_id,),
+            )
+            row = cur.fetchone()
+        if row is None:
+            cur = con.execute(
+                "SELECT input_tokens, output_tokens, estimated_cost_usd, "
+                "actual_cost_usd, started_at, ended_at FROM sessions "
+                "ORDER BY COALESCE(ended_at, started_at) DESC LIMIT 24"
+            )
+            for candidate in cur.fetchall():
+                ts = candidate["ended_at"]
+                if ts is None:
+                    ts = candidate["started_at"]
+                if ts is None:
+                    continue
+                try:
+                    ts_f = float(ts)
+                except (TypeError, ValueError):
+                    continue
+                if ts_f < window_start or ts_f > now + 5.0:
+                    continue
+                row = candidate
+                break
+        if row is None:
+            return None
+        return _coerce_usage_dict(dict(row))
+    except sqlite3.Error:
+        return None
+    finally:
+        try:
+            con.close()
+        except Exception:
+            pass
+
+
+def _session_id_from_path(path: Path) -> str | None:
+    # session_20260909_170723_44d930.json → 20260909_170723_44d930
+    name = path.name
+    if name.startswith("session_") and name.endswith(".json"):
+        return name[len("session_") : -len(".json")] or None
+    return None
+
+
 def extract_hermes_usage(
     *,
     home: str,
@@ -181,33 +260,42 @@ def extract_hermes_usage(
                 if found:
                     return found
 
-        sessions_dir = Path(home).expanduser() / "sessions"
-        if not sessions_dir.is_dir():
-            return None
-        candidates = sorted(
-            sessions_dir.glob("session_*.json"),
-            key=lambda p: p.stat().st_mtime,
-            reverse=True,
-        )
-        import time as _time
+        home_path = Path(home).expanduser()
+        sessions_dir = home_path / "sessions"
+        session_ids: list[str] = []
+        if sessions_dir.is_dir():
+            candidates = sorted(
+                sessions_dir.glob("session_*.json"),
+                key=lambda p: p.stat().st_mtime,
+                reverse=True,
+            )
+            now = time.time()
+            window_start = (started_at or now) - 2.0
+            for path in candidates[:12]:
+                try:
+                    mtime = path.stat().st_mtime
+                except OSError:
+                    continue
+                if mtime < window_start or mtime > now + 5.0:
+                    continue
+                sid = _session_id_from_path(path)
+                if sid:
+                    session_ids.append(sid)
+                try:
+                    data = json.loads(path.read_text(encoding="utf-8"))
+                except (OSError, json.JSONDecodeError, UnicodeDecodeError):
+                    continue
+                found = _walk_usage(data)
+                if found:
+                    return found
 
-        now = _time.time()
-        window_start = (started_at or now) - 2.0
-        for path in candidates[:12]:
-            try:
-                mtime = path.stat().st_mtime
-            except OSError:
-                continue
-            if mtime < window_start or mtime > now + 5.0:
-                continue
-            try:
-                data = json.loads(path.read_text(encoding="utf-8"))
-            except (OSError, json.JSONDecodeError, UnicodeDecodeError):
-                continue
-            found = _walk_usage(data)
+        for sid in session_ids[:3]:
+            found = _usage_from_state_db(
+                home_path, started_at=started_at, session_id=sid
+            )
             if found:
                 return found
-        return None
+        return _usage_from_state_db(home_path, started_at=started_at)
     except Exception:
         return None
 

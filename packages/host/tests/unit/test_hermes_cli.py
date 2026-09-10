@@ -311,3 +311,107 @@ def test_extract_hermes_usage_none_when_missing(tmp_path):
 
     assert extract_hermes_usage(home=str(tmp_path), stdout="ok", stderr="") is None
 
+
+def test_extract_hermes_usage_from_state_db(tmp_path):
+    import sqlite3
+    import time
+
+    from desk_host.backends.hermes import extract_hermes_usage
+
+    started = time.time()
+    db = tmp_path / "state.db"
+    con = sqlite3.connect(db)
+    con.execute(
+        """
+        CREATE TABLE sessions (
+            id TEXT,
+            started_at REAL,
+            ended_at REAL,
+            input_tokens INTEGER,
+            output_tokens INTEGER,
+            estimated_cost_usd REAL,
+            actual_cost_usd REAL
+        )
+        """
+    )
+    con.execute(
+        "INSERT INTO sessions VALUES (?, ?, ?, ?, ?, ?, ?)",
+        (
+            "20260909_test_abc",
+            started,
+            started + 1.0,
+            44801,
+            829,
+            0.046656,
+            None,
+        ),
+    )
+    con.commit()
+    con.close()
+
+    usage = extract_hermes_usage(
+        home=str(tmp_path),
+        stdout="ok",
+        stderr="",
+        started_at=started,
+    )
+    assert usage is not None
+    assert usage["prompt_tokens"] == 44801
+    assert usage["completion_tokens"] == 829
+    assert usage["total_tokens"] == 45630
+    assert abs(usage["cost_usd"] - 0.046656) < 1e-9
+
+
+def test_extract_hermes_usage_state_db_by_session_json_id(tmp_path):
+    import json
+    import sqlite3
+    import time
+
+    from desk_host.backends.hermes import extract_hermes_usage
+
+    started = time.time()
+    sessions = tmp_path / "sessions"
+    sessions.mkdir()
+    (sessions / "session_20260909_test_xyz.json").write_text(
+        json.dumps({"messages": [], "model": "x"}),
+        encoding="utf-8",
+    )
+    db = tmp_path / "state.db"
+    con = sqlite3.connect(db)
+    con.execute(
+        """
+        CREATE TABLE sessions (
+            id TEXT,
+            started_at REAL,
+            ended_at REAL,
+            input_tokens INTEGER,
+            output_tokens INTEGER,
+            estimated_cost_usd REAL,
+            actual_cost_usd REAL
+        )
+        """
+    )
+    # Older row outside window should lose to id match
+    con.execute(
+        "INSERT INTO sessions VALUES (?, ?, ?, ?, ?, ?, ?)",
+        ("other", started - 1000, started - 999, 1, 1, 0.01, None),
+    )
+    con.execute(
+        "INSERT INTO sessions VALUES (?, ?, ?, ?, ?, ?, ?)",
+        ("20260909_test_xyz", started - 1000, started - 999, 10, 5, None, 0.02),
+    )
+    con.commit()
+    con.close()
+
+    usage = extract_hermes_usage(
+        home=str(tmp_path),
+        stdout="ok",
+        stderr="",
+        started_at=started,
+    )
+    assert usage == {
+        "prompt_tokens": 10,
+        "completion_tokens": 5,
+        "total_tokens": 15,
+        "cost_usd": 0.02,
+    }
