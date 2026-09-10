@@ -74,13 +74,39 @@ def test_summarize_run_usage_rollup():
                 "cost_usd": 0.05,
             },
         },
-        {"kind": "run.finished", "measure": {"cost_usd": 0.05}},
+        # Mirror of execute usage — must not double-count.
+        {"kind": "run.finished", "measure": {"cost_usd": 0.05, "prompt_tokens": 200}},
     ]
     summary = _summarize_run(rows)
     assert summary["prompt_tokens"] == 300
     assert summary["completion_tokens"] == 50
     assert summary["total_tokens"] == 250
-    assert summary["cost_usd"] == 0.11
+    assert summary["cost_usd"] == 0.06
+
+
+def test_summarize_run_usage_includes_execute_failed_not_finished_only():
+    rows = [
+        {
+            "kind": "agent.execute_failed",
+            "measure": {"prompt_tokens": 10, "cost_usd": 0.02},
+        },
+        {"kind": "run.finished", "measure": {"prompt_tokens": 10, "cost_usd": 0.02}},
+    ]
+    summary = _summarize_run(rows)
+    assert summary["prompt_tokens"] == 10
+    assert summary["cost_usd"] == 0.02
+
+
+def test_summarize_run_usage_includes_blocked_children():
+    rows = [
+        {
+            "kind": "agent.execute_blocked_children",
+            "measure": {"prompt_tokens": 40, "cost_usd": 0.03},
+        },
+    ]
+    summary = _summarize_run(rows)
+    assert summary["prompt_tokens"] == 40
+    assert summary["cost_usd"] == 0.03
 
 
 def test_summarize_run_omits_usage_when_absent():

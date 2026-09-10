@@ -101,7 +101,7 @@ See also [`tests/manual/hermes_execute_checklist.md`](../tests/manual/hermes_exe
 | Stub titles (`Hermes: …`) | Hermes CLI missing, timeout, or invalid JSON — check `hermes chat -Q -q "…"` manually |
 | `WS disconnected` | Host not running or wrong URL in extension options |
 | `screenshot_cap` | >20 browser ops this run — see [`LIMITS.md`](LIMITS.md) |
-| Run agent marks **done** but summary says blocked/timeout | Hermes lacked `terminal` toolset or hook approval — set `hermes.execute_toolsets` in [`config/desk.yaml`](../config/desk.yaml) |
-| `Timeout — denying command` in evidence | Same — host now fails execute when summary reports blocked tools (`execute_accept_hooks: true`) |
+| Run agent marks **done** but summary says blocked/timeout | Hermes lacked `terminal` toolset or blocked tools — set `hermes.execute_toolsets` in [`config/desk.yaml`](../config/desk.yaml) (Desk keeps `execute_accept_hooks: false`) |
+| `Timeout — denying command` in evidence | Same — ensure `terminal` (+ `skills`) are in `execute_toolsets`; Host fails execute when the summary reports blocked tools. Do **not** flip `execute_accept_hooks` to true for Desk (see [`PROTOCOL.md`](PROTOCOL.md)) |
 | Run agent 501 | Backend lacks `execute_item` — use a backend that implements it (`hermes`, `mock`; OpenClaw stub delegates to mock) |
 | `desk-browser` not found | Add repo `scripts/` to PATH or use absolute path |

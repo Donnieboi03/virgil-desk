@@ -8,7 +8,7 @@ Each **Run agent** starts a fresh Hermes chat, so Desk re-attaches Packet memory
 
 | Layer | Role | Storage | Packet field |
 |-------|------|---------|--------------|
-| **Working** | Per-handoff notepad (mission, decomposition, bullets) | `virgil_desk_memory_v1.by_run_id` | `run_notepad`, `decomposition` |
+| **Working** | Per-handoff notepad (mission, decomposition, bullets) | `virgil_desk_memory_v1.by_run_id` | `run_notepad` (includes `decomposition`) |
 | **Episodic (thin)** | Last-N execute summaries across runs | `virgil_desk_memory_v1.global_recent` | `recent_executions` |
 | **Semantic** | Standing prefs / decisions (episode-agnostic) | `virgil_desk_semantic_v1.facts[]` | `semantic_facts` |
 | **Procedural** | How to act | prompts + skills (authored) | — |

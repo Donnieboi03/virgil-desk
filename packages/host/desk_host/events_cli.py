@@ -222,7 +222,14 @@ def _summarize_run(rows: list[dict[str, Any]]) -> dict[str, Any]:
             if ic is not None:
                 item_count = int(ic)
         measure = row.get("measure")
-        if isinstance(measure, dict):
+        # Usage only from primary cost events — skip run.finished mirrors of execute.
+        if k in (
+            "handoff.decomposed",
+            "handoff.decompose_failed",
+            "agent.executed",
+            "agent.execute_failed",
+            "agent.execute_blocked_children",
+        ) and isinstance(measure, dict):
             for key in usage_totals:
                 val = measure.get(key)
                 if val is None:

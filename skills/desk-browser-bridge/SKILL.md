@@ -2,19 +2,19 @@
 name: desk-browser-bridge
 description: >-
   Virgil Desk browser bridge: desk-browser CLI, Path B extension Eyes/Hands
-  (default) or harness CDP rollback, You/Agent/Waiting board, Accept/Deny proposals.
-version: 1.15.4
+  (default) or harness CDP rollback. Done/park/clump policy lives in the execute Packet prompt.
+version: 1.16.0
 metadata:
   hermes:
     tags: [virgil-desk, browser, handoff]
-    keywords: [mint_item, subtask, auth_wall, soft_help, park_last_resort, url_first_park, awaiting_human, eyes_empty, eyes_mode, verified_terminal, human_remainder, human_judgment, homogeneous_clump]
+    keywords: [mint_item, subtask, auth_wall, soft_help, park_last_resort, url_first_park, awaiting_human, eyes_empty, eyes_mode, verified_terminal, human_remainder, homogeneous_clump]
 ---
 
 # Desk browser bridge
 
 Use when executing a **Virgil Desk** handoff via Host `POST /v1/browser` or the **`desk-browser`** CLI.
 
-**Primary model = DOM Eyes → `target_id` Hands.** URL open/construct is a **secondary workaround** (hostile/empty Eyes) — not the default path. **Park to You is last resort**, not a general Done option. **Verified terminal page state** (expired / already submitted / deadline passed) after Eyes read = **Completed** — not Partial, not park.
+**Primary model = DOM Eyes → `target_id` Hands.** URL open/construct is a **secondary workaround** (hostile/empty Eyes). **Done / park / clump / failure-isolation criteria:** follow the execute Packet prompt (`execute_agent_item.md`) — this skill is the CLI reference only.
 
 ## CLI (Hermes `terminal`)
 
@@ -62,21 +62,25 @@ See [`docs/BROWSER_LAYER.md`](../docs/BROWSER_LAYER.md).
 
 ## Tab rules
 
-- **`openTab`** (default / agent) — different URL than handoff; stays in **Virgil · Agent**. Use this to **continue** on readable follow-up pages.
-- **`openTab` + `placement:human`** — **denied** (`human_park_tab_denied`). Park is URL-first You card only.
+- **`openTab`** (default / agent) — different URL than handoff; stays in **Virgil · Agent**.
+- **`openTab` + `placement:human`** — **denied** (`human_park_tab_denied`). Park = URL-first You mint only.
 - **`duplicateTab`** — same page as human (extension).
-- **`closeTab`** — requires `--tab-id`; missing id is rejected (not a silent no-op).
-- Handoff captures the **human tab** by default (excerpt + screenshot; no duplicate unless scroll loops > 0). **Virgil · Agent** is created only on **Run agent**.
+- **`closeTab`** — requires `--tab-id`; missing id is rejected.
+- **Virgil · Agent** is created only on **Run agent**.
 
-## Agent-continue vs park (URL-first last resort)
+## Observe–act–observe
 
-**Continue as agent** when links are readable: shared folders/docs, thread bodies, job pages — `openTab` (agent) → observe → read/summarize; mint **agent** children for multi-closure.
+CLI stdout is a **thin Eyes/Hands envelope** (no screenshot base64 — `screenshot.omitted: true`; targets stripped to id/ref/kind/label/frame_id).
 
-**Park You when:** login/CAPTCHA/auth/challenge wall; forbidden send/connect/pay/sign/submit; hostile/empty Eyes when human action is still required; stuck after re-observe; **or the operator must still decide/reply/apply/use docs** (co-founder picks, respond-to-X, access-then-use folder) — mint `human_remainder` with `source.url`. Soft-help = `mint_item` → You (keywords/draft/checklist).
+```
+observe → act (target_id) → verify (url + act_resolved + thin post-action result)
+```
 
-Do **not** claim `Single closure … no further action` after only reading those judgment/use items — host rejects that. Verified terminal dead-ends (expired / already submitted) remain Completed without park.
+- Act by `target_id` only on extension. Re-observe after navigation.
+- **`probe_links` / `probe_form` / `probe_table`:** only when Eyes targets lack the link/form structure you need — not a ritual after every open. Prefer visible link `target_id`s or `openTab --url` when the URL is already known. Empty `probe_links` ≠ “links checked.”
+- Check `act_resolved.url_before` vs `url_after` when opening threads.
 
-**URL-first park** — mint You with `source.url` (+ `park_kind` / `resume` for gates). Desk panel: **auth_gate** → **Show tab** on the existing agent tab (plus page URL fallback); **human_remainder** → clickable URL / Open. Do **not** `openTab placement=human`.
+## Mint / park (syntax)
 
 ```bash
 desk-browser --run-id RUN --op mint_item --params '{
@@ -89,62 +93,14 @@ desk-browser --run-id RUN --op mint_item --params '{
 }'
 ```
 
-- **`park_kind: auth_gate`** — parent → `awaiting_human` until human Marks done → **Resume agent**. Extension lends `agent_tab_id` (ungroup / Show tab / Resume regroups). Use this for auth/challenge walls (not bare `Partial:`).
-- **`park_kind: human_remainder`** — agent may Complete verified facts **and** leave You for human decide/reply/use; never claim “no further action” without acknowledging the remainder. Review/match/respond/access+use titles almost always need this.
-- Challenge patience: wait/settle/re-observe once on bot interstitials; prefer **one** You for the destination URL. On Resume, honor Packet `resume.cleared_gates`.
+When to park, Done language, clump failure isolation, and human_remainder rules: **execute Packet prompt**.
 
-Do not claim Observed success from blank scrape. If Eyes return **`eyes_mode: 1`**, trust the promoted excerpt. If Eyes **verify a terminal** outcome, stop with Completed — do not mint You. If **`eyes_empty`** / **`eyes_mode: 2`** with no usable fact, do not invent page copy from the URL alone — use `eyes_hints.url_path_hint` only as a soft signal, then `Partial:` or last-resort park when human action remains. On **Resume**, Packet may include `resume.cleared_gates` — do not remint those URLs; continue past the gate.
+## Forbidden (quick)
 
-## Observe–act–observe
-
-CLI stdout is a **thin Eyes/Hands envelope** (no screenshot base64 — `screenshot.omitted: true`; targets stripped to id/ref/kind/label/frame_id).
-
-**Extension:** act by `target_id` only. Re-observe after navigation. Use probes when the target map is insufficient.
-
-Loop until the task is done (host also enforces `hermes.execute_max_turns`):
-
-```
-observe → act (target_id) → verify (url + act_resolved + thin post-action result)
-```
-
-Check `act_resolved.url_before` vs `url_after` when opening threads or navigating. Events may include `driver: extension`.
-
-## Inbox / thread success criteria
-
-- **Must open** the matching message/thread and re-observe body/URL before claiming progress.
-- **List / search snippets are not done.**
-- Prefer row `target_id`s. **Forbidden:** bare list-row CSS instead of `target_id`.
-- **Done** = agent-safe work finished (incl. following readable links as agent), **or** `Partial:`, **or** last-resort URL-first park. Host rejects bare “Observed …” / “Opened …”. Host also rejects “Reviewed …” after a failed `openTab`.
-- **Stop only when Done is met.** Turn ceiling is backup; ceiling without Done → `Partial:`.
-- After open, **follow relevant in-body links as agent** before parking. Empty `probe_links` ≠ links checked.
-
-## Mid-flight subtasks
-
-When Eyes / non-empty probes show **multiple actionable closures** (including a homogeneous multi-URL clump parent), **must** `mint_item` before success stop (not for terminal verified dead-ends). Prefer **agent** column for readable follow-ups; You/Waiting only under last-resort park. **Failure isolation:** one URL's `auth_gate` / empty Eyes / timeout → mint that subgoal or `Partial:` — do not Done the whole clump. Host blocks parent `done` while agent children are open. Truly one closure or verified terminal: say “Single closure: …” / “Verified expired …; no further action.” after finishing. If a You remainder remains, acknowledge parked remainder instead of “no further action.”
-
-General-tab / spawn-first (`openTab`, tab custody, mint You) — not a Gmail-specific bot.
-## Forbidden
-
-- outbound social send/connect/InMail-class actions, public posts, payment/sign submits
-- send email without human Accept (email **drafts** are allowed)
+- outbound social send/connect, public posts, payment/sign submits; send email without Accept (drafts OK)
 - any browser op on `human_tab_id` (except snapshot at user gesture)
-- **`openTab` + `placement:human`** (use URL-first You mint)
-- bare list-row CSS instead of `target_id`
-
-**Search / navigation Enter is allowed** — use `press_key: "Enter"` on fill or `key`.
-
-## Proposals
-
-Calendar / drafts → **Accept** or **Deny** via Host; no auto-commit.
-
-## Agent execution
-
-Operator clicks **Run agent** / **Resume agent** on Agent column **root** items. Hermes uses `desk-browser` + this skill during execute. Mark done on an `auth_gate` You unblocks the parent (`proposed` + Resume) — no auto-Hermes.
+- **`openTab` + `placement:human`**; bare list-row CSS instead of `target_id`
 
 ## Evidence
 
-`command_result` (host) may include screenshots; **`desk-browser` CLI strips base64** and fat target geometry before Hermes sees it. Failed ops log `error` / `tab_id` / `url` in `desk_events.jsonl`. Optional usage/cost may appear on execute/decompose events when the agent backend exposes it.
-
-## Budget
-
-Host caps `browser.screenshot_max_per_run` per `run_id`. Execute also passes Hermes `--max-turns` from `hermes.execute_max_turns` (default 40) — prefer self-stop when criteria are met. If the ceiling is hit without opening/reading, emit a one-line `Partial:` summary and stop. If the provider aborts/stalls mid-turn, stop with `Partial:` rather than thrashing observes.
+Host may require ≥1 successful `browser` result before Done (`hermes.execute_require_browser_evidence`). Prefer finishing when Done criteria in the Packet prompt are met; `hermes.execute_max_turns` is backup.

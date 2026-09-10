@@ -271,7 +271,6 @@ def format_for_execute(
             "mission": note.get("mission") or "",
             "bullets": list(note.get("bullets") or []),
         },
-        "decomposition": decomp,
         "semantic_facts": format_semantic_for_execute(
             semantic or empty_semantic(),
             packet_max_facts=packet_max_facts,

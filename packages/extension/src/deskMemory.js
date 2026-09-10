@@ -240,7 +240,6 @@ export function formatForExecute(
       mission: note.mission || "",
       bullets: [...(note.bullets || [])],
     },
-    decomposition: decomp,
     semantic_facts: formatSemanticForExecute(semantic || emptySemantic(), {
       packetMaxFacts,
       maxKeyChars,

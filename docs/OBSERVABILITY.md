@@ -94,8 +94,7 @@ Additive stamps for procedure mining (do **not** slim Eyes):
 
 **Mining rule:** Eyes-rebind from live observe — do **not** replay ephemeral `t14`-style refs from JSONL.
 
-`desk-events --run-id … --summary` includes `failed_command_count` and up to 20 `failed_ops` (`op`/`error`/`tab_id`/`url`). When any event carried usage, summary also rolls up `prompt_tokens` / `completion_tokens` / `total_tokens` / `cost_usd` (omit keys that are zero/absent).
-
+`desk-events --run-id … --summary` includes `failed_command_count` and up to 20 `failed_ops` (`op`/`error`/`tab_id`/`url`). Summary usage rollup (`prompt_tokens` / `completion_tokens` / `total_tokens` / `cost_usd`) sums only `handoff.decomposed` / `handoff.decompose_failed` / `agent.executed` / `agent.execute_failed` / `agent.execute_blocked_children` — **not** `run.finished` (which mirrors execute usage). Omit keys that are zero/absent.
 Per-item EXT/GAP (when execute windows exist): `items[]` with `wall_ms`, `ext_ms` (Σ `duration_ms` on `browser.command_result`), `gap_ms_sum` / `gap_first_ms` / `gap_later_avg` (result → next `browser.command`), `residual_ms`, `op_ext` (per-op duration + optional inject/frame), optional per-item `usage`. Prefer **`item_id` join** when browser events stamp `item_id`; fall back to execute start→end time window for older JSONL. Run skew: `ext_ms_max` / `ext_ms_min` / `ext_ms_median` / `ext_ms_max_item_id`. Summary with `--run-id` reads up to 100k events so windows are not truncated at the default 100-line limit.
 
 ### Procedure mine contract

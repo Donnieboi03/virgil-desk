@@ -72,8 +72,10 @@ def test_format_for_execute():
         ],
     )
     fmt = format_for_execute(mem, "r1")
-    assert fmt["decomposition"] == "d1"
+    assert "decomposition" not in fmt
+    assert fmt["run_notepad"]["decomposition"] == "d1"
     assert fmt["run_notepad"]["bullets"] == ["b1"]
+    assert fmt["run_notepad"]["mission"] == "m"
     assert fmt["recent_executions"][0]["summary"] == "prior"
     assert fmt["semantic_facts"] == []
 

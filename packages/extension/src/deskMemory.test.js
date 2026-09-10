@@ -65,7 +65,8 @@ describe("deskMemory", () => {
       },
     ]);
     const fmt = formatForExecute(mem, "r1");
-    expect(fmt.decomposition).toBe("d1");
+    expect(fmt.decomposition).toBeUndefined();
+    expect(fmt.run_notepad.decomposition).toBe("d1");
     expect(fmt.run_notepad.bullets).toEqual(["b1"]);
     expect(fmt.recent_executions[0].summary).toBe("prior");
     expect(fmt.semantic_facts).toEqual([]);

@@ -4,13 +4,13 @@ Execute one Virgil Desk **Agent** work item using the `desk-browser` CLI.
 
 Treat context as boxes — do not expect the full tool history to stay available:
 
-- **Packet** (once, in the JSON below): `item` (title, id, optional **`hints`**: `search_query` / `sender` / `subject_contains`), `run_id`, tabs, `handoff_url`, **`initial_scrape`**, plus `decomposition`, `run_notepad`, `recent_executions`, optional **`semantic_facts`** (standing user prefs / decisions — honor them; do not invent facts).
+- **Packet** (once, in the JSON below): `item` (title, id, optional **`hints`**: `search_query` / `sender` / `subject_contains`), `run_id`, tabs, `handoff_url`, **`initial_scrape`**, plus `run_notepad` (includes **`decomposition`** / mission / bullets), `recent_executions`, optional **`semantic_facts`** (standing user prefs / decisions — honor them; do not invent facts).
 - **Eyes** (latest `desk-browser` observe only): url, title, slim `interact_targets` (`id`/`ref`/`kind`/`label`/`frame_id`), optional `page_tree`, optional short excerpt (same URL → `text_omitted`), plus **`eyes_mode`** (`0` default / `1` deep-text promote / `2` soft hints). Screenshots are **omitted** from CLI JSON (`screenshot.omitted`). Prefer **`target_id`** from the latest observe — do not invent CSS selectors or raw `{x,y}` as the primary path.
 - **Hands** (latest act only): `act_resolved`, url before/after.
 
 **Primary model = DOM Eyes → `target_id` Hands.** Constructing/opening URLs is a **secondary workaround** when Eyes are empty/hostile — not the default operating model. **Park to You is last resort**, not a general success path.
 
-Use notepad + recent executions for temporal context; do not re-do work already marked done in them. Prefer `item.hints` to search/open the target thread before free-form browsing. When Packet includes `semantic_facts`, treat them as standing operator prefs/decisions for this Desk — honor them; do not invent new facts.
+Use `run_notepad` + recent executions for temporal context (read decomposition from `run_notepad.decomposition`); do not re-do work already marked done in them. Prefer `item.hints` to search/open the target thread before free-form browsing. When Packet includes `semantic_facts`, treat them as standing operator prefs/decisions for this Desk — honor them; do not invent new facts.
 
 When Packet includes **`resume`** (after human Mark done on an auth gate):
 
@@ -59,10 +59,17 @@ For inbox / email / message-list work items:
 
 After the thread/body is open, **follow relevant in-body links** (shared folders, docs, attachments, job pages, readable agreement viewers) that are part of the task:
 
-1. `openTab` **with `--url 'https://…'`** (agent tab; never omit URL — host rejects blank/`about:blank`) → `observe` → read/summarize (or mint an **agent** child and pursue it in this run).
-2. Do **not** crawl every link. An **empty** `probe_links` is not “links checked” — re-`observe` or click visible link targets.
+1. Prefer visible link `target_id`s from Eyes, or `openTab` **with `--url 'https://…'`** (agent tab; never omit URL — host rejects blank/`about:blank`) → `observe` → read/summarize (or mint an **agent** child and pursue it in this run).
+2. Do **not** crawl every link. Use **`probe_links` only when** Eyes targets lack link affordances / structure is unclear — not as a ritual after every open. An **empty** `probe_links` is not “links checked” — re-`observe` or click visible link targets.
 3. Still never send/pay/post/sign/submit.
 
+## Homogeneous clump roots
+
+When this item is a **clump** (one Agent root covering several same-pattern visible rows / URLs):
+
+1. Walk the set in **this** run (hints / title name the members).
+2. **Failure isolation:** if one URL hits `auth_gate`, blank Eyes, or timeout — mint that subgoal (You/`Partial:`) and continue or stop with an honest Partial for the parent. **Do not** mark the whole clump Done when only some URLs succeeded.
+3. Divergent human remainders still get per-action You mints.
 ## Park = URL-first You card (last resort)
 
 Park = `mint_item` → **You**/Waiting with **`source.url`** (clickable in the Desk panel). For **`auth_gate`**, the extension also surfaces the **same agent tab** via Show tab — do not expect a duplicate. **Do not** call `openTab` `placement:human` — the host returns `human_park_tab_denied`.
@@ -101,7 +108,7 @@ Do **not** park merely because a readable link appeared — continue as agent fi
 
 ## Mid-flight subtasks (mandatory when multi-closure)
 
-When Eyes (or a **non-empty** `probe_links`) show **more than one closure** that still needs work — including a **homogeneous clump** parent covering several same-pattern URLs:
+When Eyes show **more than one closure** that still needs work — including a **homogeneous clump** parent covering several same-pattern URLs (do **not** require `probe_links` first if Eyes already show the links):
 
 1. **Must** `mint_item` for each distinct **actionable** closure before success stop (not for terminal verified dead-ends):
    ```bash
@@ -135,7 +142,7 @@ If there is truly only one closure and no further agent/**or human** action (inc
    desk-browser ... --op click --params '{"target_id": 7}' --wait
    desk-browser ... --op fill --params '{"target_id": 3, "value": "query", "press_key": "Enter"}' --wait
    ```
-   Optional probes when structure is missing: `probe_form`, `probe_links`, `probe_table`.
+   Optional probes when Eyes lack structure (not ritual): `probe_form`, `probe_links`, `probe_table`.
 7. Example (open thread):
    ```bash
    desk-browser --run-id RUN --op observe --human-tab-id HUMAN --tab-id AGENT --wait
