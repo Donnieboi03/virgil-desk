@@ -28,9 +28,10 @@ def test_handoff_then_accept_calendar_proposal():
             )
             assert handoff.status_code == 200
             data = handoff.json()
-            waiting = [i for i in data["items"] if i.get("column") == "waiting"]
+            waiting = [i for i in data["items"] if i.get("proposals")]
             assert waiting, "mock backend should propose a calendar slot"
             item = waiting[0]
+            assert item["column"] == "you"
             prop = item["proposals"][0]
             assert prop["kind"] == "calendar_slot"
 
@@ -65,7 +66,7 @@ def test_accept_ui_proposal_moves_to_agent_column():
             prop_id = "prop_ui_1"
             item = {
                 "id": item_id,
-                "column": "waiting",
+                "column": "you",
                 "status": "proposed",
                 "title": "Confirm form",
                 "run_id": run_id,
@@ -112,10 +113,10 @@ def test_deny_proposal():
                 },
             )
             data = handoff.json()
-            waiting = [i for i in data["items"] if i.get("column") == "waiting"][0]
-            prop = waiting["proposals"][0]
+            you_prop = [i for i in data["items"] if i.get("proposals")][0]
+            prop = you_prop["proposals"][0]
             deny = client.post(
-                f"/v1/items/{waiting['id']}/deny",
+                f"/v1/items/{you_prop['id']}/deny",
                 json={
                     "run_id": data["run_id"],
                     "proposal_id": prop["id"],

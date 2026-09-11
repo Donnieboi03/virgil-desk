@@ -123,8 +123,9 @@ def test_hermes_handoff_includes_calendar_proposal(hermes_backend, monkeypatch):
                     "window_id": 1,
                 }
             )
-            waiting = [i for i in result["items"] if i.get("column") == "waiting"]
+            waiting = [i for i in result["items"] if i.get("proposals")]
             assert waiting, "Hermes backend should propose calendar slot"
+            assert waiting[0]["column"] == "you"
             assert waiting[0]["proposals"][0]["kind"] == "calendar_slot"
         finally:
             ext.close()

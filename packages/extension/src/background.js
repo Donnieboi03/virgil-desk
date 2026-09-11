@@ -3,7 +3,7 @@ const PAIRS_KEY = "virgil_desk_tab_pairs";
 const AGENT_GROUP_TITLE = "Virgil · Agent";
 const DEFAULT_HOST = "http://127.0.0.1:8787";
 
-import { applyBoardPatch, chooseNavigationOp, policyBlock as tabPolicyBlock } from "./tabPolicy.js";
+import { applyBoardPatch, chooseNavigationOp, foldWaitingIntoYou, policyBlock as tabPolicyBlock } from "./tabPolicy.js";
 import { withProvisionLock, planAgentTabForItem } from "./agentTabs.js";
 import {
   authGateParksFromOps,
@@ -524,7 +524,12 @@ async function handleExecuteCleanup(msg) {
 
 async function loadBoard() {
   const data = await chrome.storage.local.get(BOARD_KEY);
-  return data[BOARD_KEY] || { you: [], agent: [], waiting: [] };
+  const raw = data[BOARD_KEY] || { you: [], agent: [], waiting: [] };
+  const { board, changed } = foldWaitingIntoYou(raw);
+  if (changed) {
+    await chrome.storage.local.set({ [BOARD_KEY]: board });
+  }
+  return board;
 }
 
 async function saveBoard(board) {
@@ -831,12 +836,7 @@ async function maybeNotifyHumanAttention(board) {
     /* older chrome */
   }
   if (!enabled || !shouldNotifyAttention(prev, next)) return;
-  const title =
-    next.youNeeds && next.waitingNeeds
-      ? "Desk needs you"
-      : next.youNeeds
-        ? "You column needs you"
-        : "Waiting needs Accept";
+  const title = "Desk needs you";
   const message =
     next.titles.slice(0, 2).join(" · ") ||
     `${next.total} item${next.total === 1 ? "" : "s"} need attention`;
@@ -2898,10 +2898,10 @@ async function acceptProposal({ itemId, proposalId, runId }) {
   });
   const data = await res.json();
   if (data.needs_agent_tab) {
-    // Wait for host board_patch (Waiting → Agent) before provision so we don't
-    // race applyPatch and drop agent_tab_id on a stale waiting-column snapshot.
+    // Wait for host board_patch (You proposal → Agent) before provision so we don't
+    // race applyPatch and drop agent_tab_id on a stale column snapshot.
     await waitForBoardItemColumn(itemId, "agent", 2500);
-    const provisioned = await provisionAgentTabForWaitingItem(itemId, runId).catch(
+    const provisioned = await provisionAgentTabForAcceptedItem(itemId, runId).catch(
       (err) => ({ ok: false, error: String(err?.message || err) }),
     );
     if (provisioned && provisioned.ok === false) {
@@ -2928,9 +2928,9 @@ async function waitForBoardItemColumn(itemId, column, timeoutMs = 2000) {
 }
 
 /**
- * Waiting Accept that needs UI: duplicate from handoff human tab (same as Agent provision).
+ * You Accept that needs UI: duplicate from handoff human tab (same as Agent provision).
  */
-async function provisionAgentTabForWaitingItem(itemId, runId) {
+async function provisionAgentTabForAcceptedItem(itemId, runId) {
   return withProvisionLock(runId, async () => {
     // Always re-load inside the lock — Accept's board_patch may have just landed.
     let located = await findBoardItem(itemId);

@@ -88,7 +88,13 @@ def parse_decompose_json(
         if not isinstance(raw_item, dict):
             continue
         column = str(raw_item.get("column", "")).lower()
+        # Legacy third lane: Waiting folded into You (Accept/Deny still on proposals).
+        if column == "waiting":
+            column = "you"
         if column not in VALID_COLUMNS:
+            continue
+        # Emit path only uses you|agent; waiting accepted above then remapped.
+        if column not in ("you", "agent"):
             continue
         idx = col_counts.get(column, 0)
         col_counts[column] = idx + 1

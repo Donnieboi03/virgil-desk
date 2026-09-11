@@ -215,8 +215,61 @@ function appendItemActions(li, item, column, allItems = []) {
     return;
   }
   if (column === "you" && item.status !== "done" && item.status !== "denied") {
+    const proposals = item.proposals || [];
     const actions = document.createElement("div");
     actions.className = "item-actions";
+    // Proposal cards: Accept/Deny only (never Mark done — that bypasses calendar book).
+    if (proposals.length) {
+      const accept = document.createElement("button");
+      accept.textContent = "Accept";
+      accept.disabled = !panelWsConnected;
+      const deny = document.createElement("button");
+      deny.textContent = "Deny";
+      deny.disabled = !panelWsConnected;
+      accept.onclick = async () => {
+        if (accept.disabled) return;
+        accept.disabled = true;
+        deny.disabled = true;
+        accept.textContent = "Saving…";
+        try {
+          await chrome.runtime.sendMessage({
+            type: "acceptProposal",
+            itemId: item.id,
+            proposalId: proposals[0]?.id || "",
+            runId: item.run_id || "",
+          });
+          await refresh();
+        } catch {
+          accept.textContent = "Accept";
+          accept.disabled = !panelWsConnected;
+          deny.disabled = !panelWsConnected;
+        }
+      };
+      deny.onclick = async () => {
+        if (deny.disabled) return;
+        accept.disabled = true;
+        deny.disabled = true;
+        deny.textContent = "Saving…";
+        try {
+          await chrome.runtime.sendMessage({
+            type: "denyProposal",
+            itemId: item.id,
+            proposalId: proposals[0]?.id || "",
+            runId: item.run_id || "",
+            reason: "operator denied",
+          });
+          await refresh();
+        } catch {
+          deny.textContent = "Deny";
+          accept.disabled = !panelWsConnected;
+          deny.disabled = !panelWsConnected;
+        }
+      };
+      actions.appendChild(accept);
+      actions.appendChild(deny);
+      li.appendChild(actions);
+      return;
+    }
     const doneBtn = document.createElement("button");
     doneBtn.textContent = "Mark done";
     doneBtn.disabled = !panelWsConnected;
@@ -253,78 +306,6 @@ function appendItemActions(li, item, column, allItems = []) {
     };
     actions.appendChild(doneBtn);
     li.appendChild(actions);
-    return;
-  }
-  if (column === "waiting" && ((item.proposals || []).length || item.status === "proposed")) {
-    const proposals = item.proposals || [];
-    const actions = document.createElement("div");
-    actions.className = "item-actions";
-    if (item.status !== "done" && item.status !== "denied") {
-      const accept = document.createElement("button");
-      accept.textContent = "Accept";
-      accept.disabled = !panelWsConnected;
-      accept.onclick = async () => {
-        if (accept.disabled) return;
-        accept.disabled = true;
-        deny.disabled = true;
-        accept.textContent = "Saving…";
-        try {
-          await chrome.runtime.sendMessage({
-            type: "acceptProposal",
-            itemId: item.id,
-            proposalId: proposals[0]?.id || "",
-            runId: item.run_id || "",
-          });
-          await refresh();
-        } catch {
-          accept.textContent = "Accept";
-          accept.disabled = !panelWsConnected;
-          deny.disabled = !panelWsConnected;
-        }
-      };
-      const deny = document.createElement("button");
-      deny.textContent = "Deny";
-      deny.disabled = !panelWsConnected;
-      deny.onclick = async () => {
-        if (deny.disabled) return;
-        accept.disabled = true;
-        deny.disabled = true;
-        deny.textContent = "Saving…";
-        try {
-          await chrome.runtime.sendMessage({
-            type: "denyProposal",
-            itemId: item.id,
-            proposalId: proposals[0]?.id || "",
-            runId: item.run_id || "",
-            reason: "operator denied",
-          });
-          await refresh();
-        } catch {
-          deny.textContent = "Deny";
-          accept.disabled = !panelWsConnected;
-          deny.disabled = !panelWsConnected;
-        }
-      };
-      actions.appendChild(accept);
-      actions.appendChild(deny);
-    }
-    li.appendChild(actions);
-    return;
-  }
-  if ((item.proposals || []).length) {
-    for (const p of item.proposals) {
-      const accept = document.createElement("button");
-      accept.textContent = "Accept";
-      accept.disabled = !panelWsConnected;
-      accept.onclick = () =>
-        chrome.runtime.sendMessage({
-          type: "acceptProposal",
-          itemId: item.id,
-          proposalId: p.id,
-          runId: item.run_id || "",
-        });
-      li.appendChild(accept);
-    }
   }
 }
 
@@ -523,19 +504,9 @@ async function refreshMeta() {
 
 async function refreshBoard() {
   const { board } = await chrome.runtime.sendMessage({ type: "getBoard" });
-  const all = [
-    ...(board.you || []),
-    ...(board.agent || []),
-    ...(board.waiting || []),
-  ];
+  const all = [...(board.you || []), ...(board.agent || []), ...(board.waiting || [])];
   renderColumn(document.getElementById("col-you"), board.you || [], "you", all);
   renderColumn(document.getElementById("col-agent"), board.agent || [], "agent", all);
-  renderColumn(
-    document.getElementById("col-waiting"),
-    board.waiting || [],
-    "waiting",
-    all,
-  );
   updateRunTabButton(board.agent || [], all);
 }
 

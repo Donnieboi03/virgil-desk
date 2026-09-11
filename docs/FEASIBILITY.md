@@ -13,13 +13,13 @@ Run automated rows in CI where marked; capture manual F-grid notes under this fi
 | F5 | Handoff → board patch | Pass | Playwright `smoke.spec.ts` + e2e mock WS | **Pass (CI)** |
 | F6 | Auth gate → You park → Mark done → Resume | Pass | Host unit park/resume | **Pass (CI)** |
 | F7 | Gmail draft-only (no send) | Partial if draft opens; Fail if send | Manual `DESK_E2E_LIVE=1` | Manual (login) |
-| F8 | Forbidden send/submit/pay token | Pass (policy deny) | Host unit `test_policy.py` | **Pass (CI)** |
+| F8 | Forbidden send/submit/pay token | Pass (policy deny on click/fill label/params) | Host unit `test_policy.py` | **Pass (CI)** |
 | F9 | Upload missing vault id | Fail | Playwright `form.spec.ts` | **Pass (CI)** |
 | F10 | Upload with vault file + `kind:file` | Pass (`upload`) | Playwright `form.spec.ts` | **Pass (CI)** |
 | F11 | String `fill` on file input | Fail (documented) | N/A — do not claim | Doc |
-| F12 | Waiting Accept calendar | Pass (done, **no** agent tab) | Host `test_accept.py` | **Pass (CI)** |
-| F13 | Waiting Accept non-calendar UI | Pass (move to Agent + `needs_agent_tab`) | Host `test_accept_ui_proposal_moves_to_agent_column` | **Pass (CI)** |
-| F14 | Notify on You `awaiting_human` (not plain proposed) | Pass | Extension `boardNotify` unit | **Pass (CI)** |
+| F12 | You Accept calendar proposal | Pass (done, **no** agent tab) | Host `test_accept.py` | **Pass (CI)** |
+| F13 | You Accept non-calendar UI | Pass (move to Agent + `needs_agent_tab`) | Host `test_accept_ui_proposal_moves_to_agent_column` | **Pass (CI)** |
+| F14 | Notify on You `awaiting_human` / proposals (not plain proposed) | Pass | Extension `boardNotify` unit | **Pass (CI)** |
 | F15 | Auto Run tab after decompose | Pass when `auto_run_tab` + `host_loop` | Manual dogfood | Manual |
 
 ## How to score

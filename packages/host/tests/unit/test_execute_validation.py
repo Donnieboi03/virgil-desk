@@ -305,6 +305,15 @@ def test_human_judgment_blocks_false_closure():
         "Single closure: opened thread; no further action.",
         item_title="Review Coinbase internship invite",
     )
+    # Draft / fill titles cannot skim-Complete without park
+    assert human_judgment_blocks_false_closure(
+        "Single closure: opened compose; no further action.",
+        item_title="Draft reply to Alex Liu (no send)",
+    )
+    assert human_judgment_blocks_false_closure(
+        "Single closure: observed form fields; no further action.",
+        item_title="Fill application form; park You to submit",
+    )
 
 
 def test_open_you_remainder_kinds():

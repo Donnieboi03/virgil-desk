@@ -31,6 +31,46 @@ export function allBoardItems(board) {
   return [...(board.you || []), ...(board.agent || []), ...(board.waiting || [])];
 }
 
+/**
+ * Fold legacy Waiting column into You (two-lane board). Idempotent.
+ * @param {{ you?: any[], agent?: any[], waiting?: any[] }} board
+ * @returns {{ board: typeof board, changed: boolean }}
+ */
+export function foldWaitingIntoYou(board) {
+  const waiting = board?.waiting || [];
+  if (!waiting.length) {
+    return {
+      board: {
+        you: [...(board?.you || [])],
+        agent: [...(board?.agent || [])],
+        waiting: [],
+      },
+      changed: false,
+    };
+  }
+  const you = [...(board.you || [])];
+  const ids = new Set(you.map((i) => i?.id).filter(Boolean));
+  for (const item of waiting) {
+    if (!item) continue;
+    const next = { ...item, column: "you" };
+    if (next.id && ids.has(next.id)) {
+      const idx = you.findIndex((i) => i.id === next.id);
+      if (idx >= 0) you[idx] = { ...you[idx], ...next, column: "you" };
+    } else {
+      you.push(next);
+      if (next.id) ids.add(next.id);
+    }
+  }
+  return {
+    board: {
+      you,
+      agent: [...(board.agent || [])],
+      waiting: [],
+    },
+    changed: true,
+  };
+}
+
 export function applyBoardPatch(board, ops) {
   const next = {
     you: [...(board.you || [])],
@@ -43,10 +83,17 @@ export function applyBoardPatch(board, ops) {
       next.agent = [];
       next.waiting = [];
     } else if (patch.op === "add") {
-      next[patch.item.column].push(patch.item);
+      const item = patch.item || {};
+      const col = item.column === "waiting" ? "you" : item.column;
+      const stamped = col === "you" && item.column === "waiting" ? { ...item, column: "you" } : item;
+      if (!next[col]) next[col] = [];
+      next[col].push(stamped);
     } else if (patch.op === "update") {
       const id = patch.item.id;
-      const targetCol = patch.item.column;
+      let targetCol = patch.item.column;
+      if (targetCol === "waiting") targetCol = "you";
+      const incoming =
+        patch.item.column === "waiting" ? { ...patch.item, column: "you" } : patch.item;
       let placed = false;
       let prev = null;
       for (const c of ["you", "agent", "waiting"]) {
@@ -54,14 +101,14 @@ export function applyBoardPatch(board, ops) {
         if (idx < 0) continue;
         prev = next[c][idx];
         if (c === targetCol) {
-          next[c][idx] = mergeBoardItemUpdate(prev, patch.item);
+          next[c][idx] = mergeBoardItemUpdate(prev, incoming);
           placed = true;
         } else {
           next[c] = next[c].filter((item) => item.id !== id);
         }
       }
       if (!placed) {
-        next[targetCol].push(mergeBoardItemUpdate(prev, patch.item));
+        next[targetCol].push(mergeBoardItemUpdate(prev, incoming));
       }
     } else if (patch.op === "remove") {
       for (const col of ["you", "agent", "waiting"]) {
@@ -69,7 +116,8 @@ export function applyBoardPatch(board, ops) {
       }
     }
   }
-  return next;
+  const folded = foldWaitingIntoYou(next);
+  return folded.board;
 }
 
 /**

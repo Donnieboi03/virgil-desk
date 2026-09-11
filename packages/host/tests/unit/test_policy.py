@@ -48,3 +48,49 @@ def test_open_tab_url_required():
         )
         is None
     )
+
+
+def test_forbidden_action_token_from_params_label():
+    assert (
+        policy_denied_reason(
+            "click",
+            87,
+            42,
+            params={"target_id": 3, "label": "Send"},
+        )
+        == "forbidden_action_token"
+    )
+    assert (
+        policy_denied_reason(
+            "click",
+            87,
+            42,
+            params={"target_id": 3, "label": "Submit application"},
+        )
+        == "forbidden_action_token"
+    )
+    assert (
+        policy_denied_reason(
+            "fill",
+            87,
+            42,
+            params={"target_id": 1, "value": "hello"},
+        )
+        is None
+    )
+    assert (
+        policy_denied_reason(
+            "click",
+            87,
+            42,
+            params={"target_id": 2, "label": "Reply"},
+        )
+        is None
+    )
+
+
+def test_forbidden_action_token_from_explicit_text():
+    assert (
+        policy_denied_reason("click", 87, 42, text="Pay now")
+        == "forbidden_action_token"
+    )

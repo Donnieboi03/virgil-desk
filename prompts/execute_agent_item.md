@@ -24,7 +24,15 @@ When Packet includes **`resume`** (after human Mark done on an auth gate):
 
 1. **Agent-safe work finished** — including following relevant in-body links in the **agent** tab (readable docs/files/pages), **or verifying a terminal page state**, then one-line success summary, or
 2. Explicit one-line **`Partial:`** (blocked without a You park — forbidden action, true stuck, blank Eyes with no human remainder), or
-3. **Last-resort park** — `mint_item` You (or Waiting) with **`source.url`** when a destination exists. Auth/challenge gates use `park_kind: auth_gate` (parent **`awaiting_human`** until Mark done → Resume). Desk **lends the existing agent tab** (Show tab in panel — no second tab). **Never** `openTab` with `placement:human` (host denies it).
+3. **Last-resort park** — `mint_item` **You** with **`source.url`** when a destination exists. Auth/challenge gates use `park_kind: auth_gate` (parent **`awaiting_human`** until Mark done → Resume). Desk **lends the existing agent tab** (Show tab in panel — no second tab). **Never** `openTab` with `placement:human` (host denies it). Two lanes only: **You | Agent** (do not mint `waiting`).
+
+### Draft / fill autonomy (preferred over skim Done)
+
+When the item title or visible work is **reply / draft / respond / apply / fill form**:
+
+1. **Do** the agent-safe prep: open compose/draft, fill fields, attach from vault when asked — **never** click Send / Submit / Pay (host denies those tokens).
+2. **Then** `mint_item` You `park_kind: human_remainder` with **`source.url`** so the operator Show-tabs and finishes the irreversible click.
+3. Complete with “draft ready / form filled; remainder parked You …”. **Not Done** after only reading the thread when the card asked you to draft or fill.
 
 ### Verified terminal = Completed (not Partial, not park)
 
@@ -96,7 +104,7 @@ desk-browser --run-id RUN --op mint_item --params '{
 Park **only when**:
 
 - **Login / CAPTCHA / auth / challenge wall** — after a real open of the destination (`--url`) and one settle/re-observe → **`auth_gate` You**. Do **not** park `auth_gate` after a failed/blank `openTab` or without trying the destination URL first.
-- **Forbidden action** — outbound social connect/message, public post, pay/charge, sign/submit forms, send email without Accept → park You (or Waiting proposal).
+- **Forbidden action** — outbound social connect/message, public post, pay/charge, sign/submit forms, send email without Accept → park You (proposal Accept on You when appropriate). Do **not** mint Waiting.
 - **Hostile / empty Eyes with no verified fact** — soft-help You when human must still act; else `Partial:`. If observe/open reports **`eyes_mode: 1`**, treat the promoted `scrape_excerpt` as authoritative. If Eyes verify a **terminal** page, that is **Completed** — do not park. If **`eyes_empty`** / **`eyes_mode: 2`** with no usable fact, do **not** invent page copy from the URL alone — use `eyes_hints.url_path_hint` only as a soft signal.
 - **Stuck** after one re-`observe` (`stall_detected` / repeated `used:none`) → `Partial:` or soft-help You if human action remains.
 
@@ -116,7 +124,7 @@ When Eyes show **more than one closure** that still needs work — including a *
    ```bash
    desk-browser --run-id RUN --op mint_item --params '{
      "parent_id": "PARENT_ITEM_ID",
-     "column": "agent|you|waiting",
+     "column": "agent|you",
      "title": "short closure title",
      "source": {"url": "https://optional.example/path"},
      "hints": {"search_query": "optional"}
@@ -124,7 +132,7 @@ When Eyes show **more than one closure** that still needs work — including a *
    ```
    Prefer passing `source.url` when parking/following a specific link.
 2. Prefer **`column: agent`** for readable follow-ups. Pursue agent children in this run.
-3. Use **`column: you|waiting`** under last-resort park rules (**URL-first** — no `placement:human`).
+3. Use **`column: you`** under last-resort park rules (**URL-first** — no `placement:human`).
 4. **Failure isolation:** if one URL in a clump hits `auth_gate`, empty-stdout / blank Eyes, or timeout — mint that subgoal (You/`Partial:`) and continue or stop with an honest Partial for the parent. **Do not** mark the whole clump Done when only some URLs succeeded.
 5. If you cannot continue or park when required: `Partial:` — do not claim success.
 6. Prefer imperative titles (“Open shared folder and list files”), not “Summarize …”.

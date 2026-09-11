@@ -97,9 +97,10 @@ When to park, Done language, clump failure isolation, and human_remainder rules:
 
 ## Forbidden (quick)
 
-- outbound social send/connect, public posts, payment/sign submits; send email without Accept (drafts OK)
+- outbound social send/connect, public posts, payment/sign submits; send email (drafts OK — park You `human_remainder` for Send)
 - any browser op on `human_tab_id` (except snapshot at user gesture)
 - **`openTab` + `placement:human`**; bare list-row CSS instead of `target_id`
+- minting Waiting — two lanes only (**You | Agent**); proposals Accept on You
 
 ## Evidence
 

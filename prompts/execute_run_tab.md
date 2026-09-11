@@ -16,6 +16,8 @@ JSON includes:
 
 Same rules as single-item execute: verified terminal, factual extract, promo/newsletter skim/FYI, or park `human_remainder` / `auth_gate` You with `source.url`. Prefer `target_id`. Never `placement:human`.
 
+**Draft / fill cards:** prepare the draft or fill the form in the agent tab, then mint You `human_remainder` for Send/Submit — do not Complete on skim-only when the title asked for draft/fill/reply/apply.
+
 ## How to finish each item
 
 1. Work the **current** item (open matching thread / walk `hints.members[]` if present).

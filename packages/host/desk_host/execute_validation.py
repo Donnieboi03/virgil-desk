@@ -193,6 +193,7 @@ _HONEST_REMAINDER_RE = re.compile(
 _HUMAN_JUDGMENT_TITLE_RE = re.compile(
     r"(?i)\b("
     r"review|respond|reply|decide|choose|pick|match|access|apply|consider|approve"
+    r"|draft|fill"
     r")\b"
 )
 

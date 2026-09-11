@@ -2,7 +2,7 @@
 
 Portable checklist for Desk work not in the current MVP slice. Check items off as they ship.
 
-**North star (success test):** see [`PRODUCT.md`](PRODUCT.md) — hand off → Agent custody tabs while you leave → ping for auth/decide/file → Mark done → Resume, without reconstructing state in chat. Effort bands ~3h / ~6h / ~9h with AI (not calendar).
+**North star (success test):** see [`PRODUCT.md`](PRODUCT.md) — hand off → Agent custody tabs while you leave → ping for auth/decide/file → Mark done / Accept → Resume, without reconstructing state in chat. Effort bands ~3h / ~6h / ~9h with AI (not calendar). Two lanes: **You | Agent**.
 
 Deferred product bets (browser-localized Desk, procedures, Hub-shaped context, multi-profile WS): [`BACKLOG.md`](BACKLOG.md).
 
@@ -46,7 +46,9 @@ Mission-progress stop (URL unchanged K acts / repeated targets) — parked (easy
 
 ## Done (reference)
 
-- Dual loop UX: notify (`execute.notify_human_attention`), auto Run tab (`execute.auto_run_tab`), Waiting Accept → Agent tab (non-calendar), vault + `upload`/`set_files`, right-click handoff, [`FEASIBILITY.md`](FEASIBILITY.md), `desk-events --summary` execute_run rollup
+- **Two-lane board** — Waiting folded into You; Accept/Deny on You proposals; migrate-on-read
+- **Draft/fill autonomy** — decompose/execute prefer Agent draft/fill then You park; F8 policy scans click/fill labels
+- Dual loop UX: notify (`execute.notify_human_attention`), auto Run tab (`execute.auto_run_tab`), Waiting Accept→Agent tab (now You Accept), vault + `upload`/`set_files`, right-click handoff, [`FEASIBILITY.md`](FEASIBILITY.md), `desk-events --summary` execute_run rollup
 - Rich handoff: viewport excerpt + screenshot on human tab by default; decompose without leaving agent collage
 - Manual **Run agent** + `POST /v1/items/{id}/execute`; **Run tab** one `host_loop` over Agent roots
 - **`desk-browser`** CLI for Hermes terminal
@@ -60,6 +62,12 @@ Mission-progress stop (URL unchanged K acts / repeated targets) — parked (easy
 - **Slim observe** / clearer Hermes `last_error` / thin desk-browser envelope / `hermes.execute_max_turns`
 - **Execute Eyes/Hands (extension)** (`browser.driver: extension`); rollback `harness` CDP
 
+### Manual dogfood (two-lane + autonomy)
+
+1. One Chrome profile only connected to Host.
+2. Reload unpacked extension (`packages/extension/dist`).
+3. Gmail handoff → expect **You | Agent** only; calendar on You with Accept; draft/fill-shaped Agent titles when visible.
+4. Accept calendar on You; form/draft parks → Show tab.
 ## Links
 
 - [`PRODUCT.md`](PRODUCT.md) — primary flows

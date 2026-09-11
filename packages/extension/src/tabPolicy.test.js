@@ -115,17 +115,18 @@ describe("applyBoardPatch", () => {
 
   it("preserves agent_tab_id when host update omits custody fields", () => {
     const board = {
-      you: [],
-      agent: [],
-      waiting: [
+      you: [
         {
           id: "w1",
-          column: "waiting",
+          column: "you",
           status: "proposed",
           agent_tab_id: 42,
           human_tab_id: 7,
+          proposals: [{ id: "p1", kind: "form_review" }],
         },
       ],
+      agent: [],
+      waiting: [],
     };
     const out = applyBoardPatch(board, [
       {
@@ -142,5 +143,24 @@ describe("applyBoardPatch", () => {
     expect(out.agent[0].agent_tab_id).toBe(42);
     expect(out.agent[0].human_tab_id).toBe(7);
     expect(out.agent[0].status).toBe("proposed");
+  });
+
+  it("folds legacy waiting add into you", () => {
+    const board = { you: [], agent: [], waiting: [] };
+    const out = applyBoardPatch(board, [
+      {
+        op: "add",
+        item: {
+          id: "w1",
+          column: "waiting",
+          title: "Slot",
+          proposals: [{ id: "p1", kind: "calendar_slot" }],
+        },
+      },
+    ]);
+    expect(out.waiting).toHaveLength(0);
+    expect(out.you).toHaveLength(1);
+    expect(out.you[0].column).toBe("you");
+    expect(out.you[0].id).toBe("w1");
   });
 });

@@ -494,7 +494,7 @@ class HermesBackend:
                 },
                 {
                     "id": f"item_{short}_wait",
-                    "column": "waiting",
+                    "column": "you",
                     "title": "Proposed calendar slot",
                     "source": {"kind": "handoff", "url": url},
                     "status": "proposed",

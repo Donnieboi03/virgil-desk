@@ -893,6 +893,7 @@ async def dispatch_browser_command(command: dict[str, Any]) -> None:
         command.get("op", ""),
         command.get("tab_id"),
         command.get("human_tab_id"),
+        text=str(command.get("text") or ""),
         params=command.get("params") if isinstance(command.get("params"), dict) else None,
         url=command.get("url") if isinstance(command.get("url"), str) else None,
     )
@@ -1059,6 +1060,8 @@ async def mint_item(body: MintItemBody) -> dict[str, Any]:
     """Mid-flight subtask mint — Hermes via desk-browser --op mint_item."""
     if body.column not in ("you", "agent", "waiting"):
         raise HTTPException(status_code=400, detail="column must be you|agent|waiting")
+    # Two-lane board: legacy waiting → you (Accept/Deny live on You proposals).
+    mint_column = "you" if body.column == "waiting" else body.column
     parent = _work_items.get(body.parent_id)
     if not parent:
         raise HTTPException(status_code=404, detail="parent work item not found")
@@ -1077,7 +1080,7 @@ async def mint_item(body: MintItemBody) -> dict[str, Any]:
         source = {**source, "url": body.source["url"]}
     source_url = (source or {}).get("url") if isinstance(source, dict) else None
 
-    if body.column == "you" and park_kind in ("auth_gate", "human_remainder") and not source_url:
+    if mint_column == "you" and park_kind in ("auth_gate", "human_remainder") and not source_url:
         raise HTTPException(
             status_code=400,
             detail="You park with park_kind requires source.url",
@@ -1087,7 +1090,7 @@ async def mint_item(body: MintItemBody) -> dict[str, Any]:
     item_id = f"{body.parent_id}_sub_{short}"
     item: dict[str, Any] = {
         "id": item_id,
-        "column": body.column,
+        "column": mint_column,
         "title": body.title[:200],
         "status": body.status if body.status in ("proposed", "running") else "proposed",
         "kind": "subtask",
@@ -1106,13 +1109,13 @@ async def mint_item(body: MintItemBody) -> dict[str, Any]:
     # Agent subtasks share the parent's agent tab when present (no new collage).
     # auth_gate You parks also get agent_tab_id so the panel can Show that tab.
     if parent.get("agent_tab_id") is not None and (
-        body.column == "agent" or park_kind == "auth_gate"
+        mint_column == "agent" or park_kind == "auth_gate"
     ):
         item["agent_tab_id"] = parent["agent_tab_id"]
 
     _work_items[item_id] = item
     patch_ops: list[dict[str, Any]] = [{"op": "add", "item": item}]
-    if body.column == "you" and park_kind == "auth_gate":
+    if mint_column == "you" and park_kind == "auth_gate":
         parent_updated = {
             **parent,
             "status": "awaiting_human",
@@ -1132,7 +1135,7 @@ async def mint_item(body: MintItemBody) -> dict[str, Any]:
         )
     except ExtensionNotConnectedError as exc:
         _work_items.pop(item_id, None)
-        if body.column == "you" and park_kind == "auth_gate":
+        if mint_column == "you" and park_kind == "auth_gate":
             _work_items[body.parent_id] = parent
         raise HTTPException(status_code=503, detail=str(exc)) from exc
     record(
@@ -1141,7 +1144,7 @@ async def mint_item(body: MintItemBody) -> dict[str, Any]:
         cfg=get_config(),
         item_id=item_id,
         parent_id=body.parent_id,
-        column=body.column,
+        column=mint_column,
         flags={"park_kind": park_kind, "resume": resume} if park_kind else None,
     )
     return {"ok": True, "item": item}

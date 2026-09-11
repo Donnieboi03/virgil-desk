@@ -165,14 +165,14 @@ def test_calendar_accept_after_handoff():
                     "window_id": 1,
                 }
             )
-            waiting = [i for i in result["items"] if i.get("column") == "waiting"][0]
-            prop = waiting["proposals"][0]
+            you_prop = [i for i in result["items"] if i.get("proposals")][0]
+            prop = you_prop["proposals"][0]
             accept = client.post(
-                f"/v1/items/{waiting['id']}/accept",
+                f"/v1/items/{you_prop['id']}/accept",
                 json={
                     "run_id": result["run_id"],
                     "proposal_id": prop["id"],
-                    "work_item_id": waiting["id"],
+                    "work_item_id": you_prop["id"],
                 },
             )
             assert accept.status_code == 200

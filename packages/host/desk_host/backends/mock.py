@@ -36,7 +36,7 @@ class MockBackend:
                 },
                 {
                     "id": f"item_{run_id[:8]}_wait",
-                    "column": "waiting",
+                    "column": "you",
                     "title": "Proposed calendar slot",
                     "source": {"kind": "handoff", "url": url},
                     "status": "proposed",

@@ -23,6 +23,8 @@ Host → Extension: `registered` (includes `config`), `handoff_result`, `board_p
 
 Board mutations from execute/complete/accept/deny require an active WebSocket; otherwise Host returns **503**.
 
+**Board lanes:** product UI is **You | Agent**. Legacy `column: "waiting"` is coerced to `you` on decompose parse and folded into `you` on extension `loadBoard` / `applyBoardPatch` (storage keeps `waiting: []` for soft-compat).
+
 ### Memory + tab lifecycle
 
 - **`memory_get` / `memory_snapshot`**: host loads `{ memory, semantic }` — `virgil_desk_memory_v1` (recent + notepad) and `virgil_desk_semantic_v1` (facts) — before Hermes execute. Packet gets `run_notepad`, `recent_executions`, `semantic_facts`. Full map: [`MEMORY.md`](MEMORY.md).

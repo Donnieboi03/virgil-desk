@@ -1,44 +1,48 @@
 /**
- * Pure helpers: detect when the board needs human attention (You/Waiting).
+ * Pure helpers: detect when the board needs human attention (You lane).
  */
 
 /**
- * You cards that need a ping: parked gates / remainders, not routine homework `proposed`.
+ * You cards that need a ping: parked gates / remainders, or proposals needing Accept.
+ * Routine homework `proposed` without park/proposals does not ping.
  * @param {any} item
  */
 export function youNeedsHuman(item) {
   if (!item) return false;
+  if (item.status === "done" || item.status === "denied") return false;
   if (item.status === "awaiting_human") return true;
   if (item.park_kind === "auth_gate" || item.park_kind === "human_remainder") return true;
+  if (Array.isArray(item.proposals) && item.proposals.length > 0) {
+    return item.status === "proposed" || item.status === "waiting";
+  }
   return false;
 }
 
 /**
- * Waiting cards that need Accept (or similar).
+ * @deprecated Use youNeedsHuman; Waiting folded into You.
  * @param {any} item
  */
 export function waitingNeedsHuman(item) {
-  if (!item) return false;
-  return item.status === "proposed" || item.status === "waiting";
+  return youNeedsHuman(item);
 }
 
 /**
- * @param {{ you?: any[], waiting?: any[] } | null | undefined} board
+ * @param {{ you?: any[], waiting?: any[], agent?: any[] } | null | undefined} board
  * @returns {{ youNeeds: number, waitingNeeds: number, total: number, titles: string[] }}
  */
 export function humanAttentionSummary(board) {
   const you = board?.you || [];
+  // Soft-compat: count leftover waiting[] until migrate-on-read clears it.
   const waiting = board?.waiting || [];
-  const youNeeds = you.filter(youNeedsHuman);
-  const waitingNeeds = waiting.filter(waitingNeedsHuman);
-  const titles = [...youNeeds, ...waitingNeeds]
+  const youNeeds = [...you, ...waiting].filter(youNeedsHuman);
+  const titles = youNeeds
     .map((i) => String(i.title || i.id || "").slice(0, 80))
     .filter(Boolean)
     .slice(0, 5);
   return {
     youNeeds: youNeeds.length,
-    waitingNeeds: waitingNeeds.length,
-    total: youNeeds.length + waitingNeeds.length,
+    waitingNeeds: 0,
+    total: youNeeds.length,
     titles,
   };
 }

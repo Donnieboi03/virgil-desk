@@ -18,6 +18,9 @@ def test_decompose_prompt_injects_live_config():
     assert f"Up to **{max_items} items**" in text
     assert str(excerpt_max) in text
     assert str(scroll_loops) in text
+    assert "Two lanes only" in text or "two lanes" in text.lower()
+    assert "Draft" in text or "draft" in text
+    assert '"column": "you|agent"' in text or "you|agent" in text
 
 
 def test_prompt_template_vars_match_config():
@@ -38,6 +41,7 @@ def test_execute_prompt_dom_primary_playbooks():
     assert "Auth wall" in text or "auth wall" in text.lower() or "auth_gate" in text
     assert "social send" in text.lower() or "outbound social" in text.lower() or "connect" in text.lower()
     assert "email **drafts**" in text or "email drafts" in text.lower()
+    assert "Draft / fill autonomy" in text or "draft / fill" in text.lower()
     assert "last resort" in text.lower()
     assert "agent-continue" in text.lower() or "Agent-continue" in text or "agent tab" in text
     assert "eyes_empty" in text or "invent page copy" in text.lower()
@@ -51,3 +55,4 @@ def test_execute_prompt_dom_primary_playbooks():
     assert "park_kind" in text
     assert "human_park_tab_denied" in text
     assert "placement:human" in text or "placement=human" in text
+    assert "do not mint `waiting`" in text.lower() or "Two lanes only" in text

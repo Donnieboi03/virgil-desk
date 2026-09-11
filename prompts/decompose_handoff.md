@@ -13,7 +13,7 @@ Output **only** valid JSON matching this shape (no markdown, no prose outside JS
   "decomposition": "Brief summary (up to {{decompose_summary_sentences_max}} sentences) of how you split the work",
   "items": [
     {
-      "column": "you|agent|waiting",
+      "column": "you|agent",
       "title": "short imperative title",
       "status": "proposed|running",
       "hints": {
@@ -35,9 +35,10 @@ Output **only** valid JSON matching this shape (no markdown, no prose outside JS
 
 ## Rules
 
-- **Columns:** `you` = human must close; `agent` = safe research/automation; `waiting` = needs Accept (calendar, drafts).
-- **Forbidden:** send email, submit forms, pay, purchase — propose only.
-- **Calendar proposals:** put on `waiting` with `proposals[]` entry `{ "kind": "calendar_slot", "payload": { "start", "end", "title" }, "requires": "accept" }`.
+- **Two lanes only:** `you` = human must close (auth, submit, send, decide, Accept proposals); `agent` = safe research/automation up to the irreversible edge. Do **not** emit `waiting` (legacy; host remaps it to `you`).
+- **Forbidden:** send email, submit forms, pay, purchase — Agent prepares; human Accepts or Show-tab finishes.
+- **Calendar / Accept proposals:** put on **`you`** with `proposals[]` entry `{ "kind": "calendar_slot", "payload": { "start", "end", "title" }, "requires": "accept" }` (or similar).
+- **Draft / fill autonomy:** when a visible row clearly needs a reply or form fill, mint **Agent** “Draft … (no send)” / “Fill …; park You to submit” — not only “Review…”. Execute parks You for the irreversible click.
 - Use the page URL, title, **intent**, excerpt, links, and screenshot to infer real titles — not generic placeholders.
 - Parent titles are **closures** (do / delegate / schedule) — prefer “Review offer and extract next step”, not “Summarize page”. Titles may stay short and UX-friendly; put the **inventory** in `hints`, not in the title.
 - Up to **{{decompose_items_max}} items** total across columns — that is a **ceiling**, not a target size. Correct coverage first: every **distinct actionable** closure **visible in this snapshot** should get a card **or** join a same-pattern clump. Do **not** invent off-screen / guessed mailbox rows.

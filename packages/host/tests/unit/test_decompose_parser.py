@@ -90,7 +90,7 @@ def test_parse_markdown_wrapped():
     raw = 'Here:\n```json\n{"decomposition":"x","items":[{"column":"waiting","title":"Slot","proposals":[{"kind":"calendar_slot","payload":{"start":"t"}}]}]}\n```'
     out = parse_decompose_json(raw, "desk_x", {"url": "https://a.com"})
     assert out is not None
-    assert out["items"][0]["column"] == "waiting"
+    assert out["items"][0]["column"] == "you"
 
 
 def test_parse_malformed_returns_none():
