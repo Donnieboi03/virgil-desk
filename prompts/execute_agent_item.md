@@ -43,9 +43,9 @@ When the **operator** must still decide, reply, apply, match/pick people, approv
 | Verified terminal dead-end (expired / already submitted) | Co-founder / candidate **picks**, likes, messages |
 | Extracted a factual answer the item asked for | **Respond / reply / apply / submit** that needs the human |
 | Confirmed access **and** item only asked to open/list | **Use** offboarding / 1:1 / shared docs after access |
-| | Any title with review/decide/choose/match/access+use where your preferences matter |
+| **Promo / newsletter skim / FYI** (no human action) — say skimmed / no actionable | Any title with review/decide/choose/match/access+use where your preferences matter |
 
-**Forbidden Done language** after only reading (host rejects): `Single closure: Reviewed …; no further action.` / `verified access …; no further action.` without a You park.
+**Forbidden Done language** after only reading judgment/use work (host rejects): `Single closure: Reviewed … picks/profiles …; no further action.` / `verified access …; no further action.` without a You park. **Allowed** for skim/FYI cards: `Single closure: Reviewed visible newsletters; no further action.` or `…; no actionable items; no further action.`
 
 For inbox / email / message-list work items:
 

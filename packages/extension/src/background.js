@@ -786,7 +786,9 @@ async function createBackgroundTab(url, windowId) {
   if (!targetUrl || targetUrl === "about:blank" || !/^https?:\/\//i.test(targetUrl)) {
     throw new Error("createBackgroundTab requires http(s) url");
   }
-  return chrome.tabs.create({ url: targetUrl, active: false, windowId });
+  const opts = { url: targetUrl, active: false };
+  if (windowId != null) opts.windowId = windowId;
+  return chrome.tabs.create(opts);
 }
 
 async function createUngroupedSnapshot(humanTabId, runId) {
@@ -995,9 +997,15 @@ async function resolveAgentTab(command) {
   }
   // duplicateTab is legacy alias — same as openTab (create background; never tabs.duplicate).
   if (command.op === "duplicateTab" || command.op === "openTab") {
-    const human = command.human_tab_id
-      ? await chrome.tabs.get(command.human_tab_id)
-      : null;
+    let human = null;
+    if (command.human_tab_id) {
+      try {
+        human = await chrome.tabs.get(command.human_tab_id);
+      } catch {
+        // Human tab may be closed — still allow openTab when command.url is valid https.
+        human = null;
+      }
+    }
     const targetUrl = (command.url || human?.url || "").trim();
     if (!targetUrl || targetUrl === "about:blank" || !/^https?:\/\//i.test(targetUrl)) {
       return {
@@ -1055,8 +1063,26 @@ async function scrapeTab(tabId) {
     });
     const result = injected?.[0]?.result;
     return normalizeScrapeResult(result);
-  } catch {
+  } catch (err) {
+    const msg = String(err?.message || err);
+    if (/No tab with id/i.test(msg)) {
+      return {
+        ...normalizeScrapeResult(null),
+        tab_missing: true,
+        error: msg,
+      };
+    }
     return normalizeScrapeResult(null);
+  }
+}
+
+async function assertTabAlive(tabId) {
+  if (tabId == null) return "missing tab_id";
+  try {
+    await chrome.tabs.get(tabId);
+    return null;
+  } catch (err) {
+    return String(err?.message || err);
   }
 }
 
@@ -1067,7 +1093,8 @@ async function settleScrapeEyes(tabId) {
   const challengeExtraMs = deskConfig.browser?.eyes_challenge_extra_ms ?? 8000;
   return settleEyes({
     scrape: () => scrapeTab(tabId),
-    isReady: (snap) => scrapeEyesReady(snap, minChars),
+    isReady: (snap) =>
+      Boolean(snap?.tab_missing) || scrapeEyesReady(snap, minChars),
     budgetMs,
     pollMs,
     challengeExtraMs,
@@ -1662,6 +1689,14 @@ async function runBrowserCommand(command) {
     if (command.op === "captureHandoffSnapshot") {
       const handoffMax = deskConfig.browser?.handoff_excerpt_max_chars ?? 8000;
       const snap = await scrapeTab(command.human_tab_id);
+      if (snap?.tab_missing || snap?.error) {
+        return {
+          ...base,
+          ok: false,
+          error: snap.error || "handoff tab missing",
+          duration_ms: Date.now() - started,
+        };
+      }
       return {
         ...base,
         url: snap.url,
@@ -1691,6 +1726,24 @@ async function runBrowserCommand(command) {
       return { ...base, ok: false, error: block, duration_ms: Date.now() - started };
     }
 
+    // Fail fast on dead tab ids — do not mask as empty Eyes (scrape used to).
+    if (
+      command.op !== "openTab" &&
+      command.op !== "duplicateTab" &&
+      command.op !== "captureHandoffSnapshot"
+    ) {
+      const missing = await assertTabAlive(tabId);
+      if (missing) {
+        return {
+          ...base,
+          ok: false,
+          error: missing,
+          tab_id: tabId,
+          duration_ms: Date.now() - started,
+        };
+      }
+    }
+
     if (command.op === "observe") {
       const maxTargets = deskConfig.browser?.interact_targets_max ?? 40;
       const annotate =
@@ -1701,6 +1754,15 @@ async function runBrowserCommand(command) {
 
       const settled = await settleScrapeEyes(tabId);
       let snap = settled.result || (await scrapeTab(tabId));
+      if (snap?.tab_missing || (snap?.error && /No tab with id/i.test(String(snap.error)))) {
+        return {
+          ...base,
+          ok: false,
+          error: snap.error || "No tab with id",
+          tab_id: tabId,
+          duration_ms: Date.now() - started,
+        };
+      }
       let pageObserve = null;
       if (!scrapeEyesReady(snap, minChars)) {
         pageObserve = await runPageObserve(tabId, { maxTargets, annotate });
@@ -2134,6 +2196,15 @@ async function runBrowserCommand(command) {
         snap = settled.result || (await scrapeTab(tabId));
       } else {
         snap = await scrapeTab(tabId);
+      }
+      if (snap?.tab_missing || (snap?.error && /No tab with id/i.test(String(snap.error)))) {
+        return {
+          ...base,
+          ok: false,
+          error: snap.error || "No tab with id",
+          tab_id: tabId,
+          duration_ms: Date.now() - started,
+        };
       }
       let shot = null;
       const skipShot =

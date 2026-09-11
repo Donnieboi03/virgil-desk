@@ -255,6 +255,12 @@ async def run_host_tool(
         "wait_timeout_sec": cfg.host.browser_wait_timeout_sec,
         "count_evidence": True,
     }
+    if name == "press_key":
+        # Extension Hands op is ``key`` (tool name stays press_key for the model).
+        command["op"] = "key"
+        key = params.pop("key", None) or params.pop("press_key", None)
+        if key is not None:
+            params["key"] = key
     if name == "openTab":
         command["url"] = params.pop("url", None)
         if params.get("placement"):
@@ -262,8 +268,10 @@ async def run_host_tool(
         # keep placement in params for policy
     if name == "duplicateTab" and params.get("tab_id") is not None:
         command["tab_id"] = params.get("tab_id")
+    closed_tab_id = None
     if name == "closeTab" and params.get("tab_id") is not None:
-        command["tab_id"] = params.pop("tab_id")
+        closed_tab_id = params.pop("tab_id")
+        command["tab_id"] = closed_tab_id
     if name == "observe" and "skip_screenshot" in params:
         command["skip_screenshot"] = bool(params.pop("skip_screenshot"))
     elif cfg.browser.observe_skip_screenshot_default and name in (
@@ -290,6 +298,10 @@ async def run_host_tool(
         new_tab = result.get("tab_id") or (result.get("observe") or {}).get("tab_id")
         if name in ("openTab", "duplicateTab") and new_tab is not None:
             ctx["agent_tab_id"] = new_tab
+        if name == "closeTab" and result.get("ok", True):
+            closed = closed_tab_id if closed_tab_id is not None else result.get("tab_id")
+            if closed is not None and ctx.get("agent_tab_id") == closed:
+                ctx["agent_tab_id"] = None
         return {"ok": result.get("ok", True), "op": name, "result": result}
     return {"ok": True, "op": name, "result": result}
 

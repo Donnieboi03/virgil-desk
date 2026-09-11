@@ -86,6 +86,19 @@ async def run_host_execute_loop(
     )
     if not scrape.get("ok", True):
         raise HostExecuteError(scrape.get("error") or "initial scrape failed")
+    scrape_url = str(scrape.get("url") or "").strip()
+    # Dead agent tab used to surface as ok Eyes with empty url (eyes_empty) — abort.
+    if scrape.get("tab_missing") or (
+        not scrape_url and scrape.get("eyes_empty")
+    ):
+        raise HostExecuteError(
+            scrape.get("error")
+            or "initial scrape: agent tab missing or empty (re-run agent / hand off again)"
+        )
+    if not scrape_url:
+        raise HostExecuteError(
+            "initial scrape: empty url (agent tab likely dead — re-run agent)"
+        )
 
     excerpt_max = cfg.browser.scrape_excerpt_max_chars
     ctx = {

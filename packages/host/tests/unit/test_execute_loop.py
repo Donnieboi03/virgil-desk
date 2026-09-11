@@ -122,3 +122,49 @@ async def test_host_loop_empty_output(monkeypatch):
             model_client=client,
         )
     assert ei.value.empty_output is True
+
+
+@pytest.mark.asyncio
+async def test_host_loop_aborts_dead_tab_scrape(monkeypatch):
+    async def fake_dispatch(command, timeout=30.0):
+        return {
+            "ok": False,
+            "error": "No tab with id: 99.",
+            "tab_id": 99,
+        }
+
+    import desk_host.app as app_mod
+
+    monkeypatch.setattr(app_mod, "dispatch_browser_command_and_wait", fake_dispatch)
+
+    with pytest.raises(HostExecuteError) as ei:
+        await run_host_execute_loop(
+            {"id": "a", "title": "t", "human_tab_id": 1, "agent_tab_id": 99, "run_id": "r"},
+            {"run_id": "r", "human_tab_id": 1, "agent_tab_id": 99},
+            model_client=ScriptedModelClient([]),
+        )
+    assert "No tab" in str(ei.value)
+
+
+@pytest.mark.asyncio
+async def test_host_loop_aborts_eyes_empty_no_url(monkeypatch):
+    async def fake_dispatch(command, timeout=30.0):
+        return {
+            "ok": True,
+            "url": "",
+            "title": "",
+            "scrape_excerpt": "",
+            "eyes_empty": True,
+        }
+
+    import desk_host.app as app_mod
+
+    monkeypatch.setattr(app_mod, "dispatch_browser_command_and_wait", fake_dispatch)
+
+    with pytest.raises(HostExecuteError) as ei:
+        await run_host_execute_loop(
+            {"id": "a", "title": "t", "human_tab_id": 1, "agent_tab_id": 2, "run_id": "r"},
+            {"run_id": "r", "human_tab_id": 1, "agent_tab_id": 2},
+            model_client=ScriptedModelClient([]),
+        )
+    assert "agent tab" in str(ei.value).lower() or "scrape" in str(ei.value).lower()

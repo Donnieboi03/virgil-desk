@@ -58,8 +58,33 @@ def test_prune_keep_zero_stubs_all_tools():
         assert body.get("stub") is True or "eyes_pruned" in json.dumps(body)
 
 
-def test_stub_eyes_preserves_error():
-    raw = {"ok": False, "op": "click", "result": {"ok": False, "error": "stale_observe", "url": "https://x"}}
-    stub = json.loads(stub_eyes_tool_content(raw))
-    assert stub["stub"] is True
-    assert stub["error"] == "stale_observe"
+def test_prune_does_not_stub_mint_item():
+    mint = {
+        "role": "tool",
+        "tool_call_id": "m1",
+        "name": "mint_item",
+        "content": json.dumps(
+            {
+                "ok": True,
+                "op": "mint_item",
+                "id": "desk_t_you_1",
+                "title": "Parked: need human",
+                "hints": {"members": [{"sender": "A"}]},
+            }
+        ),
+    }
+    messages = [
+        {"role": "system", "content": "sys"},
+        mint,
+        _eyes_tool(0),
+        _eyes_tool(1),
+    ]
+    out = prune_messages(messages, eyes_keep_last=1)
+    mint_body = json.loads(out[1]["content"])
+    assert mint_body.get("stub") is not True
+    assert mint_body["id"] == "desk_t_you_1"
+    assert "members" in json.dumps(mint_body)
+    stubbed = json.loads(out[2]["content"])
+    assert stubbed.get("stub") is True or "eyes_pruned" in json.dumps(stubbed)
+    full = json.loads(out[3]["content"])
+    assert "interact_targets" in (full.get("result") or full)

@@ -237,10 +237,34 @@ def test_human_judgment_blocks_false_closure():
         "Single closure: verified access to Google Drive shared folder; no further action.",
         item_title="Access shared folder 'Team 1:1 Notes'",
     )
-    # Summary-only "Reviewed" + single closure even without title verb → reject
+    # Decision-shaped "Reviewed … profiles" even without title verb → reject
     assert human_judgment_blocks_false_closure(
         "Single closure: Reviewed two candidate profiles; no further action.",
         item_title="Open co-founder email",
+    )
+    # Bare newsletter skim "Reviewed …" without decision shape → allow
+    assert (
+        human_judgment_blocks_false_closure(
+            "Single closure: Reviewed Nintendo and LinkedIn newsletters; no further action.",
+            item_title="Open promotional emails",
+        )
+        is None
+    )
+    # Promo/newsletter skim title class → allow even with Reviewed
+    assert (
+        human_judgment_blocks_false_closure(
+            "Single closure: Reviewed visible newsletters and promos; no further action.",
+            item_title="Skim visible newsletters and promotional announcements",
+        )
+        is None
+    )
+    # Explicit no-actionable remainder → allow
+    assert (
+        human_judgment_blocks_false_closure(
+            "Single closure: skimmed promo threads; no actionable items; no further action.",
+            item_title="Check inbox promos",
+        )
+        is None
     )
     # Verified terminal still OK (employer screening expired)
     assert (
@@ -275,6 +299,11 @@ def test_human_judgment_blocks_false_closure():
             item_title="Check Acme rate in Job Board round-up",
         )
         is None
+    )
+    # Review title still blocks even without "Reviewed" in summary
+    assert human_judgment_blocks_false_closure(
+        "Single closure: opened thread; no further action.",
+        item_title="Review Coinbase internship invite",
     )
 
 

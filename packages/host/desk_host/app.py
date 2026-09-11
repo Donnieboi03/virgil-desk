@@ -1240,7 +1240,21 @@ async def execute_item(item_id: str, body: ExecuteBody) -> dict[str, Any]:
                 outcome="failed",
                 summary=err,
             )
-            http_exc = HTTPException(status_code=500, detail=err)
+            # Partial / incomplete / dead-tab are client-visible execute outcomes (422),
+            # not Host crashes (500).
+            status = 500
+            if isinstance(exc, (HermesExecuteError, HostExecuteError)):
+                low = err.lower()
+                if (
+                    low.startswith("partial:")
+                    or "incomplete" in low
+                    or "no tab" in low
+                    or "initial scrape" in low
+                    or "tab missing" in low
+                    or "agent tab" in low
+                ):
+                    status = 422
+            http_exc = HTTPException(status_code=status, detail=err)
             raise http_exc from exc
         browser_after = _browser_results_for_run(body.run_id)
         usage = usage_measure((result or {}).get("usage"))
