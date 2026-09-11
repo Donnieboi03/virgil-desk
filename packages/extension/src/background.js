@@ -815,9 +815,21 @@ async function createUngroupedSnapshot(humanTabId, runId) {
 }
 
 async function createAgentTabForItem(humanTabId, runId, itemId) {
-  const human = await chrome.tabs.get(humanTabId);
-  const tab = await createBackgroundTab(human.url, human.windowId);
+  let url = "";
+  let windowId;
+  try {
+    const human = await chrome.tabs.get(humanTabId);
+    url = human?.url || "";
+    windowId = human?.windowId;
+  } catch {
+    /* human tab closed — fall back to stored handoff URL */
+  }
+  if (!url || !/^https?:\/\//i.test(url)) {
+    url = await handoffUrlForRun(runId);
+  }
+  const tab = await createBackgroundTab(url, windowId);
   await ensureAgentGroup(tab.id, tab.windowId);
+  await settleTabAfterOpen(tab.id, { requireHttp: true });
   const data = await chrome.storage.session.get(PAIRS_KEY);
   const pairs = data[PAIRS_KEY] || {};
   if (!pairs[runId]) {
@@ -928,8 +940,14 @@ async function provisionAgentTabBeforeExecute(itemId, runId) {
 
     if (item.agent_tab_id) {
       try {
-        await chrome.tabs.get(item.agent_tab_id);
         const tab = await chrome.tabs.get(item.agent_tab_id);
+        const handoff = await handoffUrlForRun(runId);
+        if (
+          handoff &&
+          (!tab.url || !/^https?:\/\//i.test(tab.url) || tab.url === "about:blank")
+        ) {
+          await loadUrlInTab(item.agent_tab_id, handoff);
+        }
         await ensureAgentGroup(item.agent_tab_id, tab.windowId);
         const data = await chrome.storage.session.get(PAIRS_KEY);
         const pairs = data[PAIRS_KEY] || {};
@@ -1014,7 +1032,7 @@ async function resolveAgentTab(command) {
         human = null;
       }
     }
-    const targetUrl = (command.url || human?.url || "").trim();
+    const targetUrl = (command.url || human?.url || command.handoff_url || "").trim();
     if (!targetUrl || targetUrl === "about:blank" || !/^https?:\/\//i.test(targetUrl)) {
       return {
         tabId: null,
@@ -1023,9 +1041,45 @@ async function resolveAgentTab(command) {
         error: "openTab requires http(s) url",
       };
     }
+
+    // Prefer loading into the existing agent tab (Run-tab rescue) instead of spawning another.
+    const existingId = command.tab_id ?? pairs[runId]?.agentTabId;
+    if (existingId != null) {
+      try {
+        await chrome.tabs.get(existingId);
+        await loadUrlInTab(existingId, targetUrl);
+        await ensureAgentGroup(
+          existingId,
+          (await chrome.tabs.get(existingId)).windowId,
+        );
+        if (!pairs[runId]) {
+          pairs[runId] = {
+            humanTabId: command.human_tab_id,
+            items: {},
+            spawnedByItem: {},
+          };
+        }
+        pairs[runId].humanTabId = pairs[runId].humanTabId || command.human_tab_id;
+        await promoteAgentTab(runId, activeExecute?.itemId, existingId, pairs);
+        return { tabId: existingId, tabMode: "navigate", placement: "agent" };
+      } catch (err) {
+        const msg = String(err?.message || err);
+        // Fall through to create only if the existing tab is gone.
+        if (!/No tab with id/i.test(msg)) {
+          return {
+            tabId: null,
+            tabMode: "error",
+            placement: "agent",
+            error: msg,
+          };
+        }
+      }
+    }
+
     const windowId = human?.windowId;
     const tab = await createBackgroundTab(targetUrl, windowId);
     await ensureAgentGroup(tab.id, tab.windowId);
+    await settleTabAfterOpen(tab.id, { requireHttp: true });
     if (!pairs[runId]) {
       pairs[runId] = {
         humanTabId: command.human_tab_id,
@@ -1048,6 +1102,22 @@ function policyBlock(command, tabId) {
 async function scrapeTab(tabId) {
   const maxText = deskConfig.browser?.scrape_text_max_chars ?? 8000;
   const maxLinks = deskConfig.browser?.scrape_links_max ?? 50;
+  let metaUrl = "";
+  let metaTitle = "";
+  try {
+    const tab = await chrome.tabs.get(tabId);
+    metaUrl = tab?.url || "";
+    metaTitle = tab?.title || "";
+  } catch (err) {
+    const msg = String(err?.message || err);
+    if (/No tab with id/i.test(msg)) {
+      return {
+        ...normalizeScrapeResult(null),
+        tab_missing: true,
+        error: msg,
+      };
+    }
+  }
   try {
     const injected = await chrome.scripting.executeScript({
       target: { tabId },
@@ -1070,7 +1140,10 @@ async function scrapeTab(tabId) {
       args: [maxText, maxLinks],
     });
     const result = injected?.[0]?.result;
-    return normalizeScrapeResult(result);
+    const normalized = normalizeScrapeResult(result);
+    if (!normalized.url && metaUrl) normalized.url = metaUrl;
+    if (!normalized.title && metaTitle) normalized.title = metaTitle;
+    return normalized;
   } catch (err) {
     const msg = String(err?.message || err);
     if (/No tab with id/i.test(msg)) {
@@ -1080,7 +1153,10 @@ async function scrapeTab(tabId) {
         error: msg,
       };
     }
-    return normalizeScrapeResult(null);
+    const fallback = normalizeScrapeResult(null);
+    if (metaUrl) fallback.url = metaUrl;
+    if (metaTitle) fallback.title = metaTitle;
+    return fallback;
   }
 }
 
@@ -1259,37 +1335,44 @@ async function applyEyesEscalation({
   };
 }
 
-async function settleTabAfterOpen(tabId) {
+async function settleTabAfterOpen(tabId, { requireHttp = false } = {}) {
   const ms = deskConfig.browser?.default_wait_ms ?? 500;
   if (tabId == null) {
     await new Promise((r) => setTimeout(r, ms));
     return;
   }
-  try {
-    const tab = await chrome.tabs.get(tabId);
-    if (tab?.status === "complete") {
-      await new Promise((r) => setTimeout(r, Math.min(ms, 200)));
+  const timeoutMs = Math.max(ms, requireHttp ? 8000 : 2000);
+  const deadline = Date.now() + timeoutMs;
+
+  function urlOk(url) {
+    if (!requireHttp) return true;
+    const u = (url || "").trim();
+    return /^https?:\/\//i.test(u);
+  }
+
+  while (Date.now() < deadline) {
+    try {
+      const tab = await chrome.tabs.get(tabId);
+      if (tab?.status === "complete" && urlOk(tab.url)) {
+        await new Promise((r) => setTimeout(r, Math.min(ms, 200)));
+        return;
+      }
+    } catch {
       return;
     }
-  } catch {
-    await new Promise((r) => setTimeout(r, ms));
-    return;
+    await new Promise((r) => setTimeout(r, 200));
   }
-  await new Promise((resolve) => {
-    const timeoutMs = Math.max(ms, 2000);
-    const timer = setTimeout(() => {
-      chrome.tabs.onUpdated.removeListener(onUpdated);
-      resolve();
-    }, timeoutMs);
-    function onUpdated(id, info) {
-      if (id === tabId && info.status === "complete") {
-        clearTimeout(timer);
-        chrome.tabs.onUpdated.removeListener(onUpdated);
-        resolve();
-      }
-    }
-    chrome.tabs.onUpdated.addListener(onUpdated);
-  });
+}
+
+/** Navigate an existing agent tab (prefer over creating another when rescuing empty Eyes). */
+async function loadUrlInTab(tabId, url) {
+  const targetUrl = (url || "").trim();
+  if (!targetUrl || !/^https?:\/\//i.test(targetUrl)) {
+    throw new Error("loadUrlInTab requires http(s) url");
+  }
+  await chrome.tabs.update(tabId, { url: targetUrl });
+  await settleTabAfterOpen(tabId, { requireHttp: true });
+  return tabId;
 }
 
 /** Safe first-frame result from chrome.scripting.executeScript (may be empty). */

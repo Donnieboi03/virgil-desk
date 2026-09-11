@@ -55,11 +55,9 @@ async def run_host_execute_run_loop(
     client = model_client or get_model_client(cfg.execute.model_provider)
     model = cfg.execute.model or cfg.hermes.execute_model
     eyes_keep_last = max(0, int(cfg.execute.eyes_keep_last))
-    per_item = max(1, int(cfg.execute.max_steps))
-    # Soft budget: base steps per item, capped so huge boards stay bounded.
-    max_steps = min(per_item * len(items), per_item * 10)
-    max_steps = max(per_item, max_steps)
-    steps_per_item = max(8, per_item // 2)
+    # Flat Run-tab ceilings (not max_steps × N).
+    max_steps = max(1, int(cfg.execute.run_max_steps))
+    steps_per_item = max(1, int(cfg.execute.run_steps_per_item))
 
     from .app import dispatch_browser_command_and_wait
 
@@ -81,17 +79,60 @@ async def run_host_execute_run_loop(
         },
         timeout=cfg.host.browser_wait_timeout_sec,
     )
+    # Fresh agent tabs often settle before navigation finishes — load handoff into the
+    # existing agent tab (openTab now navigates in place when tab_id is set).
+    scrape_url = str(scrape.get("url") or "").strip()
+    handoff_url = str(ctx.get("handoff_url") or "").strip()
+    if (
+        scrape.get("ok", True)
+        and (not scrape_url or scrape.get("eyes_empty"))
+        and handoff_url.startswith("http")
+    ):
+        opened = await dispatch_browser_command_and_wait(
+            {
+                "run_id": run_id,
+                "op": "openTab",
+                "url": handoff_url,
+                "human_tab_id": human_tab,
+                "tab_id": agent_tab,
+                "handoff_url": handoff_url,
+                "count_evidence": False,
+                "skip_screenshot": True,
+            },
+            timeout=cfg.host.browser_wait_timeout_sec,
+        )
+        if not opened.get("ok", True):
+            raise HostExecuteError(
+                opened.get("error")
+                or "initial openTab failed while rescuing empty agent tab"
+            )
+        if opened.get("tab_id") is not None:
+            ctx["agent_tab_id"] = opened["tab_id"]
+            agent_tab = opened["tab_id"]
+        scrape = await dispatch_browser_command_and_wait(
+            {
+                "run_id": run_id,
+                "op": "scrape",
+                "human_tab_id": human_tab,
+                "tab_id": agent_tab,
+                "handoff_url": handoff_url,
+                "count_evidence": False,
+                "skip_screenshot": True,
+            },
+            timeout=cfg.host.browser_wait_timeout_sec,
+        )
+
     if not scrape.get("ok", True):
         raise HostExecuteError(scrape.get("error") or "initial scrape failed")
     scrape_url = str(scrape.get("url") or "").strip()
-    if scrape.get("tab_missing") or (not scrape_url and scrape.get("eyes_empty")):
+    if scrape.get("tab_missing"):
         raise HostExecuteError(
             scrape.get("error")
-            or "initial scrape: agent tab missing or empty (re-run / hand off again)"
+            or "initial scrape: agent tab missing (re-run / hand off again)"
         )
     if not scrape_url:
         raise HostExecuteError(
-            "initial scrape: empty url (agent tab likely dead — re-run)"
+            "initial scrape: empty url (agent tab not loaded — re-run tab)"
         )
 
     excerpt_max = cfg.browser.scrape_excerpt_max_chars
@@ -166,7 +207,7 @@ async def run_host_execute_run_loop(
             run_state["item_steps"][cur] = int(run_state["item_steps"].get(cur) or 0) + 1
             if run_state["item_steps"][cur] > steps_per_item:
                 # Soft budget: force Partial on this member and advance.
-                from .app import _patch_work_item
+                from .app import _active_item_by_run, _patch_work_item
                 from .observability import record as obs_record
 
                 err = (
@@ -192,6 +233,8 @@ async def run_host_execute_run_loop(
                 run_state["current_item_id"] = rem[0] if rem else None
                 ctx["remaining_ids"] = rem
                 ctx["current_item_id"] = run_state["current_item_id"]
+                if run_id and run_state["current_item_id"]:
+                    _active_item_by_run[run_id] = run_state["current_item_id"]
                 continue
 
         messages = prune_messages(messages, eyes_keep_last=eyes_keep_last)

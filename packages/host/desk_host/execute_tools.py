@@ -235,7 +235,7 @@ async def _complete_run_tab_item(
     ctx: dict[str, Any],
 ) -> dict[str, Any]:
     """Patch one Agent item and advance run_state remaining_ids."""
-    from .app import _patch_work_item, _work_items, get_config
+    from .app import _active_item_by_run, _patch_work_item, _work_items, get_config
     from .execute_validation import (
         auth_gate_blocks_false_closure,
         execute_summary_incomplete_reason,
@@ -245,6 +245,10 @@ async def _complete_run_tab_item(
         open_you_remainder,
     )
     from .observability import record
+
+    def _sync_active(next_id: str | None) -> None:
+        if run_id and next_id:
+            _active_item_by_run[run_id] = next_id
 
     run_state = ctx.get("run_state")
     if not isinstance(run_state, dict):
@@ -280,6 +284,7 @@ async def _complete_run_tab_item(
         run_state["current_item_id"] = rem[0] if rem else None
         ctx["remaining_ids"] = rem
         ctx["current_item_id"] = run_state["current_item_id"]
+        _sync_active(run_state["current_item_id"])
         record(
             "agent.item_progress",
             run_id,
@@ -338,6 +343,7 @@ async def _complete_run_tab_item(
         run_state["current_item_id"] = rem[0] if rem else None
         ctx["remaining_ids"] = rem
         ctx["current_item_id"] = run_state["current_item_id"]
+        _sync_active(run_state["current_item_id"])
         record(
             "agent.item_progress",
             run_id,
@@ -373,6 +379,7 @@ async def _complete_run_tab_item(
         run_state["paused"] = True
     ctx["remaining_ids"] = rem
     ctx["current_item_id"] = run_state["current_item_id"]
+    _sync_active(run_state["current_item_id"])
     record(
         "agent.item_progress",
         run_id,

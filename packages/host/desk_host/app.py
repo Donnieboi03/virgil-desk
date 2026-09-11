@@ -1229,29 +1229,29 @@ async def execute_run(run_id: str, body: ExecuteRunBody = ExecuteRunBody()) -> d
     _failed_ops[run_id] = []
     _last_probe_links_empty[run_id] = False
     _run_abort_flags[run_id] = False
+    preserve_tabs = False
+    http_exc: HTTPException | None = None
+
     _executing_run_ids[run_id] = "__run_tab__"
     for it in items:
         _executing_item_ids.add(str(it["id"]))
-
-    await _execute_session_start(
-        run_id=run_id,
-        item_id=str(items[0]["id"]),
-        agent_tab_id=agent_tab,
-        human_tab_id=human_tab,
-        handoff_url=str(ctx.get("handoff_url") or ""),
-    )
-    record(
-        "agent.execute_run_started",
-        run_id,
-        cfg=cfg,
-        measure={"item_count": len(items)},
-        flags={"mode": "run_tab"},
-        item_ids=[str(i["id"]) for i in items],
-    )
-
-    http_exc: HTTPException | None = None
-    preserve_tabs = False
     try:
+        await _execute_session_start(
+            run_id=run_id,
+            item_id=str(items[0]["id"]),
+            agent_tab_id=agent_tab,
+            human_tab_id=human_tab,
+            handoff_url=str(ctx.get("handoff_url") or ""),
+        )
+        record(
+            "agent.execute_run_started",
+            run_id,
+            cfg=cfg,
+            measure={"item_count": len(items)},
+            flags={"mode": "run_tab"},
+            item_ids=[str(i["id"]) for i in items],
+        )
+
         from .execute_run import run_host_execute_run_loop
 
         # Abort flag visible to loop via ctx poll each step.
@@ -1285,8 +1285,17 @@ async def execute_run(run_id: str, body: ExecuteRunBody = ExecuteRunBody()) -> d
                 measure=usage or None,
                 flags={"outcome": "no_browser_evidence"},
             )
-            http_exc = HTTPException(status_code=422, detail=err)
-            raise http_exc
+            for it in items:
+                iid = str(it["id"])
+                cur = _work_items.get(iid)
+                if cur and cur.get("status") == "running":
+                    try:
+                        await _patch_work_item(
+                            iid, status="failed", run_id=run_id, last_error=err
+                        )
+                    except ExtensionNotConnectedError:
+                        pass
+            raise HTTPException(status_code=422, detail=err)
 
         paused = bool((result or {}).get("paused"))
         if paused:
@@ -1342,6 +1351,18 @@ async def execute_run(run_id: str, body: ExecuteRunBody = ExecuteRunBody()) -> d
         }
     except Exception as exc:
         if isinstance(exc, HTTPException):
+            # Ensure running items are not left stuck after intentional 4xx.
+            detail = str(exc.detail)[: cfg.prompts.event_snippet_max_chars]
+            for it in items:
+                iid = str(it["id"])
+                cur = _work_items.get(iid)
+                if cur and cur.get("status") == "running":
+                    try:
+                        await _patch_work_item(
+                            iid, status="failed", run_id=run_id, last_error=detail
+                        )
+                    except ExtensionNotConnectedError:
+                        pass
             raise
         err = str(exc)[: cfg.prompts.event_snippet_max_chars]
         status = 500
@@ -1379,9 +1400,17 @@ async def execute_run(run_id: str, body: ExecuteRunBody = ExecuteRunBody()) -> d
             _executing_item_ids.discard(str(it["id"]))
         _executing_run_ids.pop(run_id, None)
         _run_abort_flags.pop(run_id, None)
-        await _execute_session_end(run_id)
+        _execute_session_end(run_id)
         try:
-            await _execute_cleanup(run_id, soft=preserve_tabs)
+            live_agent = (ctx or {}).get("agent_tab_id", agent_tab)
+            live_human = (ctx or {}).get("human_tab_id", human_tab)
+            await _execute_cleanup(
+                run_id=run_id,
+                item_id=str(items[0]["id"]),
+                agent_tab_id=live_agent,
+                human_tab_id=live_human,
+                preserve_tabs=preserve_tabs,
+            )
         except Exception:  # noqa: BLE001
             pass
 

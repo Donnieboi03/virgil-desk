@@ -52,7 +52,7 @@ When provider fallbacks fail mid-execute, board `last_error` should show the rea
 **Shipped (flagged):** `execute.runtime: host_loop` — Host owns the tool transcript, thins Eyes, and **prunes** older tool results (`eyes_keep_last`). Model steps go through **`ModelClient`** (OpenRouter today; not Hermes-session memory). Default remains `hermes_oneshot` for Q/A rollback.
 
 - [x] Host re-prompt / tool loop with Eyes prune (`execute_loop` + `execute_transcript`)
-- [x] Config: `execute.runtime` / `eyes_keep_last` / `max_steps` / `model` / `model_provider`
+- [x] Config: `execute.runtime` / `eyes_keep_last` / `max_steps` / `run_max_steps` / `run_steps_per_item` / `model` / `model_provider`
 - [ ] Gemini-direct `ModelClient` adapter (protocol ready)
 - [ ] Default dogfood cutover to `host_loop` after cost A/B
 

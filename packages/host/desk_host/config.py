@@ -106,6 +106,9 @@ class ExecuteConfig:
     runtime: str
     eyes_keep_last: int
     max_steps: int
+    # Run tab (multi-item) ceilings — independent of per-card max_steps.
+    run_max_steps: int
+    run_steps_per_item: int
     model: str
     model_provider: str
 

@@ -457,6 +457,10 @@ function showRunId(runId) {
   lastRunIdForTab = runId;
   code.textContent = runId;
   wrap.classList.remove("hidden");
+  chrome.runtime
+    .sendMessage({ type: "getBoard" })
+    .then(({ board }) => updateRunTabButton(board?.agent || [], []))
+    .catch(() => updateRunTabButton([], []));
 }
 
 function showHandoffError(msg) {
@@ -580,34 +584,38 @@ async function runTabAction() {
   if (!runTabBtn || runTabBtn.disabled || runningAgentTab) return;
   const { board } = await chrome.runtime.sendMessage({ type: "getBoard" });
   const roots = itemsForColumn("agent", board.agent || []);
-  const eligible = runTabEligibleItems(roots);
-  const runId = lastRunIdForTab || eligible[0]?.run_id || "";
-  if (!runId || !eligible.length) return;
+  const runId =
+    lastRunIdForTab ||
+    document.getElementById("run-id")?.textContent?.trim() ||
+    "";
+  const eligible = runTabEligibleItems(roots).filter(
+    (i) => !runId || !i.run_id || i.run_id === runId,
+  );
+  const runIdFinal = runId || eligible[0]?.run_id || "";
+  if (!runIdFinal || !eligible.length) return;
   runningAgentTab = true;
   updateRunTabButton(board.agent || [], []);
   const errBox = document.getElementById("handoff-error");
+  let runError = "";
   try {
     const result = await chrome.runtime.sendMessage({
       type: "runAgentTab",
-      runId,
+      runId: runIdFinal,
       itemIds: eligible.map((i) => i.id),
     });
-    if (result?.error || result?.detail) {
-      if (errBox) {
-        errBox.classList.remove("hidden");
-        errBox.textContent = String(result.error || result.detail);
-      }
-    } else if (errBox) {
-      errBox.classList.add("hidden");
+    if (result?.error || result?.detail || result?.ok === false) {
+      const detail = result.error || result.detail || "Run tab failed";
+      runError = typeof detail === "string" ? detail : JSON.stringify(detail);
     }
   } catch (err) {
-    if (errBox) {
-      errBox.classList.remove("hidden");
-      errBox.textContent = String(err);
-    }
+    runError = String(err);
   } finally {
     runningAgentTab = false;
     await refresh();
+    if (runError) showHandoffError(runError);
+    else if (errBox && !errBox.classList.contains("hidden") && !errBox.textContent) {
+      errBox.classList.add("hidden");
+    }
   }
 }
 

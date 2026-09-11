@@ -48,6 +48,9 @@ execute:
   runtime: hermes_oneshot
   eyes_keep_last: 2
   max_steps: 40
+  # Run tab: flat session ceiling (not max_steps × N)
+  run_max_steps: 200
+  run_steps_per_item: 20
   model: google/gemini-3.7-flash
   model_provider: openrouter
 observability:
