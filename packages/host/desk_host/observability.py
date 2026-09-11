@@ -30,6 +30,7 @@ def limits_from_config(cfg: DeskConfig | None = None) -> dict[str, Any]:
         "browser": asdict(c.browser),
         "host": asdict(c.host),
         "hermes": asdict(c.hermes),
+        "execute": asdict(c.execute),
         "memory": asdict(c.memory),
         "prompts": asdict(c.prompts),
     }

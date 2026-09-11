@@ -5,6 +5,8 @@ import {
   followGroupShouldOpen,
   openYouParkUnder,
   agentRunButtonLabel,
+  runTabEligibleItems,
+  runTabButtonLabel,
   shouldRevealAgentTab,
   resolveParkAgentTabId,
 } from "./panelBoard.js";
@@ -103,6 +105,9 @@ function appendSourceUrl(container, item, allItems = []) {
 }
 
 let panelWsConnected = false;
+let runningAgentTab = false;
+let lastRunIdForTab = "";
+
 let handoffTargetTabId = null;
 /** Agent item ids with an in-flight Run — survives boardUpdated re-renders. */
 const runningAgentItemIds = new Set();
@@ -449,8 +454,13 @@ function showRunId(runId) {
     wrap.classList.add("hidden");
     return;
   }
+  lastRunIdForTab = runId;
   code.textContent = runId;
   wrap.classList.remove("hidden");
+  chrome.runtime
+    .sendMessage({ type: "getBoard" })
+    .then(({ board }) => updateRunTabButton(board?.agent || [], []))
+    .catch(() => updateRunTabButton([], []));
 }
 
 function showHandoffError(msg) {
@@ -469,6 +479,15 @@ function updateActionButtons() {
     handoffBtn.disabled = !panelWsConnected;
     handoffBtn.title = panelWsConnected ? "" : "WS disconnected — wait for connection";
   }
+  // Recompute Run tab enablement from last board paint when possible.
+  chrome.runtime
+    .sendMessage({ type: "getBoard" })
+    .then(({ board }) => {
+      updateRunTabButton(board?.agent || [], []);
+    })
+    .catch(() => {
+      updateRunTabButton([], []);
+    });
 }
 
 async function refreshStatus() {
@@ -517,7 +536,97 @@ async function refreshBoard() {
     "waiting",
     all,
   );
+  updateRunTabButton(board.agent || [], all);
 }
+
+function updateRunTabButton(agentItems, allItems = []) {
+  const runTabBtn = document.getElementById("run-tab");
+  const cancelBtn = document.getElementById("cancel-tab");
+  const statusEl = document.getElementById("run-tab-status");
+  if (!runTabBtn) return;
+  const roots = itemsForColumn("agent", agentItems);
+  const eligible = runTabEligibleItems(roots);
+  const anyResume = eligible.some((i) => i.resume_ready);
+  const n = eligible.length;
+  const metaRun =
+    document.getElementById("run-id")?.textContent?.trim() ||
+    eligible[0]?.run_id ||
+    lastRunIdForTab ||
+    "";
+  if (metaRun) lastRunIdForTab = metaRun;
+
+  if (runningAgentTab) {
+    runTabBtn.textContent = "Running tab…";
+    runTabBtn.disabled = true;
+    cancelBtn?.classList.remove("hidden");
+    if (statusEl) {
+      statusEl.classList.remove("hidden");
+      statusEl.textContent = `Running tab · ${n || "?"} tasks`;
+    }
+    return;
+  }
+  cancelBtn?.classList.add("hidden");
+  runTabBtn.textContent = runTabButtonLabel(n, anyResume);
+  runTabBtn.disabled = !panelWsConnected || n === 0 || !lastRunIdForTab;
+  runTabBtn.title = !panelWsConnected
+    ? "Connect extension WS first"
+    : n === 0
+      ? "No proposed Agent tasks"
+      : `${n} tasks · one session`;
+  if (statusEl) {
+    statusEl.classList.add("hidden");
+    statusEl.textContent = "";
+  }
+}
+
+async function runTabAction() {
+  const runTabBtn = document.getElementById("run-tab");
+  if (!runTabBtn || runTabBtn.disabled || runningAgentTab) return;
+  const { board } = await chrome.runtime.sendMessage({ type: "getBoard" });
+  const roots = itemsForColumn("agent", board.agent || []);
+  const runId =
+    lastRunIdForTab ||
+    document.getElementById("run-id")?.textContent?.trim() ||
+    "";
+  const eligible = runTabEligibleItems(roots).filter(
+    (i) => !runId || !i.run_id || i.run_id === runId,
+  );
+  const runIdFinal = runId || eligible[0]?.run_id || "";
+  if (!runIdFinal || !eligible.length) return;
+  runningAgentTab = true;
+  updateRunTabButton(board.agent || [], []);
+  const errBox = document.getElementById("handoff-error");
+  let runError = "";
+  try {
+    const result = await chrome.runtime.sendMessage({
+      type: "runAgentTab",
+      runId: runIdFinal,
+      itemIds: eligible.map((i) => i.id),
+    });
+    if (result?.error || result?.detail || result?.ok === false) {
+      const detail = result.error || result.detail || "Run tab failed";
+      runError = typeof detail === "string" ? detail : JSON.stringify(detail);
+    }
+  } catch (err) {
+    runError = String(err);
+  } finally {
+    runningAgentTab = false;
+    await refresh();
+    if (runError) showHandoffError(runError);
+    else if (errBox && !errBox.classList.contains("hidden") && !errBox.textContent) {
+      errBox.classList.add("hidden");
+    }
+  }
+}
+
+async function cancelTabAction() {
+  if (!lastRunIdForTab) return;
+  await chrome.runtime.sendMessage({
+    type: "cancelAgentTab",
+    runId: lastRunIdForTab,
+  });
+}
+
 
 async function refresh() {
   await refreshBoard();
@@ -612,6 +721,8 @@ try {
 }
 
 resolveHandoffTabId();
+document.getElementById("run-tab")?.addEventListener("click", () => runTabAction());
+document.getElementById("cancel-tab")?.addEventListener("click", () => cancelTabAction());
 document.addEventListener("visibilitychange", () => {
   if (document.visibilityState === "visible") {
     resolveHandoffTabId();

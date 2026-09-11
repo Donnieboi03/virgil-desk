@@ -96,8 +96,23 @@ describe("openYouParkUnder + agentRunButtonLabel", () => {
       agentRunButtonLabel({ status: "failed" }, true),
     ).toBe("Resume agent");
     expect(agentRunButtonLabel({ status: "failed" }, false)).toBe("Retry agent");
-    expect(agentRunButtonLabel({ status: "proposed" }, false)).toBe("Run agent");
+  expect(agentRunButtonLabel({ status: "proposed" }, false)).toBe("Run agent");
+});
+
+describe("runTabEligibleItems + runTabButtonLabel", () => {
+  it("filters proposed roots and labels count", async () => {
+    const { runTabEligibleItems, runTabButtonLabel } = await import("./panelBoard.js");
+    const eligible = runTabEligibleItems([
+      { id: "1", status: "proposed" },
+      { id: "2", status: "done" },
+      { id: "3", parent_id: "1", status: "proposed" },
+      { id: "4", status: "failed" },
+    ]);
+    expect(eligible.map((i) => i.id)).toEqual(["1", "4"]);
+    expect(runTabButtonLabel(2, false)).toBe("Run tab (2)");
+    expect(runTabButtonLabel(1, true)).toBe("Resume tab (1)");
   });
+});
 });
 
 describe("shouldRevealAgentTab", () => {

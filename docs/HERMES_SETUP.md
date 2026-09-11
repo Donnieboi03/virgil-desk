@@ -37,8 +37,20 @@ export DESK_HOST=127.0.0.1
 export DESK_PORT=8787
 # Optional: force stub decompose for debugging
 # export DESK_HERMES_DECOMPOSE=0
+# Optional: Host-owned execute loop + Eyes prune (needs OPENROUTER_API_KEY)
+# export DESK_EXECUTE_RUNTIME=host_loop
+# export OPENROUTER_API_KEY=...
 desk-host
 ```
+
+### Execute runtime
+
+| Mode | Config | Behavior |
+|------|--------|----------|
+| **`hermes_oneshot`** (default) | `execute.runtime: hermes_oneshot` | Hermes CLI owns the tool loop (`desk-browser` skill) |
+| **`host_loop`** | `execute.runtime: host_loop` | Host owns messages + tools + Eyes prune via OpenRouter `ModelClient` |
+
+Decompose still uses Hermes when `DESK_AGENT_BACKEND=hermes`. Rollback host_loop → set `execute.runtime: hermes_oneshot` or `DESK_EXECUTE_RUNTIME=hermes_oneshot`.
 
 Load the extension (unpacked `packages/extension/dist`). Hand off a tab — the panel **Decomposition** line should reflect Hermes output (not generic stub titles when CLI succeeds).
 

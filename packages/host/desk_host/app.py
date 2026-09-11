@@ -5,7 +5,7 @@ from __future__ import annotations
 import asyncio
 import os
 import uuid
-from contextlib import asynccontextmanager
+from contextlib import asynccontextmanager, suppress
 from typing import Any
 
 from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
@@ -32,6 +32,7 @@ from .observability import (
     usage_measure,
 )
 from .backends.hermes import HermesExecuteError
+from .execute_errors import HostExecuteError
 from .policy import policy_denied_reason
 from .execute_validation import (
     auth_gate_blocks_false_closure,
@@ -60,7 +61,8 @@ _command_waiters: dict[str, asyncio.Future[dict[str, Any]]] = {}
 _memory_waiters: dict[str, asyncio.Future[dict[str, Any]]] = {}
 _browser_result_counts: dict[str, int] = {}
 _executing_item_ids: set[str] = set()
-_executing_run_ids: dict[str, str] = {}  # run_id -> item_id (one execute per run)
+_executing_run_ids: dict[str, str] = {}  # run_id -> item_id or "__run_tab__"
+_run_abort_flags: dict[str, bool] = {}
 _command_evidence_flags: dict[str, bool] = {}
 _execute_ops: dict[str, list[str]] = {}
 _failed_ops: dict[str, list[str]] = {}
@@ -170,19 +172,21 @@ def _record_execute_failed_event(
         "flags": {"outcome": outcome},
     }
     merged_measure: dict[str, Any] = dict(measure or {})
-    if isinstance(exc, HermesExecuteError):
-        if exc.exit_code is not None:
+    if isinstance(exc, (HermesExecuteError, HostExecuteError)):
+        if getattr(exc, "exit_code", None) is not None:
             merged_measure["exit_code"] = exc.exit_code
-        usage = usage_measure(exc.usage or {})
+        usage = usage_measure(getattr(exc, "usage", None) or {})
         if usage:
             merged_measure.update(usage)
-        if exc.empty_output:
+        if getattr(exc, "empty_output", False):
             fields["flags"]["empty_output"] = True
             fields["flags"]["outcome"] = "empty_output"
-        if exc.stdout:
-            fields["stdout_snippet"] = exc.stdout[:cap]
-        if exc.stderr:
-            fields["stderr_snippet"] = exc.stderr[:cap]
+        stdout = getattr(exc, "stdout", "") or ""
+        stderr = getattr(exc, "stderr", "") or ""
+        if stdout:
+            fields["stdout_snippet"] = stdout[:cap]
+        if stderr:
+            fields["stderr_snippet"] = stderr[:cap]
     if merged_measure:
         fields["measure"] = merged_measure
     record("agent.execute_failed", run_id, cfg=cfg, **fields)
@@ -215,6 +219,13 @@ class HandoffBody(BaseModel):
 
 class ExecuteBody(BaseModel):
     run_id: str
+
+
+class ExecuteRunBody(BaseModel):
+    """Optional agent_tab_id when extension already provisioned one shared tab."""
+
+    agent_tab_id: int | None = None
+    human_tab_id: int | None = None
 
 
 class ItemMetaBody(BaseModel):
@@ -824,7 +835,7 @@ async def dispatch_browser_command(command: dict[str, Any]) -> None:
 
     harness_path = uses_harness_driver(cfg.browser.driver) and is_harness_op(str(op))
 
-    # Path B: execute observe skips captureVisibleTab unless caller overrides False.
+    # Extension: execute observe skips captureVisibleTab unless caller overrides False.
     if (
         op == "observe"
         and not harness_path
@@ -1106,6 +1117,312 @@ async def mint_item(body: MintItemBody) -> dict[str, Any]:
     return {"ok": True, "item": item}
 
 
+def _agent_roots_for_run_tab(run_id: str) -> list[dict[str, Any]]:
+    """Proposed/failed/resume-ready Agent roots eligible for Run tab."""
+    out: list[dict[str, Any]] = []
+    for item in _work_items.values():
+        if item.get("run_id") != run_id:
+            continue
+        if item.get("column") != "agent":
+            continue
+        if item.get("parent_id"):
+            continue
+        st = item.get("status")
+        if st in ("proposed", "failed") or item.get("resume_ready"):
+            out.append(item)
+        elif st == "awaiting_human" and item.get("resume_ready"):
+            out.append(item)
+    # Stable order by id for A/B reproducibility.
+    out.sort(key=lambda i: str(i.get("id") or ""))
+    return out
+
+
+@app.post("/v1/runs/{run_id}/execute")
+async def execute_run(run_id: str, body: ExecuteRunBody = ExecuteRunBody()) -> dict[str, Any]:
+    """Run tab: one host_loop over all eligible Agent roots (host_loop only)."""
+    cfg = get_config()
+    use_host_loop = str(cfg.execute.runtime or "").strip().lower() == "host_loop"
+    if not use_host_loop:
+        raise HTTPException(
+            status_code=501,
+            detail="Run tab requires execute.runtime=host_loop",
+        )
+    if run_id in _executing_run_ids:
+        other = _executing_run_ids[run_id]
+        raise HTTPException(
+            status_code=409,
+            detail=f"execute already in progress for this run ({other})",
+        )
+    try:
+        _require_extension()
+    except ExtensionNotConnectedError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+
+    items = _agent_roots_for_run_tab(run_id)
+    if not items:
+        raise HTTPException(status_code=400, detail="no proposed Agent items for this run")
+
+    meta = _handoff_meta.get(run_id, {})
+    human_tab = body.human_tab_id or meta.get("human_tab_id") or items[0].get("human_tab_id")
+    agent_tab = body.agent_tab_id
+    if agent_tab is None:
+        for it in items:
+            if it.get("agent_tab_id") is not None:
+                agent_tab = it.get("agent_tab_id")
+                break
+    if human_tab is None or agent_tab is None:
+        raise HTTPException(
+            status_code=400,
+            detail="missing human_tab_id or agent_tab_id — provision agent tab before Run tab",
+        )
+
+    # Stamp shared agent tab onto all items in this run.
+    for it in items:
+        iid = str(it["id"])
+        updated = {**it, "agent_tab_id": agent_tab, "human_tab_id": human_tab}
+        _work_items[iid] = updated
+        try:
+            await _patch_work_item(iid, status="running", run_id=run_id, clear_last_error=True)
+        except ExtensionNotConnectedError:
+            _work_items[iid] = {**updated, "status": "running"}
+
+    items = [_work_items[str(i["id"])] for i in items]
+
+    ctx: dict[str, Any] = {
+        "run_id": run_id,
+        "agent_tab_id": agent_tab,
+        "human_tab_id": human_tab,
+        "handoff_url": _handoff_urls.get(run_id, ""),
+    }
+    snap = await _memory_get(run_id)
+    memory_slice = format_for_execute(
+        snap["memory"],
+        run_id,
+        decomposition=str(meta.get("decomposition") or ""),
+        semantic=snap["semantic"],
+        packet_max_facts=cfg.memory.semantic_packet_max_facts,
+        max_key_chars=cfg.memory.semantic_max_key_chars,
+        max_value_chars=cfg.memory.semantic_max_value_chars,
+    )
+    ctx.update(memory_slice)
+
+    # Collect cleared_gates from any resume-ready item.
+    cleared: list[Any] = []
+    for it in items:
+        if it.get("resume_ready") or it.get("cleared_gates"):
+            cleared.extend(list(it.get("cleared_gates") or []))
+            if it.get("resume_ready"):
+                cleared_item = {**it, "resume_ready": False}
+                _work_items[str(it["id"])] = cleared_item
+    if cleared:
+        ctx["resume"] = {
+            "ready": True,
+            "cleared_gates": cleared,
+            "note": (
+                "Human cleared these gate URLs. Do not mint another You card for them; "
+                "continue agent work past the gate."
+            ),
+        }
+
+    browser_before = _browser_results_for_run(run_id)
+    _execute_ops[run_id] = []
+    _failed_ops[run_id] = []
+    _last_probe_links_empty[run_id] = False
+    _run_abort_flags[run_id] = False
+    preserve_tabs = False
+    http_exc: HTTPException | None = None
+
+    _executing_run_ids[run_id] = "__run_tab__"
+    for it in items:
+        _executing_item_ids.add(str(it["id"]))
+    try:
+        await _execute_session_start(
+            run_id=run_id,
+            item_id=str(items[0]["id"]),
+            agent_tab_id=agent_tab,
+            human_tab_id=human_tab,
+            handoff_url=str(ctx.get("handoff_url") or ""),
+        )
+        record(
+            "agent.execute_run_started",
+            run_id,
+            cfg=cfg,
+            measure={"item_count": len(items)},
+            flags={"mode": "run_tab"},
+            item_ids=[str(i["id"]) for i in items],
+        )
+
+        from .execute_run import run_host_execute_run_loop
+
+        # Abort flag visible to loop via ctx poll each step.
+        async def _poll_abort() -> None:
+            while run_id in _executing_run_ids:
+                if _run_abort_flags.get(run_id):
+                    rs = ctx.get("run_state")
+                    if isinstance(rs, dict):
+                        rs["abort"] = True
+                    ctx["_abort"] = True
+                    return
+                await asyncio.sleep(0.5)
+
+        abort_task = asyncio.create_task(_poll_abort())
+        try:
+            result = await run_host_execute_run_loop(items, ctx)
+        finally:
+            abort_task.cancel()
+            with suppress(asyncio.CancelledError):
+                await abort_task
+
+        usage = usage_measure((result or {}).get("usage"))
+        browser_after = _browser_results_for_run(run_id)
+        if cfg.hermes.execute_require_browser_evidence and browser_after <= browser_before:
+            err = "execute run completed without browser evidence"
+            record(
+                "agent.execute_run_finished",
+                run_id,
+                cfg=cfg,
+                error=err,
+                measure=usage or None,
+                flags={"outcome": "no_browser_evidence"},
+            )
+            for it in items:
+                iid = str(it["id"])
+                cur = _work_items.get(iid)
+                if cur and cur.get("status") == "running":
+                    try:
+                        await _patch_work_item(
+                            iid, status="failed", run_id=run_id, last_error=err
+                        )
+                    except ExtensionNotConnectedError:
+                        pass
+            raise HTTPException(status_code=422, detail=err)
+
+        paused = bool((result or {}).get("paused"))
+        if paused:
+            preserve_tabs = True
+            record(
+                "agent.execute_run_finished",
+                run_id,
+                cfg=cfg,
+                measure=usage or None,
+                flags={"outcome": "paused"},
+                completed_ids=(result or {}).get("completed_ids"),
+                remaining_ids=(result or {}).get("remaining_ids"),
+            )
+            # Reset non-paused remaining to proposed for Resume tab.
+            for iid in (result or {}).get("remaining_ids") or []:
+                cur = _work_items.get(str(iid))
+                if cur and cur.get("status") == "running":
+                    try:
+                        await _patch_work_item(
+                            str(iid), status="proposed", run_id=run_id
+                        )
+                    except ExtensionNotConnectedError:
+                        pass
+            return {
+                "ok": True,
+                "paused": True,
+                "summary": (result or {}).get("summary"),
+                "completed_ids": (result or {}).get("completed_ids"),
+                "remaining_ids": (result or {}).get("remaining_ids"),
+                "usage": usage,
+            }
+
+        record(
+            "agent.execute_run_finished",
+            run_id,
+            cfg=cfg,
+            measure=usage or None,
+            flags={"outcome": "done"},
+            summary_snippet=str((result or {}).get("summary") or "")[
+                : cfg.prompts.event_summary_snippet_max_chars
+            ],
+            completed_ids=(result or {}).get("completed_ids"),
+            failed_ids=(result or {}).get("failed_ids"),
+        )
+        record("run.finished", run_id, cfg=cfg, measure=usage or None)
+        return {
+            "ok": True,
+            "paused": False,
+            "summary": (result or {}).get("summary"),
+            "completed_ids": (result or {}).get("completed_ids"),
+            "failed_ids": (result or {}).get("failed_ids"),
+            "usage": usage,
+        }
+    except Exception as exc:
+        if isinstance(exc, HTTPException):
+            # Ensure running items are not left stuck after intentional 4xx.
+            detail = str(exc.detail)[: cfg.prompts.event_snippet_max_chars]
+            for it in items:
+                iid = str(it["id"])
+                cur = _work_items.get(iid)
+                if cur and cur.get("status") == "running":
+                    try:
+                        await _patch_work_item(
+                            iid, status="failed", run_id=run_id, last_error=detail
+                        )
+                    except ExtensionNotConnectedError:
+                        pass
+            raise
+        err = str(exc)[: cfg.prompts.event_snippet_max_chars]
+        status = 500
+        if isinstance(exc, HostExecuteError):
+            low = err.lower()
+            if (
+                low.startswith("partial:")
+                or "incomplete" in low
+                or "no tab" in low
+                or "initial scrape" in low
+                or "cancelled" in low
+            ):
+                status = 422
+        record(
+            "agent.execute_run_finished",
+            run_id,
+            cfg=cfg,
+            error=err,
+            flags={"outcome": "failed"},
+        )
+        for it in items:
+            iid = str(it["id"])
+            cur = _work_items.get(iid)
+            if cur and cur.get("status") == "running":
+                try:
+                    await _patch_work_item(
+                        iid, status="failed", run_id=run_id, last_error=err
+                    )
+                except ExtensionNotConnectedError:
+                    pass
+        http_exc = HTTPException(status_code=status, detail=err)
+        raise http_exc from exc
+    finally:
+        for it in items:
+            _executing_item_ids.discard(str(it["id"]))
+        _executing_run_ids.pop(run_id, None)
+        _run_abort_flags.pop(run_id, None)
+        _execute_session_end(run_id)
+        try:
+            live_agent = (ctx or {}).get("agent_tab_id", agent_tab)
+            live_human = (ctx or {}).get("human_tab_id", human_tab)
+            await _execute_cleanup(
+                run_id=run_id,
+                item_id=str(items[0]["id"]),
+                agent_tab_id=live_agent,
+                human_tab_id=live_human,
+                preserve_tabs=preserve_tabs,
+            )
+        except Exception:  # noqa: BLE001
+            pass
+
+
+@app.post("/v1/runs/{run_id}/execute/cancel")
+async def execute_run_cancel(run_id: str) -> dict[str, Any]:
+    if run_id not in _executing_run_ids:
+        return {"ok": True, "cancelled": False, "note": "no execute in progress"}
+    _run_abort_flags[run_id] = True
+    return {"ok": True, "cancelled": True}
+
+
 @app.post("/v1/items/{item_id}/execute")
 async def execute_item(item_id: str, body: ExecuteBody) -> dict[str, Any]:
     item = _work_items.get(item_id)
@@ -1151,7 +1468,8 @@ async def execute_item(item_id: str, body: ExecuteBody) -> dict[str, Any]:
     ctx.update(memory_slice)
     backend = get_backend()
     execute_fn = getattr(backend, "execute_item", None)
-    if not execute_fn:
+    use_host_loop = str(cfg.execute.runtime or "").strip().lower() == "host_loop"
+    if not use_host_loop and not execute_fn:
         raise HTTPException(status_code=501, detail="backend does not support execute")
     browser_before = _browser_results_for_run(body.run_id)
     _execute_ops[body.run_id] = []
@@ -1200,11 +1518,19 @@ async def execute_item(item_id: str, body: ExecuteBody) -> dict[str, Any]:
     preserve_tabs = False
     try:
         try:
-            result = await execute_fn(item, ctx)
+            if use_host_loop:
+                from .execute_loop import run_host_execute_loop
+
+                result = await run_host_execute_loop(item, ctx)
+            else:
+                result = await execute_fn(item, ctx)
         except Exception as exc:
             err = str(exc)[: cfg.prompts.event_snippet_max_chars]
             outcome = "failed"
-            if isinstance(exc, HermesExecuteError) and exc.empty_output:
+            if (
+                isinstance(exc, (HermesExecuteError, HostExecuteError))
+                and getattr(exc, "empty_output", False)
+            ):
                 outcome = "empty_output"
             _record_execute_failed_event(
                 run_id=body.run_id,
@@ -1228,7 +1554,21 @@ async def execute_item(item_id: str, body: ExecuteBody) -> dict[str, Any]:
                 outcome="failed",
                 summary=err,
             )
-            http_exc = HTTPException(status_code=500, detail=err)
+            # Partial / incomplete / dead-tab are client-visible execute outcomes (422),
+            # not Host crashes (500).
+            status = 500
+            if isinstance(exc, (HermesExecuteError, HostExecuteError)):
+                low = err.lower()
+                if (
+                    low.startswith("partial:")
+                    or "incomplete" in low
+                    or "no tab" in low
+                    or "initial scrape" in low
+                    or "tab missing" in low
+                    or "agent tab" in low
+                ):
+                    status = 422
+            http_exc = HTTPException(status_code=status, detail=err)
             raise http_exc from exc
         browser_after = _browser_results_for_run(body.run_id)
         usage = usage_measure((result or {}).get("usage"))

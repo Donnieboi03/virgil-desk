@@ -1,7 +1,7 @@
 ---
 name: desk-browser-bridge
 description: >-
-  Virgil Desk browser bridge: desk-browser CLI, Path B extension Eyes/Hands
+  Virgil Desk browser bridge: desk-browser CLI, extension Eyes/Hands
   (default) or harness CDP rollback. Done/park/clump policy lives in the execute Packet prompt.
 version: 1.16.0
 metadata:
@@ -46,7 +46,7 @@ desk-browser --run-id desk_abc --op closeTab --tab-id 99 --wait
 - **`--tab-id`** = agent tab from **Run agent** provision (`agent_tab_id`) — never automate `human_tab_id`.
 - If the initial `agent_tab_id` observe times out or hangs (e.g. fresh background tab), use `openTab --url <handoff_or_search_url>` to initialize an active agent tab.
 - **`--wait`** blocks until host returns `command_result` (extension or harness).
-- **Extension driver (default / Path B):** no remote-debugging required for execute; extension WS required.
+- **Extension driver (default / extension):** no remote-debugging required for execute; extension WS required.
 - Rollback: `browser.driver: harness` (or `DESK_BROWSER_DRIVER=harness`) uses CDP `{x,y}` / `selector`.
 
 Script: [`scripts/desk-browser`](../scripts/desk-browser)

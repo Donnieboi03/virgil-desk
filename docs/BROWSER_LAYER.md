@@ -6,12 +6,12 @@ Virgil Desk can drive Chrome two ways. **Handoff / board / decompose** always us
 
 | `browser.driver` | Execute path | Cookies | Operator setup |
 |------------------|--------------|---------|----------------|
-| **`extension` (default / Path B)** | Host → extension WS → `scripting` (no CDP) | Same profile (agent tab duplicate) | Extension side panel connected |
+| **`extension` (default)** | Host → extension WS → `scripting` (no CDP) | Same profile (agent tab duplicate) | Extension side panel connected |
 | **`harness` (rollback)** | Host → `browser-harness` CDP (everyday Chrome) | Everyday Chrome profile | `chrome://inspect/#remote-debugging` Allow + Chrome 144+ Allow popup |
 
 Harness daemon isolation: `BU_NAME=virgil-desk` (never Virgil tick `:9223` / `BU_CDP_URL` to chrome-virgil). Rollback: set `browser.driver: harness` or `DESK_BROWSER_DRIVER=harness`.
 
-## Path B execute (extension default)
+## Extension Eyes/Hands execute (default)
 
 Eyes channels (no vision / screenshot by default):
 
@@ -33,7 +33,7 @@ Eyes channels (no vision / screenshot by default):
 | Phase | Eyes | Hands | Driver |
 |-------|------|-------|--------|
 | Handoff / decompose | Extension viewport scrape + screenshot (default **no scroll**) — [`HANDOFF_CAPTURE.md`](HANDOFF_CAPTURE.md) | — | Extension |
-| Execute (default / Path B) | slim targets + optional `page_tree` + excerpt omit | DOM `target_id` | `browser.driver: extension` |
+| Execute (default / extension) | slim targets + optional `page_tree` + excerpt omit | DOM `target_id` | `browser.driver: extension` |
 | Execute (rollback) | dims / scrape; empty targets | CDP Input (`x,y` / selector) | `browser.driver: harness` |
 
 **`eyes_mode` is not soft site tiers A–D** (those remain expectation-only below). Ladder SoT is this file; Done/park: [`ARCHITECTURE.md`](ARCHITECTURE.md).
@@ -60,7 +60,7 @@ Prefer **`observe`**. Handoff may still capture a PNG for decompose.
 
 ## Soft site tiers (expectation, not hard gates)
 
-| Tier | Examples | Path B expectation |
+| Tier | Examples | Eyes/Hands expectation |
 |------|----------|-------------------|
 | **A** | Docs, ordinary SaaS | DOM Eyes/Hands reliable |
 | **B** | Gmail-class SPA | Friction OK; follow threads via `target_id`; drafts OK |

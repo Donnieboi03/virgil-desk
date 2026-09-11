@@ -8,16 +8,18 @@ Extension (board SoT in `chrome.storage.local`) ↔ Host (policy + agent router)
 
 | Surface | Role |
 |---------|------|
-| MV3 extension | Board UI, tab pairs, Path B Eyes/Hands inject, WS client, Desk memory SoT |
+| MV3 extension | Board UI, tab pairs, Eyes/Hands inject, WS client, Desk memory SoT |
 | Host `:8787` | Handoff, `POST /v1/browser`, mint, execute, desk-memory REST, events |
-| Hermes (default agent) | Decompose + execute via `desk-browser` CLI |
+| Hermes (default agent) | Decompose (+ optional `hermes_oneshot` execute via `desk-browser` CLI) |
 | Config | [`config/desk.yaml`](../config/desk.yaml) — limits pushed to extension on register |
 
-Related: [`MEMORY.md`](MEMORY.md), [`BROWSER_LAYER.md`](BROWSER_LAYER.md) (Path B Eyes SoT), [`PROTOCOL.md`](PROTOCOL.md), [`PRODUCT.md`](PRODUCT.md), [`OBSERVABILITY.md`](OBSERVABILITY.md). Eyes/Hands taxonomy (archive): [`archive/INTERACTION_LAYERS.md`](archive/INTERACTION_LAYERS.md).
+**Execute runtime:** `execute.runtime` — `hermes_oneshot` (default) or **`host_loop`** (Host-owned messages + Eyes prune via `ModelClient`; backend-agnostic). With `host_loop`, **Run tab** (`POST /v1/runs/{run_id}/execute`) walks all proposed Agent roots in one session with flat ceilings (`run_max_steps` / `run_steps_per_item`); per-item `POST /v1/items/{id}/execute` remains (`max_steps`). See [`NEXTSTEPS.md`](NEXTSTEPS.md).
+
+Related: [`MEMORY.md`](MEMORY.md), [`BROWSER_LAYER.md`](BROWSER_LAYER.md) (Eyes/Hands SoT), [`PROTOCOL.md`](PROTOCOL.md), [`PRODUCT.md`](PRODUCT.md), [`OBSERVABILITY.md`](OBSERVABILITY.md). Eyes/Hands taxonomy (archive): [`archive/INTERACTION_LAYERS.md`](archive/INTERACTION_LAYERS.md).
 
 ---
 
-## Path B Eyes
+## Eyes/Hands
 
 Fail-only **`eyes_mode`** `0|1|2` on observe/open/scrape. Ladder, settle/challenge budgets, and caps live in [`BROWSER_LAYER.md`](BROWSER_LAYER.md). This doc owns Done / park / mint / locks only.
 
@@ -32,13 +34,14 @@ Measure (on `browser.command_result`): flags `eyes_mode`, `eyes_empty`, optional
 | **Completed** | Agent-safe work finished **or** Eyes **verified terminal** page (expired / already submitted / deadline passed / not found) for a review/check goal | One-line success summary; stop. **No** You mint |
 | **`Partial:`** | Blocked without a verified terminal fact (auth, forbidden, stuck, blank Eyes) | One-line `Partial:`; stop |
 | **`awaiting_human`** | Auth/challenge gate parked as You (`park_kind: auth_gate`) | Parent halted until human Marks done → **Resume agent**. Extension **lends** `agent_tab_id` (ungroup, inactive until Show tab) |
-| **Park You (tab-first auth / URL-first remainder)** | Auth wall → same agent tab + `source.url` fallback; **human judgment/use** (decide, reply, apply, use docs) → `human_remainder`; forbidden human action / soft-help | `mint_item` You with **`source.url`** (+ `park_kind`). Auth_gate also stamps **`agent_tab_id`**. **Never** `openTab placement=human`. Host rejects “Single closure / no further action” after only reading judgment titles |
+| **Park You (tab-first auth / URL-first remainder)** | Auth wall → same agent tab + `source.url` fallback; **human judgment/use** (decide, reply, apply, use docs) → `human_remainder`; forbidden human action / soft-help | `mint_item` You with **`source.url`** (+ `park_kind`). Auth_gate also stamps **`agent_tab_id`**. **Never** `openTab placement=human`. Host rejects “Single closure / no further action” after only reading **judgment/use** work; **promo/newsletter skim / FYI** may Complete alone |
 
 Host gate ([`execute_validation.py`](../packages/host/desk_host/execute_validation.py)):
 
 - Rejects open-only summaries starting with `Observed` / `Opened` **unless** they also claim single-closure / parked / minted / **verified-terminal** language.
 - Verified-terminal patterns include: `verified expired`, `already submitted`, `deadline passed`, `expired-or-not-found`, `screening … expired`, `no further action`, etc.
 - Rejects “single closure / no further action” when an open You `auth_gate` / `human_remainder` still needs human (unless summary honestly acknowledges parked remainder).
+- Rejects false closure after read-only **judgment/use** (Review/Apply titles, or “Reviewed … picks/profiles …”); allows promo/newsletter **skim / FYI** Completes with no You park.
 
 ### Resume after You Mark done
 

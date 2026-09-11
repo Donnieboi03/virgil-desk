@@ -51,7 +51,7 @@ test("form fixture: observe then fill by target_id", async () => {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         url: fixtureUrl(),
-        title: "Path B smoke",
+        title: "Extension Eyes smoke",
         human_tab_id: humanTabId,
         window_id: 1,
       }),

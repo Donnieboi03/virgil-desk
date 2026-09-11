@@ -38,4 +38,4 @@ Host does **not** load or route these yet. Obs fields exist so offline mining ca
 
 - Event fields: [`OBSERVABILITY.md`](OBSERVABILITY.md)
 - Board / clump product policy: [`PRODUCT.md`](PRODUCT.md)
-- Path B Eyes: [`BROWSER_LAYER.md`](BROWSER_LAYER.md)
+- Eyes/Hands: [`BROWSER_LAYER.md`](BROWSER_LAYER.md)

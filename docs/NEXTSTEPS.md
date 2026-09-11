@@ -16,7 +16,11 @@ After decompose, automatically run Hermes execute for Agent column items with `s
 
 - Config: `hermes.auto_execute_agent` (proposed) in `config/desk.yaml`
 - Requires stable execute path + operator escape hatch
-- Until then: operator clicks **Run agent** in the panel
+- **Now:** operator clicks **Run tab** (one session over proposed Agent roots; `host_loop`) or per-card **Run agent**
+
+### Run tab vs per-card cost
+
+Dogfood A/B on a ≥5-item same-site board: Arm A = per-card **Run agent**; Arm B = **Run tab**. Compare `desk-events --summary` cost/tokens/outcomes — no separate protocol doc required; results live in chat/PR.
 
 ### Waiting column — agent tabs on Accept (future)
 
@@ -45,10 +49,14 @@ When provider fallbacks fail mid-execute, board `last_error` should show the rea
 
 ### Host-owned rolling execute history
 
-True Packet/Eyes/Hands rebuild each Hermes call (host loop or mid-session history rewrite) — not shipped. Today: thin CLI envelopes + `execute_max_turns` only.
+**Shipped (flagged):** `execute.runtime: host_loop` — Host owns the tool transcript, thins Eyes, and **prunes** older tool results (`eyes_keep_last`). Model steps go through **`ModelClient`** (OpenRouter today; not Hermes-session memory). Default remains `hermes_oneshot` for Q/A rollback.
 
-- [ ] Host re-prompt loop or Hermes compression profile dedicated to Desk
-- [ ] Drop/collapse prior tool messages inside one session
+- [x] Host re-prompt / tool loop with Eyes prune (`execute_loop` + `execute_transcript`)
+- [x] Config: `execute.runtime` / `eyes_keep_last` / `max_steps` / `run_max_steps` / `run_steps_per_item` / `model` / `model_provider`
+- [ ] Gemini-direct `ModelClient` adapter (protocol ready)
+- [ ] Default dogfood cutover to `host_loop` after cost A/B
+
+Enable: `execute.runtime: host_loop` in [`config/desk.yaml`](../config/desk.yaml) or `DESK_EXECUTE_RUNTIME=host_loop`. Requires `OPENROUTER_API_KEY`.
 
 ### Progress-stop heuristics
 
@@ -70,7 +78,7 @@ Mission-progress stop (URL unchanged K acts / repeated targets) — parked (easy
 - **Clearer execute `last_error`** from Hermes stderr / API snippets
 - **Thin desk-browser CLI envelope** (no screenshot base64 into Hermes transcript)
 - **Execute `--max-turns`** via `hermes.execute_max_turns` (default 40)
-- **Execute Path B** (`browser.driver: extension`) — slim targets / AX `page_tree` / probes; Hands `target_id`; rollback `harness` CDP on everyday Chrome
+- **Execute Eyes/Hands (extension)** (`browser.driver: extension`) — slim targets / AX `page_tree` / probes; Hands `target_id`; rollback `harness` CDP on everyday Chrome
 
 ## Links
 

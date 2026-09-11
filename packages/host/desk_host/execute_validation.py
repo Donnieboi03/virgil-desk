@@ -196,6 +196,30 @@ _HUMAN_JUDGMENT_TITLE_RE = re.compile(
     r")\b"
 )
 
+# Decompose pattern class: promo/newsletter skim — agent may Complete after reading
+# with no human_remainder (PRODUCT / decompose_handoff). Not a single-title overfit.
+_FYI_SKIM_TITLE_RE = re.compile(
+    r"(?i)\b("
+    r"skim\b"
+    r"|newsletter"
+    r"|promotional?"
+    r"|fy[\s-]?i\b"
+    r"|announcements?"
+    r"|triage\b.{0,40}\b(?:promo|promotional|newsletter|hackathon|announcement)"
+    r")\b"
+)
+
+# Summary asserts no operator action remains (skim / FYI complete).
+_NO_ACTIONABLE_REMAINDER_RE = re.compile(
+    r"(?i)\b("
+    r"no\s+actionable"
+    r"|nothing\s+to\s+(?:act\s+on|decide|apply|reply)"
+    r"|fy[\s-]?i\s+only"
+    r"|no\s+human\s+(?:action|remainder|decision)"
+    r"|informational\s+only"
+    r")\b"
+)
+
 # Summary language that looks like "I read it" sold as Done without a human park.
 _READ_ONLY_FALSE_DONE_RE = re.compile(
     r"(?i)\b("
@@ -204,6 +228,17 @@ _READ_ONLY_FALSE_DONE_RE = re.compile(
     r"|opened\s+shared\s+folder"
     r"|verified\s+access\s+to"
     r"|profile\s+details"
+    r")\b"
+)
+
+# Read-only Done is only suspicious when the body still implies human decision/use.
+# Bare "Reviewed … newsletters" alone is not enough (avoids skim false positives).
+_DECISION_SHAPED_SUMMARY_RE = re.compile(
+    r"(?i)\b("
+    r"picks?|candidates?|profiles?|co-?founder"
+    r"|apply|application|respond|reply|decide|decision"
+    r"|match(?:es|ing)?|approve|approval"
+    r"|shared\s+folder|access\s+to|offboarding|1:1"
     r")\b"
 )
 
@@ -272,6 +307,10 @@ def human_judgment_blocks_false_closure(
     """
     Reject 'Single closure / no further action' after only reading when the human
     still must decide, reply, apply, or use docs (unless verified terminal or You park).
+
+    Promo/newsletter skim titles (and explicit no-actionable summaries) may Complete
+    alone — same pattern class as decompose. Bare \"Reviewed …\" is not enough to
+    reject unless the title needs human judgment or the summary is decision-shaped.
     """
     if has_you_remainder:
         return None
@@ -286,9 +325,18 @@ def human_judgment_blocks_false_closure(
         return None
     if not _FALSE_CLOSURE_RE.search(body):
         return None
-    title_needs_human = bool(_HUMAN_JUDGMENT_TITLE_RE.search(item_title or ""))
+    title = item_title or ""
+    title_needs_human = bool(_HUMAN_JUDGMENT_TITLE_RE.search(title))
+    # Promo/newsletter skim class may Complete alone — but not if title also
+    # demands Review/Apply/etc. (prefer mint You or no-actionable language).
+    if _FYI_SKIM_TITLE_RE.search(title) and not title_needs_human:
+        return None
+    if _NO_ACTIONABLE_REMAINDER_RE.search(body):
+        return None
     read_sold_as_done = bool(_READ_ONLY_FALSE_DONE_RE.search(body))
-    if title_needs_human or read_sold_as_done:
+    decision_shaped = bool(_DECISION_SHAPED_SUMMARY_RE.search(body))
+    # Judgment title alone, or read-sold-as-done *with* decision/use language.
+    if title_needs_human or (read_sold_as_done and decision_shaped):
         return (
             "human judgment/use remains — mint human_remainder You with source.url "
             "for each decision or doc the operator must act on; do not claim "

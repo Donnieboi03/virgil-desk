@@ -34,14 +34,14 @@ Board mutations from execute/complete/accept/deny require an active WebSocket; o
 
 `captureHandoffSnapshot`, `navigate` (host-normalized to `openTab`), `openTab` (agent placement only — `params.placement: human` is **denied**), `duplicateTab` (legacy alias → create), `closeTab`, `scroll`, `scrape`, `screenshot`, **`observe`**, **`probe_form`**, **`probe_links`**, **`probe_table`**, `click`, `fill`, **`key`**, `wait`, `focusTab`
 
-Optional body field: `skip_screenshot` (Path B observe defaults true via `observe_skip_screenshot_default`).
+Optional body field: `skip_screenshot` (extension observe defaults true via `observe_skip_screenshot_default`).
 
 ### Params (selected)
 
 | Op | Params |
 |----|--------|
 | `observe` | `{ "annotate": true }` — SoM overlay (default from config) |
-| `click` | `{ "target_id": 7 }` (Path B primary) |
+| `click` | `{ "target_id": 7 }` (extension primary) |
 | `fill` | `{ "target_id": 3, "value": "..." }` |
 | `scroll` | `{ "direction": "down" }` \| `{ "target_id": 12, "direction": "down" }` |
 | `key` | `{ "key": "Enter" }` |
@@ -49,11 +49,11 @@ Optional body field: `skip_screenshot` (Path B observe defaults true via `observ
 
 ## command_result
 
-Required: `command_id`, `ok`, `duration_ms`. **`observe`** adds slim `interact_targets`, optional `page_tree` (URL change or empty escalate), `viewport`, `device_pixel_ratio`. Mutating ops add `act_resolved`; post-act screenshots are skipped when Path B skip-screenshot default is on.
+Required: `command_id`, `ok`, `duration_ms`. **`observe`** adds slim `interact_targets`, optional `page_tree` (URL change or empty escalate), `viewport`, `device_pixel_ratio`. Mutating ops add `act_resolved`; post-act screenshots are skipped when extension skip-screenshot default is on.
 
 Same-URL follow-up `observe` may set `text_omitted: true` and omit `page_tree` while keeping targets; URL changes get a capped follow-up excerpt (`browser.observe_followup_excerpt_max_chars`, default 2000). Full observe excerpt defaults to `browser.scrape_excerpt_max_chars` (4000); `page_tree` defaults to 2000 chars; deep escalate text defaults to `browser.eyes_deep_text_max_chars` (4000).
 
-Eyes ladder fields on `command_result` (extension Path B): **`eyes_mode`** (`0` default / `1` deep-text promote / `2` soft hints), **`eyes_empty`**, optional **`eyes_hints.url_path_hint`**, settle measures `eyes_settle_ms` / `eyes_settle_attempts`, optional **`challenge_extended`**, **`inject_ms`**, **`frame_count`**. Host also stamps mine-ready **`item_id`** / **`op_seq`** / optional **`site_fingerprint`** on `browser.command`(+result) — see [`OBSERVABILITY.md`](OBSERVABILITY.md). Ladder behavior: [`BROWSER_LAYER.md`](BROWSER_LAYER.md). Done/park/idempotency: [`ARCHITECTURE.md`](ARCHITECTURE.md).
+Eyes ladder fields on `command_result` (extension Eyes/Hands): **`eyes_mode`** (`0` default / `1` deep-text promote / `2` soft hints), **`eyes_empty`**, optional **`eyes_hints.url_path_hint`**, settle measures `eyes_settle_ms` / `eyes_settle_attempts`, optional **`challenge_extended`**, **`inject_ms`**, **`frame_count`**. Host also stamps mine-ready **`item_id`** / **`op_seq`** / optional **`site_fingerprint`** on `browser.command`(+result) — see [`OBSERVABILITY.md`](OBSERVABILITY.md). Ladder behavior: [`BROWSER_LAYER.md`](BROWSER_LAYER.md). Done/park/idempotency: [`ARCHITECTURE.md`](ARCHITECTURE.md).
 
 **Mint** (`POST /v1/items/mint`): always creates a child (no host remint collapse). Resume continuity uses Packet `resume.cleared_gates`.
 

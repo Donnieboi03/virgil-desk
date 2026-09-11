@@ -1,7 +1,7 @@
 # Dual-focus research — Virgil Desk
 
 **Audience:** Operator / CS founder.  
-**Status:** **Archive** — research synthesis (Aug 29, 2026). Not living product SoT. Living Path B: [`../BROWSER_LAYER.md`](../BROWSER_LAYER.md).
+**Status:** **Archive** — research synthesis (Aug 29, 2026). Not living product SoT. Living Eyes/Hands: [`../BROWSER_LAYER.md`](../BROWSER_LAYER.md).
 **Product stake:** Desk’s value is **dual-work** — agent finishes Gmail (or similar) while you do homework. Focus-steal fights that promise.
 
 **Eyes / Hands taxonomy** (DOM vs CDP Input vs OS, costs, pros/cons): [`INTERACTION_LAYERS.md`](INTERACTION_LAYERS.md) (same archive folder).

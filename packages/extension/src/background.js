@@ -221,6 +221,14 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
     runAgentItem(msg).then(sendResponse);
     return true;
   }
+  if (msg.type === "runAgentTab") {
+    runAgentTab(msg).then(sendResponse);
+    return true;
+  }
+  if (msg.type === "cancelAgentTab") {
+    cancelAgentTab(msg).then(sendResponse);
+    return true;
+  }
   if (msg.type === "completeItem") {
     completeItem(msg).then(sendResponse);
     return true;
@@ -786,7 +794,9 @@ async function createBackgroundTab(url, windowId) {
   if (!targetUrl || targetUrl === "about:blank" || !/^https?:\/\//i.test(targetUrl)) {
     throw new Error("createBackgroundTab requires http(s) url");
   }
-  return chrome.tabs.create({ url: targetUrl, active: false, windowId });
+  const opts = { url: targetUrl, active: false };
+  if (windowId != null) opts.windowId = windowId;
+  return chrome.tabs.create(opts);
 }
 
 async function createUngroupedSnapshot(humanTabId, runId) {
@@ -805,9 +815,21 @@ async function createUngroupedSnapshot(humanTabId, runId) {
 }
 
 async function createAgentTabForItem(humanTabId, runId, itemId) {
-  const human = await chrome.tabs.get(humanTabId);
-  const tab = await createBackgroundTab(human.url, human.windowId);
+  let url = "";
+  let windowId;
+  try {
+    const human = await chrome.tabs.get(humanTabId);
+    url = human?.url || "";
+    windowId = human?.windowId;
+  } catch {
+    /* human tab closed — fall back to stored handoff URL */
+  }
+  if (!url || !/^https?:\/\//i.test(url)) {
+    url = await handoffUrlForRun(runId);
+  }
+  const tab = await createBackgroundTab(url, windowId);
   await ensureAgentGroup(tab.id, tab.windowId);
+  await settleTabAfterOpen(tab.id, { requireHttp: true });
   const data = await chrome.storage.session.get(PAIRS_KEY);
   const pairs = data[PAIRS_KEY] || {};
   if (!pairs[runId]) {
@@ -918,8 +940,14 @@ async function provisionAgentTabBeforeExecute(itemId, runId) {
 
     if (item.agent_tab_id) {
       try {
-        await chrome.tabs.get(item.agent_tab_id);
         const tab = await chrome.tabs.get(item.agent_tab_id);
+        const handoff = await handoffUrlForRun(runId);
+        if (
+          handoff &&
+          (!tab.url || !/^https?:\/\//i.test(tab.url) || tab.url === "about:blank")
+        ) {
+          await loadUrlInTab(item.agent_tab_id, handoff);
+        }
         await ensureAgentGroup(item.agent_tab_id, tab.windowId);
         const data = await chrome.storage.session.get(PAIRS_KEY);
         const pairs = data[PAIRS_KEY] || {};
@@ -995,10 +1023,16 @@ async function resolveAgentTab(command) {
   }
   // duplicateTab is legacy alias — same as openTab (create background; never tabs.duplicate).
   if (command.op === "duplicateTab" || command.op === "openTab") {
-    const human = command.human_tab_id
-      ? await chrome.tabs.get(command.human_tab_id)
-      : null;
-    const targetUrl = (command.url || human?.url || "").trim();
+    let human = null;
+    if (command.human_tab_id) {
+      try {
+        human = await chrome.tabs.get(command.human_tab_id);
+      } catch {
+        // Human tab may be closed — still allow openTab when command.url is valid https.
+        human = null;
+      }
+    }
+    const targetUrl = (command.url || human?.url || command.handoff_url || "").trim();
     if (!targetUrl || targetUrl === "about:blank" || !/^https?:\/\//i.test(targetUrl)) {
       return {
         tabId: null,
@@ -1007,9 +1041,45 @@ async function resolveAgentTab(command) {
         error: "openTab requires http(s) url",
       };
     }
+
+    // Prefer loading into the existing agent tab (Run-tab rescue) instead of spawning another.
+    const existingId = command.tab_id ?? pairs[runId]?.agentTabId;
+    if (existingId != null) {
+      try {
+        await chrome.tabs.get(existingId);
+        await loadUrlInTab(existingId, targetUrl);
+        await ensureAgentGroup(
+          existingId,
+          (await chrome.tabs.get(existingId)).windowId,
+        );
+        if (!pairs[runId]) {
+          pairs[runId] = {
+            humanTabId: command.human_tab_id,
+            items: {},
+            spawnedByItem: {},
+          };
+        }
+        pairs[runId].humanTabId = pairs[runId].humanTabId || command.human_tab_id;
+        await promoteAgentTab(runId, activeExecute?.itemId, existingId, pairs);
+        return { tabId: existingId, tabMode: "navigate", placement: "agent" };
+      } catch (err) {
+        const msg = String(err?.message || err);
+        // Fall through to create only if the existing tab is gone.
+        if (!/No tab with id/i.test(msg)) {
+          return {
+            tabId: null,
+            tabMode: "error",
+            placement: "agent",
+            error: msg,
+          };
+        }
+      }
+    }
+
     const windowId = human?.windowId;
     const tab = await createBackgroundTab(targetUrl, windowId);
     await ensureAgentGroup(tab.id, tab.windowId);
+    await settleTabAfterOpen(tab.id, { requireHttp: true });
     if (!pairs[runId]) {
       pairs[runId] = {
         humanTabId: command.human_tab_id,
@@ -1032,6 +1102,22 @@ function policyBlock(command, tabId) {
 async function scrapeTab(tabId) {
   const maxText = deskConfig.browser?.scrape_text_max_chars ?? 8000;
   const maxLinks = deskConfig.browser?.scrape_links_max ?? 50;
+  let metaUrl = "";
+  let metaTitle = "";
+  try {
+    const tab = await chrome.tabs.get(tabId);
+    metaUrl = tab?.url || "";
+    metaTitle = tab?.title || "";
+  } catch (err) {
+    const msg = String(err?.message || err);
+    if (/No tab with id/i.test(msg)) {
+      return {
+        ...normalizeScrapeResult(null),
+        tab_missing: true,
+        error: msg,
+      };
+    }
+  }
   try {
     const injected = await chrome.scripting.executeScript({
       target: { tabId },
@@ -1054,9 +1140,33 @@ async function scrapeTab(tabId) {
       args: [maxText, maxLinks],
     });
     const result = injected?.[0]?.result;
-    return normalizeScrapeResult(result);
-  } catch {
-    return normalizeScrapeResult(null);
+    const normalized = normalizeScrapeResult(result);
+    if (!normalized.url && metaUrl) normalized.url = metaUrl;
+    if (!normalized.title && metaTitle) normalized.title = metaTitle;
+    return normalized;
+  } catch (err) {
+    const msg = String(err?.message || err);
+    if (/No tab with id/i.test(msg)) {
+      return {
+        ...normalizeScrapeResult(null),
+        tab_missing: true,
+        error: msg,
+      };
+    }
+    const fallback = normalizeScrapeResult(null);
+    if (metaUrl) fallback.url = metaUrl;
+    if (metaTitle) fallback.title = metaTitle;
+    return fallback;
+  }
+}
+
+async function assertTabAlive(tabId) {
+  if (tabId == null) return "missing tab_id";
+  try {
+    await chrome.tabs.get(tabId);
+    return null;
+  } catch (err) {
+    return String(err?.message || err);
   }
 }
 
@@ -1067,7 +1177,8 @@ async function settleScrapeEyes(tabId) {
   const challengeExtraMs = deskConfig.browser?.eyes_challenge_extra_ms ?? 8000;
   return settleEyes({
     scrape: () => scrapeTab(tabId),
-    isReady: (snap) => scrapeEyesReady(snap, minChars),
+    isReady: (snap) =>
+      Boolean(snap?.tab_missing) || scrapeEyesReady(snap, minChars),
     budgetMs,
     pollMs,
     challengeExtraMs,
@@ -1224,37 +1335,44 @@ async function applyEyesEscalation({
   };
 }
 
-async function settleTabAfterOpen(tabId) {
+async function settleTabAfterOpen(tabId, { requireHttp = false } = {}) {
   const ms = deskConfig.browser?.default_wait_ms ?? 500;
   if (tabId == null) {
     await new Promise((r) => setTimeout(r, ms));
     return;
   }
-  try {
-    const tab = await chrome.tabs.get(tabId);
-    if (tab?.status === "complete") {
-      await new Promise((r) => setTimeout(r, Math.min(ms, 200)));
+  const timeoutMs = Math.max(ms, requireHttp ? 8000 : 2000);
+  const deadline = Date.now() + timeoutMs;
+
+  function urlOk(url) {
+    if (!requireHttp) return true;
+    const u = (url || "").trim();
+    return /^https?:\/\//i.test(u);
+  }
+
+  while (Date.now() < deadline) {
+    try {
+      const tab = await chrome.tabs.get(tabId);
+      if (tab?.status === "complete" && urlOk(tab.url)) {
+        await new Promise((r) => setTimeout(r, Math.min(ms, 200)));
+        return;
+      }
+    } catch {
       return;
     }
-  } catch {
-    await new Promise((r) => setTimeout(r, ms));
-    return;
+    await new Promise((r) => setTimeout(r, 200));
   }
-  await new Promise((resolve) => {
-    const timeoutMs = Math.max(ms, 2000);
-    const timer = setTimeout(() => {
-      chrome.tabs.onUpdated.removeListener(onUpdated);
-      resolve();
-    }, timeoutMs);
-    function onUpdated(id, info) {
-      if (id === tabId && info.status === "complete") {
-        clearTimeout(timer);
-        chrome.tabs.onUpdated.removeListener(onUpdated);
-        resolve();
-      }
-    }
-    chrome.tabs.onUpdated.addListener(onUpdated);
-  });
+}
+
+/** Navigate an existing agent tab (prefer over creating another when rescuing empty Eyes). */
+async function loadUrlInTab(tabId, url) {
+  const targetUrl = (url || "").trim();
+  if (!targetUrl || !/^https?:\/\//i.test(targetUrl)) {
+    throw new Error("loadUrlInTab requires http(s) url");
+  }
+  await chrome.tabs.update(tabId, { url: targetUrl });
+  await settleTabAfterOpen(tabId, { requireHttp: true });
+  return tabId;
 }
 
 /** Safe first-frame result from chrome.scripting.executeScript (may be empty). */
@@ -1662,6 +1780,14 @@ async function runBrowserCommand(command) {
     if (command.op === "captureHandoffSnapshot") {
       const handoffMax = deskConfig.browser?.handoff_excerpt_max_chars ?? 8000;
       const snap = await scrapeTab(command.human_tab_id);
+      if (snap?.tab_missing || snap?.error) {
+        return {
+          ...base,
+          ok: false,
+          error: snap.error || "handoff tab missing",
+          duration_ms: Date.now() - started,
+        };
+      }
       return {
         ...base,
         url: snap.url,
@@ -1691,6 +1817,24 @@ async function runBrowserCommand(command) {
       return { ...base, ok: false, error: block, duration_ms: Date.now() - started };
     }
 
+    // Fail fast on dead tab ids — do not mask as empty Eyes (scrape used to).
+    if (
+      command.op !== "openTab" &&
+      command.op !== "duplicateTab" &&
+      command.op !== "captureHandoffSnapshot"
+    ) {
+      const missing = await assertTabAlive(tabId);
+      if (missing) {
+        return {
+          ...base,
+          ok: false,
+          error: missing,
+          tab_id: tabId,
+          duration_ms: Date.now() - started,
+        };
+      }
+    }
+
     if (command.op === "observe") {
       const maxTargets = deskConfig.browser?.interact_targets_max ?? 40;
       const annotate =
@@ -1701,6 +1845,15 @@ async function runBrowserCommand(command) {
 
       const settled = await settleScrapeEyes(tabId);
       let snap = settled.result || (await scrapeTab(tabId));
+      if (snap?.tab_missing || (snap?.error && /No tab with id/i.test(String(snap.error)))) {
+        return {
+          ...base,
+          ok: false,
+          error: snap.error || "No tab with id",
+          tab_id: tabId,
+          duration_ms: Date.now() - started,
+        };
+      }
       let pageObserve = null;
       if (!scrapeEyesReady(snap, minChars)) {
         pageObserve = await runPageObserve(tabId, { maxTargets, annotate });
@@ -2135,6 +2288,15 @@ async function runBrowserCommand(command) {
       } else {
         snap = await scrapeTab(tabId);
       }
+      if (snap?.tab_missing || (snap?.error && /No tab with id/i.test(String(snap.error)))) {
+        return {
+          ...base,
+          ok: false,
+          error: snap.error || "No tab with id",
+          tab_id: tabId,
+          duration_ms: Date.now() - started,
+        };
+      }
       let shot = null;
       const skipShot =
         command.skip_screenshot ??
@@ -2487,6 +2649,81 @@ async function runAgentItem({ itemId, runId }) {
     return { ok: false, error: data.detail || res.statusText, ...data };
   }
   chrome.runtime.sendMessage({ type: "boardUpdated" }).catch(() => {});
+  return data;
+}
+
+/**
+ * Provision one shared agent tab for the run, stamp all eligible Agent roots,
+ * then POST /v1/runs/{run_id}/execute (Run tab).
+ */
+async function provisionAgentTabForRun(runId, itemIds) {
+  if (!itemIds?.length) {
+    return { ok: false, error: "no agent items to run" };
+  }
+  const firstId = itemIds[0];
+  const provisioned = await provisionAgentTabBeforeExecute(firstId, runId);
+  if (!provisioned.ok) return provisioned;
+  const { agentTabId, humanTabId } = provisioned;
+  const board = await loadBoard();
+  for (const col of ["you", "agent", "waiting"]) {
+    for (const item of board[col] || []) {
+      if (itemIds.includes(item.id)) {
+        item.agent_tab_id = agentTabId;
+        item.human_tab_id = humanTabId;
+        try {
+          await syncItemAgentTab(item.id, runId, agentTabId);
+        } catch {
+          /* host may already get tab from execute_run body */
+        }
+      }
+    }
+  }
+  await saveBoard(board);
+  const data = await chrome.storage.session.get(PAIRS_KEY);
+  const pairs = data[PAIRS_KEY] || {};
+  if (!pairs[runId]) pairs[runId] = { humanTabId, items: {} };
+  pairs[runId].agentTabId = agentTabId;
+  pairs[runId].humanTabId = humanTabId;
+  if (!pairs[runId].items) pairs[runId].items = {};
+  for (const id of itemIds) pairs[runId].items[id] = agentTabId;
+  await chrome.storage.session.set({ [PAIRS_KEY]: pairs });
+  chrome.runtime.sendMessage({ type: "boardUpdated" }).catch(() => {});
+  return { ok: true, agentTabId, humanTabId };
+}
+
+async function runAgentTab({ runId, itemIds }) {
+  const wsErr = await ensureWsReady();
+  if (wsErr) {
+    return { ok: false, error: wsErr };
+  }
+  const ids = itemIds || [];
+  const provisioned = await provisionAgentTabForRun(runId, ids);
+  if (!provisioned.ok) return provisioned;
+  const res = await fetch(`${hostUrl}/v1/runs/${encodeURIComponent(runId)}/execute`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      agent_tab_id: provisioned.agentTabId,
+      human_tab_id: provisioned.humanTabId,
+    }),
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    return { ok: false, error: data.detail || res.statusText, ...data };
+  }
+  chrome.runtime.sendMessage({ type: "boardUpdated" }).catch(() => {});
+  return data;
+}
+
+async function cancelAgentTab({ runId }) {
+  const res = await fetch(
+    `${hostUrl}/v1/runs/${encodeURIComponent(runId)}/execute/cancel`,
+    { method: "POST" },
+  );
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    return { ok: false, error: data.detail || res.statusText, ...data };
+  }
   return data;
 }
 
