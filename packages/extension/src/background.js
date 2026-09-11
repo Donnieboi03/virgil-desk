@@ -221,6 +221,14 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
     runAgentItem(msg).then(sendResponse);
     return true;
   }
+  if (msg.type === "runAgentTab") {
+    runAgentTab(msg).then(sendResponse);
+    return true;
+  }
+  if (msg.type === "cancelAgentTab") {
+    cancelAgentTab(msg).then(sendResponse);
+    return true;
+  }
   if (msg.type === "completeItem") {
     completeItem(msg).then(sendResponse);
     return true;
@@ -2558,6 +2566,81 @@ async function runAgentItem({ itemId, runId }) {
     return { ok: false, error: data.detail || res.statusText, ...data };
   }
   chrome.runtime.sendMessage({ type: "boardUpdated" }).catch(() => {});
+  return data;
+}
+
+/**
+ * Provision one shared agent tab for the run, stamp all eligible Agent roots,
+ * then POST /v1/runs/{run_id}/execute (Run tab).
+ */
+async function provisionAgentTabForRun(runId, itemIds) {
+  if (!itemIds?.length) {
+    return { ok: false, error: "no agent items to run" };
+  }
+  const firstId = itemIds[0];
+  const provisioned = await provisionAgentTabBeforeExecute(firstId, runId);
+  if (!provisioned.ok) return provisioned;
+  const { agentTabId, humanTabId } = provisioned;
+  const board = await loadBoard();
+  for (const col of ["you", "agent", "waiting"]) {
+    for (const item of board[col] || []) {
+      if (itemIds.includes(item.id)) {
+        item.agent_tab_id = agentTabId;
+        item.human_tab_id = humanTabId;
+        try {
+          await syncItemAgentTab(item.id, runId, agentTabId);
+        } catch {
+          /* host may already get tab from execute_run body */
+        }
+      }
+    }
+  }
+  await saveBoard(board);
+  const data = await chrome.storage.session.get(PAIRS_KEY);
+  const pairs = data[PAIRS_KEY] || {};
+  if (!pairs[runId]) pairs[runId] = { humanTabId, items: {} };
+  pairs[runId].agentTabId = agentTabId;
+  pairs[runId].humanTabId = humanTabId;
+  if (!pairs[runId].items) pairs[runId].items = {};
+  for (const id of itemIds) pairs[runId].items[id] = agentTabId;
+  await chrome.storage.session.set({ [PAIRS_KEY]: pairs });
+  chrome.runtime.sendMessage({ type: "boardUpdated" }).catch(() => {});
+  return { ok: true, agentTabId, humanTabId };
+}
+
+async function runAgentTab({ runId, itemIds }) {
+  const wsErr = await ensureWsReady();
+  if (wsErr) {
+    return { ok: false, error: wsErr };
+  }
+  const ids = itemIds || [];
+  const provisioned = await provisionAgentTabForRun(runId, ids);
+  if (!provisioned.ok) return provisioned;
+  const res = await fetch(`${hostUrl}/v1/runs/${encodeURIComponent(runId)}/execute`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      agent_tab_id: provisioned.agentTabId,
+      human_tab_id: provisioned.humanTabId,
+    }),
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    return { ok: false, error: data.detail || res.statusText, ...data };
+  }
+  chrome.runtime.sendMessage({ type: "boardUpdated" }).catch(() => {});
+  return data;
+}
+
+async function cancelAgentTab({ runId }) {
+  const res = await fetch(
+    `${hostUrl}/v1/runs/${encodeURIComponent(runId)}/execute/cancel`,
+    { method: "POST" },
+  );
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    return { ok: false, error: data.detail || res.statusText, ...data };
+  }
   return data;
 }
 

@@ -28,7 +28,33 @@ def build_system_and_packet(item: dict[str, Any], ctx: dict[str, Any]) -> list[d
         {
             "role": "user",
             "content": "## Task\n\n```json\n"
-            + json.dumps(packet, indent=2)
+            + json.dumps(packet, indent=2, default=str)
+            + "\n```",
+        },
+    ]
+
+
+def build_run_tab_messages(ctx: dict[str, Any]) -> list[dict[str, Any]]:
+    """Multi-item Run-tab Packet (system + one user JSON)."""
+    system = render_prompt("execute_run_tab.md")
+    # Avoid leaking mutable run_state object into the prompt JSON.
+    packet = {
+        k: v
+        for k, v in ctx.items()
+        if k not in ("run_state",)
+    }
+    system = (
+        system
+        + "\n\n## Host execute runtime\n\n"
+        + "Host-owned tool calling. Use browser tools plus `complete_item` when each "
+        + "Agent root is finished (done summary or Partial). Prefer `target_id`.\n"
+    )
+    return [
+        {"role": "system", "content": system},
+        {
+            "role": "user",
+            "content": "## Run tab\n\n```json\n"
+            + json.dumps(packet, indent=2, default=str)
             + "\n```",
         },
     ]

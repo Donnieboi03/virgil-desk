@@ -28,9 +28,9 @@ BROWSER_TOOL_NAMES = frozenset(
 )
 
 
-def host_loop_tools() -> list[dict[str, Any]]:
+def host_loop_tools(*, include_complete_item: bool = False) -> list[dict[str, Any]]:
     """OpenAI-style tool definitions for extension Eyes/Hands ops."""
-    return [
+    tools: list[dict[str, Any]] = [
         {
             "type": "function",
             "function": {
@@ -200,6 +200,196 @@ def host_loop_tools() -> list[dict[str, Any]]:
             },
         },
     ]
+    if include_complete_item:
+        tools.append(
+            {
+                "type": "function",
+                "function": {
+                    "name": "complete_item",
+                    "description": (
+                        "Mark one Agent root finished for this Run tab "
+                        "(done summary or Partial). Advances remaining_ids."
+                    ),
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "item_id": {"type": "string"},
+                            "summary": {"type": "string"},
+                            "outcome": {
+                                "type": "string",
+                                "description": "done | partial",
+                            },
+                        },
+                        "required": ["item_id", "summary"],
+                    },
+                },
+            }
+        )
+    return tools
+
+
+async def _complete_run_tab_item(
+    args: dict[str, Any],
+    *,
+    item: dict[str, Any],
+    ctx: dict[str, Any],
+) -> dict[str, Any]:
+    """Patch one Agent item and advance run_state remaining_ids."""
+    from .app import _patch_work_item, _work_items, get_config
+    from .execute_validation import (
+        auth_gate_blocks_false_closure,
+        execute_summary_incomplete_reason,
+        execute_summary_indicates_failure,
+        human_judgment_blocks_false_closure,
+        open_auth_gate_you,
+        open_you_remainder,
+    )
+    from .observability import record
+
+    run_state = ctx.get("run_state")
+    if not isinstance(run_state, dict):
+        return {"ok": False, "op": "complete_item", "error": "not in run_tab mode"}
+    run_id = str(ctx.get("run_id") or "")
+    item_id = str(args.get("item_id") or run_state.get("current_item_id") or "")
+    summary = str(args.get("summary") or "").strip()
+    outcome = str(args.get("outcome") or "done").strip().lower()
+    if not item_id:
+        return {"ok": False, "op": "complete_item", "error": "missing item_id"}
+    if item_id not in (run_state.get("remaining_ids") or []):
+        return {
+            "ok": False,
+            "op": "complete_item",
+            "error": f"item {item_id} not in remaining_ids",
+        }
+    if not summary:
+        return {"ok": False, "op": "complete_item", "error": "missing summary"}
+
+    cfg = get_config()
+    target = (run_state.get("items_by_id") or {}).get(item_id) or item
+    gate_you = open_auth_gate_you(item_id, _work_items)
+    remainder_you = open_you_remainder(item_id, _work_items)
+
+    if outcome == "partial" or execute_summary_indicates_failure(summary):
+        err = summary if summary.lower().startswith("partial:") else f"Partial: {summary}"
+        await _patch_work_item(
+            item_id, status="failed", run_id=run_id, last_error=err[:500]
+        )
+        rem = [x for x in run_state["remaining_ids"] if x != item_id]
+        run_state["remaining_ids"] = rem
+        run_state["failed_ids"] = list(run_state.get("failed_ids") or []) + [item_id]
+        run_state["current_item_id"] = rem[0] if rem else None
+        ctx["remaining_ids"] = rem
+        ctx["current_item_id"] = run_state["current_item_id"]
+        record(
+            "agent.item_progress",
+            run_id,
+            cfg=cfg,
+            item_id=item_id,
+            error=err[: cfg.prompts.event_snippet_max_chars],
+            flags={"outcome": "partial"},
+        )
+        return {
+            "ok": True,
+            "op": "complete_item",
+            "item_id": item_id,
+            "outcome": "partial",
+            "remaining_ids": rem,
+            "current_item_id": run_state["current_item_id"],
+        }
+
+    incomplete = execute_summary_incomplete_reason(summary)
+    if not incomplete:
+        incomplete = auth_gate_blocks_false_closure(
+            summary, has_auth_gate_you=bool(gate_you or remainder_you)
+        )
+    if not incomplete:
+        incomplete = human_judgment_blocks_false_closure(
+            summary,
+            item_title=str(target.get("title") or ""),
+            has_you_remainder=bool(remainder_you or gate_you),
+        )
+    if incomplete and gate_you:
+        # Parked for auth — pause run instead of failing the item.
+        run_state["paused"] = True
+        await _patch_work_item(item_id, status="awaiting_human", run_id=run_id)
+        record(
+            "agent.item_progress",
+            run_id,
+            cfg=cfg,
+            item_id=item_id,
+            flags={"outcome": "awaiting_human"},
+        )
+        return {
+            "ok": True,
+            "op": "complete_item",
+            "item_id": item_id,
+            "outcome": "awaiting_human",
+            "paused": True,
+            "remaining_ids": list(run_state.get("remaining_ids") or []),
+        }
+    if incomplete:
+        err = incomplete if incomplete.lower().startswith("partial:") else f"Partial: {incomplete}"
+        await _patch_work_item(
+            item_id, status="failed", run_id=run_id, last_error=err[:500]
+        )
+        rem = [x for x in run_state["remaining_ids"] if x != item_id]
+        run_state["remaining_ids"] = rem
+        run_state["failed_ids"] = list(run_state.get("failed_ids") or []) + [item_id]
+        run_state["current_item_id"] = rem[0] if rem else None
+        ctx["remaining_ids"] = rem
+        ctx["current_item_id"] = run_state["current_item_id"]
+        record(
+            "agent.item_progress",
+            run_id,
+            cfg=cfg,
+            item_id=item_id,
+            error=err[: cfg.prompts.event_snippet_max_chars],
+            flags={"outcome": "incomplete"},
+        )
+        return {
+            "ok": False,
+            "op": "complete_item",
+            "item_id": item_id,
+            "error": err,
+            "remaining_ids": rem,
+            "current_item_id": run_state["current_item_id"],
+        }
+
+    # Done — if You remainder parked, still mark done with evidence.
+    evidence = {"summary": summary[: cfg.prompts.execute_summary_max_chars]}
+    status = "awaiting_human" if gate_you else "done"
+    await _patch_work_item(
+        item_id,
+        status=status,
+        run_id=run_id,
+        evidence=evidence,
+        clear_last_error=True,
+    )
+    rem = [x for x in run_state["remaining_ids"] if x != item_id]
+    run_state["remaining_ids"] = rem
+    run_state["completed_ids"] = list(run_state.get("completed_ids") or []) + [item_id]
+    run_state["current_item_id"] = rem[0] if rem else None
+    if gate_you:
+        run_state["paused"] = True
+    ctx["remaining_ids"] = rem
+    ctx["current_item_id"] = run_state["current_item_id"]
+    record(
+        "agent.item_progress",
+        run_id,
+        cfg=cfg,
+        item_id=item_id,
+        summary_snippet=summary[: cfg.prompts.event_summary_snippet_max_chars],
+        flags={"outcome": status},
+    )
+    return {
+        "ok": True,
+        "op": "complete_item",
+        "item_id": item_id,
+        "outcome": status,
+        "paused": bool(run_state.get("paused")),
+        "remaining_ids": rem,
+        "current_item_id": run_state["current_item_id"],
+    }
 
 
 async def run_host_tool(
@@ -215,6 +405,14 @@ async def run_host_tool(
     agent_tab = ctx.get("agent_tab_id") or item.get("agent_tab_id")
     cfg = load_config()
     args = arguments if isinstance(arguments, dict) else {}
+
+    if name == "complete_item":
+        try:
+            return await _complete_run_tab_item(args, item=item, ctx=ctx)
+        except HTTPException as exc:
+            return {"ok": False, "op": "complete_item", "error": str(exc.detail)}
+        except Exception as exc:  # noqa: BLE001
+            return {"ok": False, "op": "complete_item", "error": str(exc)[:500]}
 
     if name == "mint_item":
         from .app import MintItemBody, mint_item

@@ -16,7 +16,11 @@ After decompose, automatically run Hermes execute for Agent column items with `s
 
 - Config: `hermes.auto_execute_agent` (proposed) in `config/desk.yaml`
 - Requires stable execute path + operator escape hatch
-- Until then: operator clicks **Run agent** in the panel
+- **Now:** operator clicks **Run tab** (one session over proposed Agent roots; `host_loop`) or per-card **Run agent**
+
+### Run tab vs per-card cost A/B
+
+Protocol: same-site handoff (≥5 Agent roots). Arm A = per-card Run agent; Arm B = Run tab. Compare `desk-events --run-id … --summary` `cost_usd` / `prompt_tokens`, outcome parity, wall time. Pass bar: B ≤ ~70% of A cost **or** written exception. See [`docs/RUN_TAB_AB.md`](RUN_TAB_AB.md).
 
 ### Waiting column — agent tabs on Accept (future)
 

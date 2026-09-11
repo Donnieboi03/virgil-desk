@@ -222,3 +222,37 @@ button:disabled {
 .item-from {
   font-style: italic;
 }
+.col-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 4px;
+}
+.col-header h2 {
+  flex: 1;
+  margin: 0;
+  font-size: 13px;
+}
+.run-tab-btn {
+  font-size: 11px;
+  padding: 3px 8px;
+  border: 1px solid #2563eb;
+  border-radius: 4px;
+  background: #eff6ff;
+  color: #1d4ed8;
+  cursor: pointer;
+}
+.run-tab-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+.run-tab-btn.secondary {
+  border-color: #ccc;
+  background: #fff;
+  color: #444;
+}
+.run-tab-status {
+  margin: 0 0 6px;
+  font-size: 11px;
+  color: #555;
+}

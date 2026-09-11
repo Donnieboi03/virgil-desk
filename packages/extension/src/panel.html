@@ -37,7 +37,19 @@
     <div id="handoff-error" class="error hidden"></div>
     <div class="columns">
       <section><h2>You</h2><ul id="col-you"></ul></section>
-      <section><h2>Agent</h2><ul id="col-agent"></ul></section>
+      <section class="col-agent-section">
+        <div class="col-header">
+          <h2>Agent</h2>
+          <button id="run-tab" type="button" class="run-tab-btn" disabled title="Run all proposed Agent tasks in one session">
+            Run tab
+          </button>
+          <button id="cancel-tab" type="button" class="run-tab-btn secondary hidden" title="Cancel Run tab">
+            Cancel
+          </button>
+        </div>
+        <p id="run-tab-status" class="run-tab-status hidden"></p>
+        <ul id="col-agent"></ul>
+      </section>
       <section><h2>Waiting</h2><ul id="col-waiting"></ul></section>
     </div>
     <script type="module" src="panel.js"></script>

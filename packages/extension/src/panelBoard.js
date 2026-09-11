@@ -128,4 +128,28 @@ export function agentRunButtonLabel(item, hasOpenYouPark = false) {
   return "Run agent";
 }
 
+/**
+ * Agent roots eligible for Run tab (proposed / failed / resume_ready).
+ * @param {Array<{ parent_id?: string, status?: string, resume_ready?: boolean, id?: string }>} agentItems
+ */
+export function runTabEligibleItems(agentItems) {
+  return (agentItems || []).filter((i) => {
+    if (i.parent_id) return false;
+    const st = i.status || "proposed";
+    if (st === "proposed" || st === "failed") return true;
+    if (i.resume_ready) return true;
+    return false;
+  });
+}
+
+/**
+ * @param {number} n
+ * @param {boolean} anyResume
+ */
+export function runTabButtonLabel(n, anyResume = false) {
+  if (anyResume) return n > 0 ? `Resume tab (${n})` : "Resume tab";
+  if (n <= 0) return "Run tab";
+  return `Run tab (${n})`;
+}
+
 export { shouldRevealAgentTab, resolveParkAgentTabId } from "./tabCustody.js";
