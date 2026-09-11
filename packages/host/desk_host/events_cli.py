@@ -229,6 +229,7 @@ def _summarize_run(rows: list[dict[str, Any]]) -> dict[str, Any]:
             "agent.executed",
             "agent.execute_failed",
             "agent.execute_blocked_children",
+            "agent.execute_run_finished",
         ) and isinstance(measure, dict):
             for key in usage_totals:
                 val = measure.get(key)

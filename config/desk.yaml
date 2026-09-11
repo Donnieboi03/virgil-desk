@@ -53,6 +53,10 @@ execute:
   run_steps_per_item: 20
   model: google/gemini-3.7-flash
   model_provider: openrouter
+  # After handoff decompose: auto-start Run tab (host_loop only). Off by default.
+  auto_run_tab: false
+  # Extension badge / chrome.notifications when You/Waiting needs human. Off by default.
+  notify_human_attention: false
 observability:
   persist_screenshots: false
 memory:

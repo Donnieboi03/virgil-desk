@@ -15,6 +15,8 @@ BROWSER_TOOL_NAMES = frozenset(
         "observe",
         "click",
         "fill",
+        "upload",
+        "set_files",
         "openTab",
         "duplicateTab",
         "probe_links",
@@ -76,6 +78,26 @@ def host_loop_tools(*, include_complete_item: bool = False) -> list[dict[str, An
                         "selector": {"type": "string"},
                     },
                     "required": ["value"],
+                },
+            },
+        },
+        {
+            "type": "function",
+            "function": {
+                "name": "upload",
+                "description": (
+                    "Attach a vault file to a file input (kind:file). "
+                    "Use vault_id from the Packet vault list — never invent bytes."
+                ),
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "target_id": {"type": "integer"},
+                        "vault_id": {"type": "string"},
+                        "ref": {"type": "string"},
+                        "selector": {"type": "string"},
+                    },
+                    "required": ["vault_id"],
                 },
             },
         },
@@ -441,7 +463,9 @@ async def run_host_tool(
         except HTTPException as exc:
             return {"ok": False, "op": "mint_item", "error": str(exc.detail)}
 
-    if name not in BROWSER_TOOL_NAMES:
+    if name == "set_files":
+        name = "upload"
+    if name not in BROWSER_TOOL_NAMES and name != "upload":
         return {"ok": False, "op": name, "error": f"unknown tool: {name}"}
 
     from .app import dispatch_browser_command_and_wait

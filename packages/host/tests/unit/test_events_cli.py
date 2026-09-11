@@ -84,6 +84,31 @@ def test_summarize_run_usage_rollup():
     assert summary["cost_usd"] == 0.06
 
 
+def test_summarize_run_usage_includes_execute_run_finished():
+    rows = [
+        {
+            "kind": "handoff.decomposed",
+            "measure": {"prompt_tokens": 50, "cost_usd": 0.01},
+        },
+        {
+            "kind": "agent.execute_run_finished",
+            "measure": {
+                "prompt_tokens": 400,
+                "completion_tokens": 80,
+                "total_tokens": 480,
+                "cost_usd": 0.12,
+            },
+        },
+        # Mirror — must not double-count.
+        {"kind": "run.finished", "measure": {"prompt_tokens": 400, "cost_usd": 0.12}},
+    ]
+    summary = _summarize_run(rows)
+    assert summary["prompt_tokens"] == 450
+    assert summary["completion_tokens"] == 80
+    assert summary["total_tokens"] == 480
+    assert summary["cost_usd"] == 0.13
+
+
 def test_summarize_run_usage_includes_execute_failed_not_finished_only():
     rows = [
         {

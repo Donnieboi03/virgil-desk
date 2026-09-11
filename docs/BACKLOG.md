@@ -14,32 +14,25 @@ Spine: hand off → You / Agent / Waiting → agent closes safe subwork without 
 
 ## Near / high fit
 
-### Right-click / selection handoff
+### Browser-localized Desk (optional Host-less path)
 
-- **What:** Chrome `contextMenus` — “Hand off to Virgil” on `page` / `selection` / `link` → same snapshot + decompose path as the panel Hand off. Selection/link scopes intent (“this item”).
-- **Why deferred:** Panel handoff is enough for dogfood; menu is a latch, not a new intake model.
-- **When to revisit:** After unprompted panel handoffs feel boring; or operators ask for stay-on-page latch without opening the side panel.
-- **Not this:** Right-click scrape → Sheets / LinkedIn playbooks (Bardeen lane).
-
-### Feasibility battery (forms, drafts, upload=park)
-
-- **What:** Scored Pass / Partial / Fail / N/A battery — fixture form fill/click/probe; Gmail draft-only (no send); file upload expected Fail or park You until vault/`upload` op exists. Playwright + manual checklist; see conversation plan (F1–F15).
-- **Why deferred:** CI smoke (`form.spec.ts`) ≠ product feasibility. Upload cannot piggyback string `fill` (browsers block `input[type=file]` path assignment).
-- **When to revisit:** Before claiming Hands coverage beyond text fill; before any resume-vault work.
-- **Related:** [`TESTING.md`](TESTING.md), [`packages/e2e/playwright/README.md`](../packages/e2e/playwright/README.md), [`BROWSER_LAYER.md`](BROWSER_LAYER.md).
-
-### Claude-like permission / notify when You needs you
-
-- **What:** Clearer permission ladder language (manual vs auto-with-safety-check vs skip) aligned with Desk policy; OS/`chrome.notifications` (or badge) when a **You** / Waiting card needs the operator — not only a quiet panel update.
-- **Why deferred:** Board + Mark done / Accept already work; notify is UX polish after trust in the split.
-- **When to revisit:** After dogfood shows missed You cards; or after Claude-in-Chrome comparison where ping-on-remainder is the gap.
-- **Steal carefully:** Claude’s modes + consequential-action check — **not** debugger-as-default Hands.
+- **What:** Keep SoT in the extension (`chrome.storage.local` board/memory/vault/logs) and run the tool loop **in-browser**: OpenRouter `fetch` from an **offscreen document** (loop owner), service worker for Eyes/Hands + policy gate. Host (`:8787` / Hermes CLI / JSONL on disk) becomes optional packaging, not required for the spine.
+- **Why deferred:** Current dogfood is Host + `host_loop`; MV3 needs an explicit offscreen owner (SW alone suspends). Port of `host_loop` / policy / prune / caps is a real project; observability export replaces `desk-events` CLI.
+- **When to revisit:** When portability (no local daemon) matters more than Hermes CLI + file logs; or after multi-profile WS pain makes “each profile is its own Desk” the preferred model.
+- **Not this:** Put a 200-step run only in the service worker; fake SW immortality hacks for CWS.
 
 ### Optional “I know what I want” chip → one Agent card (scripted lane, not spine)
 
 - **What:** Intent chip / free-text that skips broad decompose and mints **one** Agent item with a clear brief (known chore). Spine stays opportunistic page split; this is the optional scripted lane.
 - **Why deferred:** Chips already steer decompose (`All visible` / `This item`); a full bypass risks turning Desk into chat-commanded automation.
 - **When to revisit:** When operators repeatedly rewrite decompose output into a single known task; keep labeled as non-spine.
+
+### Multi-profile Host WS routing
+
+- **What:** Host keeps one WebSocket per extension `client_id` and routes browser/board/memory by `run_owner[run_id]` so School + Personal Chrome profiles don’t steal each other’s socket.
+- **Why deferred:** Ops workaround exists (one profile connected at a time); code fix is small but not shipped yet.
+- **When to revisit:** Before regular dual-profile dogfood against one Host; or when browser-localized Desk makes Host WS moot.
+- **Ops until then:** Only one Chrome profile with Desk loaded / connected to `:8787` (disable or remove the extension on the other profile, or quit that Chrome entirely).
 
 ---
 
@@ -57,13 +50,6 @@ Spine: hand off → You / Agent / Waiting → agent closes safe subwork without 
 - **What:** `/`-style or command shortcuts that bind a mined/saved procedure to the active tab (re-observe + rebind Hands).
 - **Why deferred:** Depends on procedure store existing; Claude/Bardeen shortcuts are command-first — Desk shortcuts should mean “run known recipe,” not replace handoff.
 - **When to revisit:** After at least one mined procedure is operator-trusted.
-
-### Document vault for uploads
-
-- **What:** Extension-owned vault (operator uploads resume/PDF/etc.) → agent `upload` / `set_files` injects via `DataTransfer` + owned bytes (Simplify/Jobright pattern), or harness `DOM.setFileInputFiles` on rollback. Eyes mark `kind: file`. Until then: park You / human_remainder for attachments.
-- **Why deferred:** String `fill` cannot set file inputs; vault + new op is product surface, not a one-line Hands fix.
-- **When to revisit:** After feasibility F11 documents the gap; prefer vault+DataTransfer over debugger file-chooser unless measured otherwise.
-- **Not this:** Extend `fill` to accept filesystem paths.
 
 ---
 

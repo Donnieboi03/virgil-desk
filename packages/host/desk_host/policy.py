@@ -10,7 +10,7 @@ FORBIDDEN_PATTERNS = re.compile(
 )
 
 MUTATING_OPS = frozenset(
-    {"click", "fill", "scroll", "scrape", "screenshot", "openTab", "duplicateTab"}
+    {"click", "fill", "upload", "scroll", "scrape", "screenshot", "openTab", "duplicateTab"}
 )
 
 
@@ -52,4 +52,4 @@ def policy_denied_reason(
 
 
 def requires_auto_verify(op: str) -> bool:
-    return op in {"click", "fill"}
+    return op in {"click", "fill", "upload"}

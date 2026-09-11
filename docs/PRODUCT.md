@@ -26,14 +26,21 @@ Virgil Desk is a **browser allocation desk**: you hand off the active tab, an ag
 
 1. **Hand off** — viewport excerpt + screenshot on the **human tab** by default (`handoff_scroll_loops: 0`, no duplicate); optional intent chips → backend decomposes → board patch (no Virgil · Agent yet). See [`HANDOFF_CAPTURE.md`](HANDOFF_CAPTURE.md).
 2. **Agent browser ops** — `desk-browser` / `POST /v1/browser` → extension **observe → act(`target_id`) → observe** on the agent tab (screenshots skipped by default on extension-driver execute)
-3. **Agent execution** — **Run tab** (Agent column header) runs all proposed Agent roots in one `host_loop` session when enabled; per-card **Run agent** / Retry remains for isolation and cost A/B. Auto-run after decompose is still planned — see [`NEXTSTEPS.md`](NEXTSTEPS.md).
+3. **Agent execution** — **Run tab** (Agent column header) runs all proposed Agent roots in one `host_loop` session when enabled; per-card **Run agent** / Retry remains for isolation and cost A/B. Optional `execute.auto_run_tab` (off by default) starts Run tab after decompose.
 4. **Waiting proposals** — calendar slots (etc.) → Accept or Deny in the panel
 5. **You column** — **Mark done** when human clears auth/challenge or finishes remainder. Auth-gate Mark done unblocks the parent for **Resume agent** / **Resume tab**. Do **not** expect You cards for agent-verified expired/already-submitted links — those complete on Agent.
+
+## Success test
+
+> I’d open Desk instead of Cursor when I want to hand off a page, let Agent work in custody tabs while I leave the browser, get pinged for auth/decide/file, Mark done → Resume, and finish without reconstructing state in a chat — and I’m willing to pay a small premium for that over freeform harness.
+
+This is the gate for “no-brainer over chat+harness” work — track slices in [`NEXTSTEPS.md`](NEXTSTEPS.md) as effort bands (~3h / ~6h / ~9h with AI), not calendar dates.
 
 ## Follow-ups
 
 - Active checklist: [`NEXTSTEPS.md`](NEXTSTEPS.md)
-- Parking lot (right-click handoff, feasibility, procedures, vault, Hub-shaped): [`BACKLOG.md`](BACKLOG.md)
+- Feasibility Pass/Fail grid: [`FEASIBILITY.md`](FEASIBILITY.md)
+- Parking lot (procedures, Hub-shaped): [`BACKLOG.md`](BACKLOG.md)
 
 ## Configuration
 

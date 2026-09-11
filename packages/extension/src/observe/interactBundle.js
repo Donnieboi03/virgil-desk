@@ -132,6 +132,7 @@ function kindFor(el) {
   const tag = el.tagName.toLowerCase();
   if (tag === "input") {
     const t = (el.getAttribute("type") || "text").toLowerCase();
+    if (t === "file") return "file";
     if (t === "checkbox" || t === "radio") return "toggle";
     return "input";
   }

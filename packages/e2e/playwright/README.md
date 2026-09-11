@@ -26,9 +26,11 @@ Coverage:
 | Spec | What |
 |------|------|
 | `smoke.spec.ts` | Extension load + REST handoff on example.com |
-| `form.spec.ts` | Local `path_b_smoke.html` — observe + fill by `target_id` |
+| `form.spec.ts` | Local `path_b_smoke.html` — observe, fill, click, probe_form, vault upload |
 | `public.spec.ts` | Public `example.com` — observe returns url without crash |
 | `live.spec.ts` | **Skipped** unless `DESK_E2E_LIVE=1` |
+
+Product feasibility Pass/Fail grid (forms, draft, upload, notify): [`docs/FEASIBILITY.md`](../../../docs/FEASIBILITY.md).
 
 Playwright uses port **8799** for the test Host (avoid clashing with a dev server on 8787). Workers are serialized (`workers: 1`) so one Host binds that port.
 

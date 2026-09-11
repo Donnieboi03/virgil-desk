@@ -111,6 +111,8 @@ class ExecuteConfig:
     run_steps_per_item: int
     model: str
     model_provider: str
+    auto_run_tab: bool
+    notify_human_attention: bool
 
 
 @dataclass
@@ -202,6 +204,14 @@ def load_config() -> DeskConfig:
         cfg.browser.harness_bu_name = os.environ["DESK_HARNESS_BU_NAME"].strip()
     if os.environ.get("DESK_EXECUTE_RUNTIME"):
         cfg.execute.runtime = os.environ["DESK_EXECUTE_RUNTIME"].strip()
+    if os.environ.get("DESK_AUTO_RUN_TAB") in ("1", "true", "True"):
+        cfg.execute.auto_run_tab = True
+    if os.environ.get("DESK_AUTO_RUN_TAB") in ("0", "false", "False"):
+        cfg.execute.auto_run_tab = False
+    if os.environ.get("DESK_NOTIFY_HUMAN") in ("1", "true", "True"):
+        cfg.execute.notify_human_attention = True
+    if os.environ.get("DESK_NOTIFY_HUMAN") in ("0", "false", "False"):
+        cfg.execute.notify_human_attention = False
 
     return cfg
 
@@ -244,6 +254,11 @@ def config_for_extension(cfg: DeskConfig | None = None) -> dict[str, Any]:
             "semantic_packet_max_facts": c.memory.semantic_packet_max_facts,
             "semantic_max_value_chars": c.memory.semantic_max_value_chars,
             "semantic_max_key_chars": c.memory.semantic_max_key_chars,
+        },
+        "execute": {
+            "runtime": c.execute.runtime,
+            "auto_run_tab": c.execute.auto_run_tab,
+            "notify_human_attention": c.execute.notify_human_attention,
         },
     }
 

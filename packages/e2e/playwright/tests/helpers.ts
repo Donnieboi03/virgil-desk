@@ -7,7 +7,13 @@ import { fileURLToPath } from "node:url";
 import { chromium, type BrowserContext, type Worker } from "@playwright/test";
 
 declare const chrome: {
-  storage: { sync: { set: (v: Record<string, string>) => Promise<void> } };
+  storage: {
+    sync: { set: (v: Record<string, string | boolean>) => Promise<void> };
+    local: {
+      set: (v: Record<string, unknown>) => Promise<void>;
+      get: (k: string | string[]) => Promise<Record<string, unknown>>;
+    };
+  };
   tabs: {
     query: (q: Record<string, unknown>) => Promise<{ id?: number; url?: string }[]>;
   };
@@ -89,7 +95,7 @@ export async function pointExtensionAtHost(
   await serviceWorker.evaluate(async (url) => {
     await chrome.storage.sync.set({ hostUrl: url });
   }, base);
-  for (let i = 0; i < 40; i++) {
+  for (let i = 0; i < 80; i++) {
     const health = await fetch(`${base}/v1/health`).then((r) => r.json());
     if (health.extension_connected) return;
     await new Promise((r) => setTimeout(r, 250));

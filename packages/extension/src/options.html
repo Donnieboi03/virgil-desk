@@ -68,6 +68,24 @@
     <button id="save">Save Host URL</button>
     <p class="status" id="hostStatus"></p>
 
+    <h2>Notifications</h2>
+    <label>
+      <input type="checkbox" id="notifyHuman" />
+      Notify / badge when You or Waiting needs me (also controllable via
+      <code>execute.notify_human_attention</code> / <code>DESK_NOTIFY_HUMAN=1</code>)
+    </label>
+    <p class="status" id="notifyStatus"></p>
+
+    <h2>Document vault</h2>
+    <p>
+      Operator-supplied files for agent <code>upload</code> Hands (resume/PDF). Bytes stay in
+      this browser — Desk does not auto-generate files.
+    </p>
+    <input type="file" id="vaultFile" />
+    <button id="addVault" type="button">Add to vault</button>
+    <p class="status" id="vaultStatus"></p>
+    <div id="vaultList"></div>
+
     <h2>Semantic facts</h2>
     <p>
       Standing prefs and decisions injected into each Run agent Packet (capped). Stored locally —

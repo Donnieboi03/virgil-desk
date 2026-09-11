@@ -42,13 +42,24 @@ import {
   observeEyesReady,
 } from "./eyesSettle.js";
 import { promoteEyesExcerpt, urlPathHint } from "./eyesEscalate.js";
+import { humanAttentionSummary, shouldNotifyAttention } from "./boardNotify.js";
+import { loadVault, addVaultFile, getVaultFile } from "./deskVault.js";
 
 const BUNDLE_FILE = "interactObserve.bundle.js";
 
 const HANDOFF_URLS_KEY = "virgil_desk_handoff_urls";
+const CONTEXT_HANDOFF_ID = "virgil_desk_handoff_page";
+const CONTEXT_HANDOFF_SELECTION_ID = "virgil_desk_handoff_selection";
+
+/** @type {ReturnType<typeof humanAttentionSummary> | null} */
+let lastAttention = null;
+/** @type {Set<string>} */
+const autoRunStarted = new Set();
 
 let ws = null;
 let wsReconnectTimer = null;
+/** Host URL the current socket was opened against (detect Options / e2e retarget). */
+let wsBoundHost = null;
 let hostUrl = DEFAULT_HOST;
 let deskConfig = {
   browser: {
@@ -117,6 +128,35 @@ function bootExtension() {
   chrome.sidePanel.setPanelBehavior({ openPanelOnActionClick: true }).catch(() => {});
   ensureWsKeepaliveAlarm();
   connectWs();
+  try {
+    ensureContextMenus();
+  } catch {
+    /* contextMenus optional in some Chromium builds */
+  }
+}
+
+function ensureContextMenus() {
+  if (!chrome.contextMenus?.create) return;
+  try {
+    chrome.contextMenus.removeAll(() => {
+      try {
+        chrome.contextMenus.create({
+          id: CONTEXT_HANDOFF_ID,
+          title: "Hand off to Virgil Desk",
+          contexts: ["page", "frame"],
+        });
+        chrome.contextMenus.create({
+          id: CONTEXT_HANDOFF_SELECTION_ID,
+          title: "Hand off selection to Virgil Desk",
+          contexts: ["selection"],
+        });
+      } catch {
+        /* ignore create races */
+      }
+    });
+  } catch {
+    /* ignore */
+  }
 }
 
 chrome.runtime.onInstalled.addListener(() => {
@@ -126,6 +166,20 @@ chrome.runtime.onInstalled.addListener(() => {
 chrome.runtime.onStartup.addListener(() => {
   bootExtension();
 });
+
+if (chrome.contextMenus?.onClicked) {
+  chrome.contextMenus.onClicked.addListener((info, tab) => {
+    if (info.menuItemId === CONTEXT_HANDOFF_ID) {
+      handoffActiveTab("all visible", tab?.id).catch(() => {});
+      return;
+    }
+    if (info.menuItemId === CONTEXT_HANDOFF_SELECTION_ID) {
+      const sel = String(info.selectionText || "").trim().slice(0, 500);
+      const intent = sel ? `this item: ${sel}` : "this item";
+      handoffActiveTab(intent, tab?.id).catch(() => {});
+    }
+  });
+}
 
 chrome.alarms.onAlarm.addListener((alarm) => {
   if (alarm.name !== WS_KEEPALIVE_ALARM) return;
@@ -158,6 +212,7 @@ chrome.storage.sync.get(["hostUrl"], (data) => {
 chrome.storage.onChanged.addListener((changes, area) => {
   if (area !== "sync" || !changes.hostUrl) return;
   hostUrl = resolveHostUrl(changes.hostUrl.newValue);
+  closeWs({ reconnect: false });
   connectWs();
 });
 
@@ -207,6 +262,33 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
   }
   if (msg.type === "handoffTab") {
     handoffActiveTab(msg.intent, msg.tabId).then(sendResponse);
+    return true;
+  }
+  if (msg.type === "listVault") {
+    loadVault()
+      .then((vault) =>
+        sendResponse({
+          ok: true,
+          files: (vault.files || []).map(({ id, name, mime, added_at }) => ({
+            id,
+            name,
+            mime,
+            added_at,
+          })),
+        }),
+      )
+      .catch((err) => sendResponse({ ok: false, error: String(err) }));
+    return true;
+  }
+  if (msg.type === "addVaultFile") {
+    addVaultFile({ name: msg.name, mime: msg.mime, base64: msg.base64 })
+      .then((entry) =>
+        sendResponse({
+          ok: true,
+          file: { id: entry.id, name: entry.name, mime: entry.mime, added_at: entry.added_at },
+        }),
+      )
+      .catch((err) => sendResponse({ ok: false, error: String(err) }));
     return true;
   }
   if (msg.type === "acceptProposal") {
@@ -279,7 +361,11 @@ function semanticLimits() {
 }
 
 async function handleMemoryGet(msg) {
-  const [memory, semantic] = await Promise.all([loadDeskMemory(), loadDeskSemantic()]);
+  const [memory, semantic, vault] = await Promise.all([
+    loadDeskMemory(),
+    loadDeskSemantic(),
+    loadVault(),
+  ]);
   if (ws?.readyState === WebSocket.OPEN) {
     ws.send(
       JSON.stringify({
@@ -288,6 +374,14 @@ async function handleMemoryGet(msg) {
         run_id: msg.run_id,
         memory,
         semantic,
+        vault: {
+          files: (vault.files || []).map(({ id, name, mime, added_at }) => ({
+            id,
+            name,
+            mime,
+            added_at,
+          })),
+        },
       }),
     );
   }
@@ -486,6 +580,7 @@ function closeWs({ reconnect = false } = {}) {
     ws = null;
   }
   wsConnected = false;
+  wsBoundHost = null;
   if (reconnect && hostUrl) {
     wsReconnectTimer = setTimeout(connectWs, 1000);
   }
@@ -501,10 +596,14 @@ function connectWs() {
     closeWs({ reconnect: false });
     return;
   }
-  // Already live or handshake in flight — do not tear down.
-  if (ws?.readyState === WebSocket.OPEN || ws?.readyState === WebSocket.CONNECTING) {
+  // Already live on this host — do not tear down.
+  if (
+    (ws?.readyState === WebSocket.OPEN || ws?.readyState === WebSocket.CONNECTING) &&
+    wsBoundHost === hostUrl
+  ) {
     return;
   }
+  // Host retarget (e2e / Options) while a socket is mid-handshake.
   if (ws) {
     try {
       ws.onclose = null;
@@ -515,10 +614,12 @@ function connectWs() {
     }
     ws = null;
   }
+  wsBoundHost = hostUrl;
   try {
     ws = new WebSocket(wsUrl());
   } catch {
     wsConnected = false;
+    wsBoundHost = null;
     wsReconnectTimer = setTimeout(connectWs, 1000);
     return;
   }
@@ -562,6 +663,11 @@ function connectWs() {
     }
     if (msg.type === "board_patch") {
       await applyPatch(msg.ops, msg.run_id);
+      const cleared = (msg.ops || []).some((p) => p.op === "clear");
+      if (cleared && msg.run_id) {
+        const board = await loadBoard();
+        await maybeAutoRunTabAfterHandoff(msg.run_id, board);
+      }
     }
     if (msg.type === "memory_get") {
       await handleMemoryGet(msg);
@@ -577,7 +683,7 @@ function connectWs() {
     }
     if (msg.type === "browser_command") {
       const command = await normalizeCommand(msg.command);
-      const actOps = new Set(["click", "fill", "key", "scroll"]);
+      const actOps = new Set(["click", "fill", "upload", "set_files", "key", "scroll"]);
       const maxStall = deskConfig.browser?.act_stall_max ?? 3;
       const tabForStall = command.tab_id;
       if (actOps.has(command.op) && tabForStall != null) {
@@ -677,6 +783,7 @@ async function applyPatch(ops, runId) {
   const next = applyBoardPatch(board, ops);
   await saveBoard(next);
   chrome.runtime.sendMessage({ type: "boardUpdated" }).catch(() => {});
+  await maybeNotifyHumanAttention(next);
 
   const parks = authGateParksFromOps(ops, runId);
   const allItems = [...(next.you || []), ...(next.agent || []), ...(next.waiting || [])];
@@ -702,6 +809,79 @@ async function applyPatch(ops, runId) {
     } catch {
       /* tab closed / host down — board still updated */
     }
+  }
+}
+
+async function notifyEnabled() {
+  if (deskConfig.execute?.notify_human_attention) return true;
+  const data = await chrome.storage.sync.get(["notifyHumanAttention"]);
+  return data.notifyHumanAttention === true;
+}
+
+async function maybeNotifyHumanAttention(board) {
+  const next = humanAttentionSummary(board);
+  const prev = lastAttention;
+  lastAttention = next;
+  const enabled = await notifyEnabled();
+  const text = next.total > 0 ? String(next.total) : "";
+  try {
+    await chrome.action.setBadgeText({ text });
+    await chrome.action.setBadgeBackgroundColor({ color: "#b45309" });
+  } catch {
+    /* older chrome */
+  }
+  if (!enabled || !shouldNotifyAttention(prev, next)) return;
+  const title =
+    next.youNeeds && next.waitingNeeds
+      ? "Desk needs you"
+      : next.youNeeds
+        ? "You column needs you"
+        : "Waiting needs Accept";
+  const message =
+    next.titles.slice(0, 2).join(" · ") ||
+    `${next.total} item${next.total === 1 ? "" : "s"} need attention`;
+  try {
+    chrome.notifications.create(`desk-attn-${Date.now()}`, {
+      type: "basic",
+      iconUrl: "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==",
+      title,
+      message,
+      priority: 1,
+    });
+  } catch {
+    /* notifications permission */
+  }
+}
+
+async function maybeAutoRunTabAfterHandoff(runId, board) {
+  const auto = deskConfig.execute?.auto_run_tab === true;
+  const hostLoop = deskConfig.execute?.runtime === "host_loop";
+  if (!auto || !hostLoop || !runId) return;
+  if (autoRunStarted.has(runId)) return;
+  const itemIds = (board?.agent || [])
+    .filter((i) => i && (i.status === "proposed" || i.status === "running"))
+    .map((i) => i.id)
+    .filter(Boolean);
+  if (!itemIds.length) return;
+  autoRunStarted.add(runId);
+  try {
+    const result = await runAgentTab({ runId, itemIds });
+    if (!result || result.ok === false) {
+      autoRunStarted.delete(runId);
+      const detail = result?.error || result?.detail || "auto Run tab failed";
+      await savePanelMeta({
+        lastRunId: runId,
+        lastHandoffError: String(detail).slice(0, 500),
+      });
+      chrome.runtime.sendMessage({ type: "boardUpdated" }).catch(() => {});
+    }
+  } catch (err) {
+    autoRunStarted.delete(runId);
+    await savePanelMeta({
+      lastRunId: runId,
+      lastHandoffError: String(err?.message || err).slice(0, 500),
+    });
+    chrome.runtime.sendMessage({ type: "boardUpdated" }).catch(() => {});
   }
 }
 
@@ -2238,6 +2418,127 @@ async function runBrowserCommand(command) {
           duration_ms: Date.now() - started,
         };
       }
+    } else if (command.op === "upload" || command.op === "set_files") {
+      const params = command.params || {};
+      const vaultId = params.vault_id || params.vaultId;
+      if (!vaultId) {
+        return {
+          ...base,
+          ok: false,
+          error: "upload requires vault_id (add a file in Desk options vault)",
+          duration_ms: Date.now() - started,
+        };
+      }
+      const entry = await getVaultFile(String(vaultId));
+      if (!entry) {
+        return {
+          ...base,
+          ok: false,
+          error: `vault file not found: ${vaultId}`,
+          duration_ms: Date.now() - started,
+        };
+      }
+      const stored = getTargetMap(command.run_id, tabId);
+      let selector = params.selector || "";
+      let targetMeta = null;
+      if (params.target_id != null || params.ref) {
+        const fresh = await ensureTargetMapFresh(
+          stored,
+          command.run_id,
+          tabId,
+          urlBeforeAct,
+        );
+        if (!fresh.ok) {
+          return {
+            ...base,
+            ok: false,
+            error: fresh.error,
+            duration_ms: Date.now() - started,
+          };
+        }
+        const targets = stored?.interact_targets || [];
+        targetMeta =
+          targets.find((t) => t.id === params.target_id) ||
+          targets.find((t) => t.ref === params.ref) ||
+          null;
+        if (!targetMeta) {
+          return {
+            ...base,
+            ok: false,
+            error: "upload target_id not in observe map — re-observe",
+            duration_ms: Date.now() - started,
+          };
+        }
+        if (targetMeta.kind && targetMeta.kind !== "file") {
+          return {
+            ...base,
+            ok: false,
+            error: `upload target kind is ${targetMeta.kind}, expected file`,
+            duration_ms: Date.now() - started,
+          };
+        }
+        selector = targetMeta.selector_hint || targetMeta.selector || selector;
+      }
+      const injected = await chrome.scripting.executeScript({
+        target: { tabId },
+        func: (sel, targetId, name, mime, b64) => {
+          let el = null;
+          if (sel) el = document.querySelector(sel);
+          if (!el && targetId != null) {
+            el = document.querySelector(`[data-virgil-target-id="${targetId}"]`);
+          }
+          if (!el) {
+            const files = Array.from(document.querySelectorAll('input[type="file"]'));
+            el = files.find((f) => f.offsetParent !== null) || files[0] || null;
+          }
+          if (!el || el.tagName !== "INPUT" || (el.type || "").toLowerCase() !== "file") {
+            return { ok: false, error: "file input not found" };
+          }
+          try {
+            const bin = atob(b64);
+            const bytes = new Uint8Array(bin.length);
+            for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+            const file = new File([bytes], name, { type: mime || "application/octet-stream" });
+            const dt = new DataTransfer();
+            dt.items.add(file);
+            el.files = dt.files;
+            el.dispatchEvent(new Event("input", { bubbles: true }));
+            el.dispatchEvent(new Event("change", { bubbles: true }));
+            return { ok: true, files: el.files?.length || 0 };
+          } catch (err) {
+            return { ok: false, error: String(err) };
+          }
+        },
+        args: [
+          selector || "",
+          params.target_id ?? null,
+          entry.name,
+          entry.mime,
+          entry.base64,
+        ],
+      });
+      const up = scriptInjectionResult(injected, { ok: false, error: "inject failed" });
+      if (!up?.ok) {
+        return {
+          ...base,
+          ok: false,
+          error: up?.error || "upload failed",
+          duration_ms: Date.now() - started,
+        };
+      }
+      return {
+        ...base,
+        ok: true,
+        tab_id: tabId,
+        act_resolved: {
+          op: "upload",
+          requested: { vault_id: vaultId, target_id: params.target_id },
+          used: selector ? "selector" : "file_input",
+          url_before: urlBeforeAct,
+          url_after: (await scrapeTab(tabId).catch(() => ({}))).url,
+        },
+        duration_ms: Date.now() - started,
+      };
     } else if (command.op === "key") {
       const params = command.params || {};
       const stored = getTargetMap(command.run_id, tabId);
@@ -2548,6 +2849,8 @@ async function handoffActiveTab(intent, explicitTabId) {
         [{ op: "clear" }, ...result.items.map((item) => ({ op: "add", item }))],
         result.run_id,
       );
+      const board = await loadBoard();
+      await maybeAutoRunTabAfterHandoff(result.run_id, board);
     }
     if (result.run_id) {
       await savePanelMeta({
@@ -2577,12 +2880,13 @@ async function handoffActiveTab(intent, explicitTabId) {
       [{ op: "clear" }, ...data.items.map((item) => ({ op: "add", item }))],
       data.run_id,
     );
+    const board = await loadBoard();
+    await maybeAutoRunTabAfterHandoff(data.run_id, board);
   }
   return { ok: true, ...data };
 }
 
 async function acceptProposal({ itemId, proposalId, runId }) {
-  // Waiting Accept: commit proposal only — no agent tab provisioning until NEXTSTEPS ships.
   const res = await fetch(`${hostUrl}/v1/items/${itemId}/accept`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -2593,8 +2897,101 @@ async function acceptProposal({ itemId, proposalId, runId }) {
     }),
   });
   const data = await res.json();
+  if (data.needs_agent_tab) {
+    // Wait for host board_patch (Waiting → Agent) before provision so we don't
+    // race applyPatch and drop agent_tab_id on a stale waiting-column snapshot.
+    await waitForBoardItemColumn(itemId, "agent", 2500);
+    const provisioned = await provisionAgentTabForWaitingItem(itemId, runId).catch(
+      (err) => ({ ok: false, error: String(err?.message || err) }),
+    );
+    if (provisioned && provisioned.ok === false) {
+      data.provision_error = provisioned.error;
+    } else if (provisioned?.agentTabId != null) {
+      data.agent_tab_id = provisioned.agentTabId;
+    }
+  }
   chrome.runtime.sendMessage({ type: "boardUpdated" }).catch(() => {});
   return data;
+}
+
+/** Poll until item is on the expected column (host board_patch applied). */
+async function waitForBoardItemColumn(itemId, column, timeoutMs = 2000) {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    const located = await findBoardItem(itemId);
+    if (located?.item && (located.column === column || located.item.column === column)) {
+      return located;
+    }
+    await new Promise((r) => setTimeout(r, 50));
+  }
+  return findBoardItem(itemId);
+}
+
+/**
+ * Waiting Accept that needs UI: duplicate from handoff human tab (same as Agent provision).
+ */
+async function provisionAgentTabForWaitingItem(itemId, runId) {
+  return withProvisionLock(runId, async () => {
+    // Always re-load inside the lock — Accept's board_patch may have just landed.
+    let located = await findBoardItem(itemId);
+    if (!located?.item) {
+      return { ok: false, error: "work item not found on board" };
+    }
+    let { item, board } = located;
+    const runPair = await loadRunPair(runId);
+    const humanTabId = item.human_tab_id || runPair?.humanTabId;
+    if (!humanTabId) {
+      return { ok: false, error: "missing human_tab_id" };
+    }
+    if (item.agent_tab_id) {
+      try {
+        await chrome.tabs.get(item.agent_tab_id);
+        return { ok: true, agentTabId: item.agent_tab_id, humanTabId };
+      } catch {
+        /* reprovision */
+      }
+    }
+    const tabId = await createAgentTabForItem(humanTabId, runId, itemId);
+    if (!tabId) {
+      return { ok: false, error: "failed to provision agent tab" };
+    }
+    // Re-load board before save so a concurrent board_patch cannot wipe this stamp.
+    located = await findBoardItem(itemId);
+    board = located?.board || (await loadBoard());
+    item = located?.item || item;
+    const col = item.column || located?.column || "agent";
+    const list = board[col] || [];
+    const idx = list.findIndex((i) => i.id === itemId);
+    const stamped = {
+      ...(idx >= 0 ? list[idx] : item),
+      id: itemId,
+      column: col,
+      agent_tab_id: tabId,
+      human_tab_id: humanTabId,
+    };
+    if (idx >= 0) list[idx] = stamped;
+    else {
+      if (!board.agent) board.agent = [];
+      board.agent.push({ ...stamped, column: "agent" });
+    }
+    board[col] = list;
+    await saveBoard(board);
+    try {
+      await syncItemAgentTab(itemId, runId, tabId);
+    } catch (err) {
+      return { ok: false, error: String(err.message || err) };
+    }
+    const data = await chrome.storage.session.get(PAIRS_KEY);
+    const pairs = data[PAIRS_KEY] || {};
+    if (!pairs[runId]) pairs[runId] = { humanTabId, items: {} };
+    pairs[runId].humanTabId = humanTabId;
+    pairs[runId].agentTabId = tabId;
+    if (!pairs[runId].items) pairs[runId].items = {};
+    pairs[runId].items[itemId] = tabId;
+    await chrome.storage.session.set({ [PAIRS_KEY]: pairs });
+    chrome.runtime.sendMessage({ type: "boardUpdated" }).catch(() => {});
+    return { ok: true, agentTabId: tabId, humanTabId };
+  });
 }
 
 async function denyProposal({ itemId, proposalId, runId, reason }) {

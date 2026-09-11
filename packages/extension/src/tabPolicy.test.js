@@ -112,4 +112,35 @@ describe("applyBoardPatch", () => {
     expect(out.agent).toHaveLength(0);
     expect(out.you.map((i) => i.id)).toEqual(["a1"]);
   });
+
+  it("preserves agent_tab_id when host update omits custody fields", () => {
+    const board = {
+      you: [],
+      agent: [],
+      waiting: [
+        {
+          id: "w1",
+          column: "waiting",
+          status: "proposed",
+          agent_tab_id: 42,
+          human_tab_id: 7,
+        },
+      ],
+    };
+    const out = applyBoardPatch(board, [
+      {
+        op: "update",
+        item: {
+          id: "w1",
+          column: "agent",
+          status: "proposed",
+          title: "Accepted",
+        },
+      },
+    ]);
+    expect(out.waiting).toHaveLength(0);
+    expect(out.agent[0].agent_tab_id).toBe(42);
+    expect(out.agent[0].human_tab_id).toBe(7);
+    expect(out.agent[0].status).toBe("proposed");
+  });
 });

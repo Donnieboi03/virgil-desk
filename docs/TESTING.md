@@ -32,6 +32,10 @@ cd packages/e2e/playwright && npm install && npx playwright install chromium
 npm run test:headed
 ```
 
+## Feasibility battery
+
+Pass / Partial / Fail grid for Hands + park honesty: [`FEASIBILITY.md`](FEASIBILITY.md). CI covers fixture form/observe/handoff; Gmail draft and vault upload remain manual until stable.
+
 ## Hermes decompose + execute (manual)
 
 With `DESK_AGENT_BACKEND=hermes`, hand off a real tab and verify board titles differ from stub. Click **Run agent** and confirm `browser.command` events. See [`HERMES_SETUP.md`](HERMES_SETUP.md) and [`tests/manual/hermes_execute_checklist.md`](../tests/manual/hermes_execute_checklist.md).

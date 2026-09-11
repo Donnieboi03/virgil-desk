@@ -24,6 +24,82 @@ document.getElementById("save").addEventListener("click", () => {
   });
 });
 
+chrome.storage.sync.get(["notifyHumanAttention"], (data) => {
+  document.getElementById("notifyHuman").checked = data.notifyHumanAttention === true;
+});
+
+document.getElementById("notifyHuman").addEventListener("change", (ev) => {
+  const on = Boolean(ev.target.checked);
+  chrome.storage.sync.set({ notifyHumanAttention: on }, () => {
+    document.getElementById("notifyStatus").textContent = on
+      ? "Notifications enabled (local override)."
+      : "Notifications off (unless Host config enables them).";
+  });
+});
+
+function fileToBase64(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      const dataUrl = String(reader.result || "");
+      const base64 = dataUrl.includes(",") ? dataUrl.split(",")[1] : dataUrl;
+      resolve(base64);
+    };
+    reader.onerror = () => reject(reader.error || new Error("read failed"));
+    reader.readAsDataURL(file);
+  });
+}
+
+async function refreshVault() {
+  const res = await chrome.runtime.sendMessage({ type: "listVault" });
+  const root = document.getElementById("vaultList");
+  if (!res?.ok) {
+    root.textContent = res?.error || "Vault unavailable.";
+    return;
+  }
+  const files = res.files || [];
+  if (!files.length) {
+    root.innerHTML = "<p class=\"fact-meta\">No files yet.</p>";
+    return;
+  }
+  root.innerHTML = files
+    .map(
+      (f) =>
+        `<div class="fact"><div class="fact-body"><div class="fact-key">${f.name}</div>` +
+        `<div class="fact-meta">${f.id} · ${f.mime || ""} · ${f.added_at || ""}</div></div></div>`,
+    )
+    .join("");
+}
+
+document.getElementById("addVault").addEventListener("click", async () => {
+  const input = document.getElementById("vaultFile");
+  const file = input.files?.[0];
+  if (!file) {
+    document.getElementById("vaultStatus").textContent = "Choose a file first.";
+    return;
+  }
+  try {
+    const base64 = await fileToBase64(file);
+    const res = await chrome.runtime.sendMessage({
+      type: "addVaultFile",
+      name: file.name,
+      mime: file.type || "application/octet-stream",
+      base64,
+    });
+    if (!res?.ok) {
+      document.getElementById("vaultStatus").textContent = res?.error || "Add failed.";
+      return;
+    }
+    input.value = "";
+    document.getElementById("vaultStatus").textContent = `Added ${res.file.name} (${res.file.id}).`;
+    await refreshVault();
+  } catch (err) {
+    document.getElementById("vaultStatus").textContent = String(err);
+  }
+});
+
+refreshVault();
+
 async function loadSemantic() {
   const data = await chrome.storage.local.get(SEMANTIC_KEY);
   return data[SEMANTIC_KEY] || emptySemantic();

@@ -45,6 +45,8 @@ const files = [
   "tabCustody.js",
   "reveal.html",
   "reveal.js",
+  "boardNotify.js",
+  "deskVault.js",
 ];
 for (const f of files) {
   cpSync(join(root, "src", f), join(dist, f));

@@ -19,7 +19,7 @@ def build_system_and_packet(item: dict[str, Any], ctx: dict[str, Any]) -> list[d
         system
         + "\n\n## Host execute runtime\n\n"
         + "You are running under Host-owned tool calling (not a shell CLI). "
-        + "Call the provided tools (`observe`, `click`, `fill`, `openTab`, "
+        + "Call the provided tools (`observe`, `click`, `fill`, `upload`, `openTab`, "
         + "`duplicateTab`, `mint_item`, `probe_links`, …) with JSON arguments. "
         + "Do not invent shell commands. Prefer `target_id` from the latest observe.\n"
     )
@@ -90,6 +90,7 @@ _EYES_PRUNE_TOOL_NAMES = frozenset(
         "observe",
         "click",
         "fill",
+        "upload",
         "openTab",
         "duplicateTab",
         "probe_links",

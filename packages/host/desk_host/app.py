@@ -74,7 +74,7 @@ _op_seq_by_key: dict[tuple[str, str], int] = {}
 _pending_command_meta: dict[str, dict[str, Any]] = {}
 
 SCREENSHOT_OPS = frozenset(
-    {"click", "fill", "scroll", "scrape", "screenshot", "openTab", "duplicateTab"}
+    {"click", "fill", "upload", "scroll", "scrape", "screenshot", "openTab", "duplicateTab"}
 )
 
 
@@ -474,14 +474,17 @@ async def _memory_get(run_id: str, *, timeout: float = 5.0) -> dict[str, Any]:
             }
         )
         if not sent:
-            return {"memory": empty_memory(), "semantic": empty_semantic()}
+            return {"memory": empty_memory(), "semantic": empty_semantic(), "vault": {"files": []}}
         snap = await asyncio.wait_for(fut, timeout=timeout)
         return {
             "memory": snap.get("memory") or empty_memory(),
             "semantic": snap.get("semantic") or empty_semantic(),
+            "vault": snap.get("vault")
+            if isinstance(snap.get("vault"), dict)
+            else {"files": []},
         }
     except (asyncio.TimeoutError, ExtensionNotConnectedError):
-        return {"memory": empty_memory(), "semantic": empty_semantic()}
+        return {"memory": empty_memory(), "semantic": empty_semantic(), "vault": {"files": []}}
     finally:
         _memory_waiters.pop(request_id, None)
 
@@ -631,6 +634,7 @@ async def _patch_work_item(
     *,
     status: str,
     run_id: str,
+    column: str | None = None,
     evidence: dict[str, Any] | None = None,
     last_error: str | None = None,
     clear_last_error: bool = False,
@@ -639,6 +643,8 @@ async def _patch_work_item(
     if not item:
         return None
     updated = {**item, "status": status, "run_id": run_id}
+    if column:
+        updated["column"] = column
     if evidence:
         updated["evidence"] = {**(item.get("evidence") or {}), **evidence}
     if last_error is not None:
@@ -699,26 +705,50 @@ def reset_state_for_tests() -> None:
 
 @app.post("/v1/items/{item_id}/accept")
 async def accept_item(item_id: str, body: AcceptBody) -> dict[str, Any]:
-    """Commit a Waiting proposal. Tab provisioning for Waiting items is future work — see docs/NEXTSTEPS.md."""
+    """Commit a Waiting proposal. Non-calendar kinds move to Agent + request tab provision."""
     prop = _proposals.get(body.proposal_id)
     if not prop:
         raise HTTPException(status_code=404, detail="proposal not found")
+    kind = str(prop.get("kind") or "")
+    # Calendar stub commits without browser; other proposal kinds need an agent tab for UI work.
+    calendar_only = kind in ("calendar_slot", "")
+    needs_agent_tab = not calendar_only
     record(
         "proposal.accepted",
         body.run_id,
         cfg=get_config(),
         proposal_id=body.proposal_id,
         proposal_kind=prop.get("kind"),
+        needs_agent_tab=needs_agent_tab,
     )
     committed: dict[str, Any] = {"kind": prop.get("kind")}
-    if prop.get("kind") == "calendar_slot":
+    if kind == "calendar_slot":
         committed.update(book_calendar_slot(prop.get("payload") or {}))
     try:
         _require_extension()
     except ExtensionNotConnectedError as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
-    await _patch_work_item(item_id, status="done", run_id=body.run_id)
-    return {"ok": True, "work_item_id": item_id, "status": "done", "committed": committed}
+    if calendar_only:
+        await _patch_work_item(item_id, status="done", run_id=body.run_id)
+        status = "done"
+    else:
+        # Agent column so Run agent / Run tab can execute after extension stamps agent_tab_id.
+        await _patch_work_item(
+            item_id,
+            status="proposed",
+            run_id=body.run_id,
+            column="agent",
+        )
+        status = "proposed"
+    live = _work_items.get(item_id) or {}
+    return {
+        "ok": True,
+        "work_item_id": item_id,
+        "status": status,
+        "column": live.get("column"),
+        "committed": committed,
+        "needs_agent_tab": needs_agent_tab,
+    }
 
 
 def _browser_results_for_run(run_id: str) -> int:
@@ -1205,6 +1235,14 @@ async def execute_run(run_id: str, body: ExecuteRunBody = ExecuteRunBody()) -> d
         max_value_chars=cfg.memory.semantic_max_value_chars,
     )
     ctx.update(memory_slice)
+    vault = snap.get("vault") if isinstance(snap.get("vault"), dict) else {"files": []}
+    ctx["vault"] = {
+        "files": list(vault.get("files") or [])[:20],
+        "note": (
+            "Operator-supplied files. Use upload(vault_id, target_id) for kind:file Eyes. "
+            "If vault is empty and a site needs an attachment, park You (human_remainder)."
+        ),
+    }
 
     # Collect cleared_gates from any resume-ready item.
     cleared: list[Any] = []
@@ -1466,6 +1504,14 @@ async def execute_item(item_id: str, body: ExecuteBody) -> dict[str, Any]:
         max_value_chars=cfg.memory.semantic_max_value_chars,
     )
     ctx.update(memory_slice)
+    vault = snap.get("vault") if isinstance(snap.get("vault"), dict) else {"files": []}
+    ctx["vault"] = {
+        "files": list(vault.get("files") or [])[:20],
+        "note": (
+            "Operator-supplied files. Use upload(vault_id, target_id) for kind:file Eyes. "
+            "If vault is empty and a site needs an attachment, park You (human_remainder)."
+        ),
+    }
     backend = get_backend()
     execute_fn = getattr(backend, "execute_item", None)
     use_host_loop = str(cfg.execute.runtime or "").strip().lower() == "host_loop"

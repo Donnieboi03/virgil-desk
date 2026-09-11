@@ -2,7 +2,9 @@
 
 Portable checklist for Desk work not in the current MVP slice. Check items off as they ship.
 
-Deferred product bets (right-click handoff, feasibility battery, procedures, vault, Hub-shaped context): [`BACKLOG.md`](BACKLOG.md).
+**North star (success test):** see [`PRODUCT.md`](PRODUCT.md) — hand off → Agent custody tabs while you leave → ping for auth/decide/file → Mark done → Resume, without reconstructing state in chat. Effort bands ~3h / ~6h / ~9h with AI (not calendar).
+
+Deferred product bets (browser-localized Desk, procedures, Hub-shaped context, multi-profile WS): [`BACKLOG.md`](BACKLOG.md).
 
 ## Active
 
@@ -10,27 +12,9 @@ Deferred product bets (right-click handoff, feasibility battery, procedures, vau
 
 Research notes (archive): [`archive/DUAL_FOCUS_RESEARCH.md`](archive/DUAL_FOCUS_RESEARCH.md), [`archive/INTERACTION_LAYERS.md`](archive/INTERACTION_LAYERS.md). Not scheduled until measured spikes.
 
-### Auto-execute Agent items
-
-After decompose, automatically run Hermes execute for Agent column items with `status: running` — **off by default** until shipped.
-
-- Config: `hermes.auto_execute_agent` (proposed) in `config/desk.yaml`
-- Requires stable execute path + operator escape hatch
-- **Now:** operator clicks **Run tab** (one session over proposed Agent roots; `host_loop`) or per-card **Run agent**
-
 ### Run tab vs per-card cost
 
-Dogfood A/B on a ≥5-item same-site board: Arm A = per-card **Run agent**; Arm B = **Run tab**. Compare `desk-events --summary` cost/tokens/outcomes — no separate protocol doc required; results live in chat/PR.
-
-### Waiting column — agent tabs on Accept (future)
-
-When the operator **Accept**s a **Waiting** item that needs browser work, provision **one agent duplicate tab** from the handoff human tab (same model as Agent column items).
-
-**For now (MVP):** Accept must **not** create tabs or run browser automation for Waiting items. Current behavior only commits the proposal (e.g. calendar stub) and marks the item done — **intentional no-op** for tab provisioning until this ships.
-
-- [ ] Extension: on Accept, duplicate from `human_tab_id` + `PATCH /v1/items/{id}` with `agent_tab_id` (only when proposal kind needs UI)
-- [ ] Host: define which proposal kinds trigger tab provision vs calendar-only commit
-- [ ] Tests: accept today creates **zero** new tabs; e2e when shipped
+Dogfood A/B on a ≥5-item same-site board: Arm A = per-card **Run agent**; Arm B = **Run tab**. Compare `desk-events --summary` cost/tokens/outcomes — results live in chat/PR.
 
 ### Real calendar commit on Accept
 
@@ -49,10 +33,8 @@ When provider fallbacks fail mid-execute, board `last_error` should show the rea
 
 ### Host-owned rolling execute history
 
-**Shipped (flagged):** `execute.runtime: host_loop` — Host owns the tool transcript, thins Eyes, and **prunes** older tool results (`eyes_keep_last`). Model steps go through **`ModelClient`** (OpenRouter today; not Hermes-session memory). Default remains `hermes_oneshot` for Q/A rollback.
+**Shipped (flagged):** `execute.runtime: host_loop` — Host owns the tool transcript, thins Eyes, and **prunes** older tool results (`eyes_keep_last`). Model steps go through **`ModelClient`** (OpenRouter today). Default remains `hermes_oneshot` for Q/A rollback.
 
-- [x] Host re-prompt / tool loop with Eyes prune (`execute_loop` + `execute_transcript`)
-- [x] Config: `execute.runtime` / `eyes_keep_last` / `max_steps` / `run_max_steps` / `run_steps_per_item` / `model` / `model_provider`
 - [ ] Gemini-direct `ModelClient` adapter (protocol ready)
 - [ ] Default dogfood cutover to `host_loop` after cost A/B
 
@@ -64,21 +46,19 @@ Mission-progress stop (URL unchanged K acts / repeated targets) — parked (easy
 
 ## Done (reference)
 
-- Rich handoff: viewport excerpt + screenshot on human tab by default (no duplicate unless scroll loops > 0); decompose without leaving agent collage
-- Manual **Run agent** + `POST /v1/items/{id}/execute`
+- Dual loop UX: notify (`execute.notify_human_attention`), auto Run tab (`execute.auto_run_tab`), Waiting Accept → Agent tab (non-calendar), vault + `upload`/`set_files`, right-click handoff, [`FEASIBILITY.md`](FEASIBILITY.md), `desk-events --summary` execute_run rollup
+- Rich handoff: viewport excerpt + screenshot on human tab by default; decompose without leaving agent collage
+- Manual **Run agent** + `POST /v1/items/{id}/execute`; **Run tab** one `host_loop` over Agent roots
 - **`desk-browser`** CLI for Hermes terminal
 - **Mark done** for You column items
-- **Agent tab provisioning:** deferred until **Run agent** — one tab per running item; no board_patch-time duplicates; no handoff snapshot reuse
-- **Shared desk memory:** `virgil_desk_memory_v1` notepad + last-3 execute summaries injected into execute
-- **Decompose hints** + agent status coerced to `proposed` (no fake done)
-- **Tab cleanup** on execute end + **off-origin popup quarantine** during execute
-- **Act stall detection** (`browser.act_stall_max`) to stop click spirals
+- **Agent tab provisioning:** deferred until **Run agent** / Accept (non-calendar) — one tab per running item
+- **Shared desk memory:** notepad + last-3 execute summaries injected into execute
+- **Decompose hints** + agent status coerced to `proposed`
+- **Tab cleanup** on execute end + **off-origin popup quarantine**
+- **Act stall detection** (`browser.act_stall_max`)
 - **Model cast:** decompose + execute `gemini-3.7-flash`; execute hooks off
-- **Slim observe:** same-URL omit full excerpt; URL-change capped follow-up
-- **Clearer execute `last_error`** from Hermes stderr / API snippets
-- **Thin desk-browser CLI envelope** (no screenshot base64 into Hermes transcript)
-- **Execute `--max-turns`** via `hermes.execute_max_turns` (default 40)
-- **Execute Eyes/Hands (extension)** (`browser.driver: extension`) — slim targets / AX `page_tree` / probes; Hands `target_id`; rollback `harness` CDP on everyday Chrome
+- **Slim observe** / clearer Hermes `last_error` / thin desk-browser envelope / `hermes.execute_max_turns`
+- **Execute Eyes/Hands (extension)** (`browser.driver: extension`); rollback `harness` CDP
 
 ## Links
 

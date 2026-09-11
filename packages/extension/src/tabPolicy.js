@@ -48,18 +48,20 @@ export function applyBoardPatch(board, ops) {
       const id = patch.item.id;
       const targetCol = patch.item.column;
       let placed = false;
+      let prev = null;
       for (const c of ["you", "agent", "waiting"]) {
         const idx = next[c].findIndex((item) => item.id === id);
         if (idx < 0) continue;
+        prev = next[c][idx];
         if (c === targetCol) {
-          next[c][idx] = patch.item;
+          next[c][idx] = mergeBoardItemUpdate(prev, patch.item);
           placed = true;
         } else {
           next[c] = next[c].filter((item) => item.id !== id);
         }
       }
       if (!placed) {
-        next[targetCol].push(patch.item);
+        next[targetCol].push(mergeBoardItemUpdate(prev, patch.item));
       }
     } else if (patch.op === "remove") {
       for (const col of ["you", "agent", "waiting"]) {
@@ -68,4 +70,29 @@ export function applyBoardPatch(board, ops) {
     }
   }
   return next;
+}
+
+/**
+ * Host status/column patches often omit custody ids. Keep local agent_tab_id /
+ * human_tab_id so Accept provision cannot be clobbered by a racing board_patch.
+ */
+export function mergeBoardItemUpdate(prev, incoming) {
+  const merged = { ...(prev || {}), ...(incoming || {}) };
+  if (
+    incoming &&
+    incoming.agent_tab_id == null &&
+    prev &&
+    prev.agent_tab_id != null
+  ) {
+    merged.agent_tab_id = prev.agent_tab_id;
+  }
+  if (
+    incoming &&
+    incoming.human_tab_id == null &&
+    prev &&
+    prev.human_tab_id != null
+  ) {
+    merged.human_tab_id = prev.human_tab_id;
+  }
+  return merged;
 }
