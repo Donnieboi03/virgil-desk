@@ -1,11 +1,11 @@
-# Path compare checklist (way1 harness vs Path B extension)
+# Path compare checklist (way1 harness vs extension)
 
 Run the **same** scenario twice — once on each branch — and fill one metrics row per branch.
 
 | Branch | Driver |
 |--------|--------|
 | `feat/desk-harness-way1` | `harness` (default on that branch after excerpt-cap commit) |
-| `feat/desk-path-b-eyes` | `extension` (Path B default) |
+| `feat/desk-path-b-eyes` | `extension` (extension default) |
 
 Do **not** merge both methods onto one branch for this compare.
 
@@ -55,6 +55,6 @@ osascript -e 'tell application "System Events" to get name of first process whos
 
 ## Pass / fail (operator judgment)
 
-- Path B: no screenshot flicker on homework tab during execute observe.
+- Extension driver: no screenshot flicker on homework tab during execute observe.
 - way1: may steal focus — record it; do not “fix” dual-focus on harness.
-- Token: Path B steady-state observe should be clearly under way1’s uncapped-target / scrape envelope when both use 12k excerpt caps.
+- Token: extension steady-state observe should be clearly under way1’s uncapped-target / scrape envelope when both use 12k excerpt caps.

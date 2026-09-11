@@ -6,7 +6,7 @@ When you pick something up, move it into `NEXTSTEPS.md` (or a focused plan) and 
 
 ## Honest scope (keep claims tight)
 
-Desk today allocates work from **bounded intake** — viewport handoff (excerpt + links + screenshot + intent chips), not a central CRM of your whole life. “Unknown” means **latent closures on the page you handed off**, not omniscient discovery. Path B = live Eyes/`target_id` Hands (no debugger). A **procedure catalog** is not Path B; it is a later library of known recipes that may *use* Path B. App connectors (Sheets/CRM) stay out of MVP — agent browser work first. Hub owns briefing / Contacts×Opps / cross-session reconcile.
+Desk today allocates work from **bounded intake** — viewport handoff (excerpt + links + screenshot + intent chips), not a central CRM of your whole life. “Unknown” means **latent closures on the page you handed off**, not omniscient discovery. Default Hands = live Eyes/`target_id` Hands (no debugger). A **procedure catalog** is not the Eyes/Hands driver; it is a later library of known recipes that may *use* Eyes/Hands. App connectors (Sheets/CRM) stay out of MVP — agent browser work first. Hub owns briefing / Contacts×Opps / cross-session reconcile.
 
 Spine: hand off → You / Agent / Waiting → agent closes safe subwork without debugger → human remainder. Optional gas (right-click, chips, procedures, vault) must not become a Bardeen-style playbook marketplace.
 

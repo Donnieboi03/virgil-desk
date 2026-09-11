@@ -102,10 +102,20 @@ class MemoryConfig:
 
 
 @dataclass
+class ExecuteConfig:
+    runtime: str
+    eyes_keep_last: int
+    max_steps: int
+    model: str
+    model_provider: str
+
+
+@dataclass
 class DeskConfig:
     browser: BrowserConfig
     host: HostConfig
     hermes: HermesConfig
+    execute: ExecuteConfig
     observability: ObservabilityConfig
     memory: MemoryConfig
     prompts: PromptsConfig
@@ -115,6 +125,7 @@ _CONFIG_SECTIONS: tuple[tuple[str, type], ...] = (
     ("browser", BrowserConfig),
     ("host", HostConfig),
     ("hermes", HermesConfig),
+    ("execute", ExecuteConfig),
     ("observability", ObservabilityConfig),
     ("memory", MemoryConfig),
     ("prompts", PromptsConfig),
@@ -143,6 +154,7 @@ def config_from_dict(data: dict[str, Any]) -> DeskConfig:
         browser=_parse_section(BrowserConfig, data.get("browser"), "browser"),
         host=_parse_section(HostConfig, data.get("host"), "host"),
         hermes=_parse_section(HermesConfig, data.get("hermes"), "hermes"),
+        execute=_parse_section(ExecuteConfig, data.get("execute"), "execute"),
         observability=_parse_section(
             ObservabilityConfig, data.get("observability"), "observability"
         ),
@@ -185,6 +197,8 @@ def load_config() -> DeskConfig:
         cfg.browser.harness_bin = os.environ["BROWSER_HARNESS_BIN"].strip()
     if os.environ.get("DESK_HARNESS_BU_NAME"):
         cfg.browser.harness_bu_name = os.environ["DESK_HARNESS_BU_NAME"].strip()
+    if os.environ.get("DESK_EXECUTE_RUNTIME"):
+        cfg.execute.runtime = os.environ["DESK_EXECUTE_RUNTIME"].strip()
 
     return cfg
 

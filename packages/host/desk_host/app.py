@@ -32,6 +32,7 @@ from .observability import (
     usage_measure,
 )
 from .backends.hermes import HermesExecuteError
+from .execute_errors import HostExecuteError
 from .policy import policy_denied_reason
 from .execute_validation import (
     auth_gate_blocks_false_closure,
@@ -170,19 +171,21 @@ def _record_execute_failed_event(
         "flags": {"outcome": outcome},
     }
     merged_measure: dict[str, Any] = dict(measure or {})
-    if isinstance(exc, HermesExecuteError):
-        if exc.exit_code is not None:
+    if isinstance(exc, (HermesExecuteError, HostExecuteError)):
+        if getattr(exc, "exit_code", None) is not None:
             merged_measure["exit_code"] = exc.exit_code
-        usage = usage_measure(exc.usage or {})
+        usage = usage_measure(getattr(exc, "usage", None) or {})
         if usage:
             merged_measure.update(usage)
-        if exc.empty_output:
+        if getattr(exc, "empty_output", False):
             fields["flags"]["empty_output"] = True
             fields["flags"]["outcome"] = "empty_output"
-        if exc.stdout:
-            fields["stdout_snippet"] = exc.stdout[:cap]
-        if exc.stderr:
-            fields["stderr_snippet"] = exc.stderr[:cap]
+        stdout = getattr(exc, "stdout", "") or ""
+        stderr = getattr(exc, "stderr", "") or ""
+        if stdout:
+            fields["stdout_snippet"] = stdout[:cap]
+        if stderr:
+            fields["stderr_snippet"] = stderr[:cap]
     if merged_measure:
         fields["measure"] = merged_measure
     record("agent.execute_failed", run_id, cfg=cfg, **fields)
@@ -824,7 +827,7 @@ async def dispatch_browser_command(command: dict[str, Any]) -> None:
 
     harness_path = uses_harness_driver(cfg.browser.driver) and is_harness_op(str(op))
 
-    # Path B: execute observe skips captureVisibleTab unless caller overrides False.
+    # Extension: execute observe skips captureVisibleTab unless caller overrides False.
     if (
         op == "observe"
         and not harness_path
@@ -1151,7 +1154,8 @@ async def execute_item(item_id: str, body: ExecuteBody) -> dict[str, Any]:
     ctx.update(memory_slice)
     backend = get_backend()
     execute_fn = getattr(backend, "execute_item", None)
-    if not execute_fn:
+    use_host_loop = str(cfg.execute.runtime or "").strip().lower() == "host_loop"
+    if not use_host_loop and not execute_fn:
         raise HTTPException(status_code=501, detail="backend does not support execute")
     browser_before = _browser_results_for_run(body.run_id)
     _execute_ops[body.run_id] = []
@@ -1200,11 +1204,19 @@ async def execute_item(item_id: str, body: ExecuteBody) -> dict[str, Any]:
     preserve_tabs = False
     try:
         try:
-            result = await execute_fn(item, ctx)
+            if use_host_loop:
+                from .execute_loop import run_host_execute_loop
+
+                result = await run_host_execute_loop(item, ctx)
+            else:
+                result = await execute_fn(item, ctx)
         except Exception as exc:
             err = str(exc)[: cfg.prompts.event_snippet_max_chars]
             outcome = "failed"
-            if isinstance(exc, HermesExecuteError) and exc.empty_output:
+            if (
+                isinstance(exc, (HermesExecuteError, HostExecuteError))
+                and getattr(exc, "empty_output", False)
+            ):
                 outcome = "empty_output"
             _record_execute_failed_event(
                 run_id=body.run_id,

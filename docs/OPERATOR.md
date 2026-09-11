@@ -17,7 +17,7 @@ Chrome → `chrome://extensions` → **Load unpacked** → `packages/extension/d
 
 Open any page → Virgil Desk side panel → choose intent (**All visible** / **This item**, optional detail) → **Hand off this tab**. Board columns **You / Agent / Waiting** should populate. Default handoff scrapes + screenshots the **current tab** (no duplicate; see [`HANDOFF_CAPTURE.md`](HANDOFF_CAPTURE.md)). **Virgil · Agent** appears only when you click **Run agent**.
 
-**Run agent** (Agent column) provisions that item’s agent tab (`tabs.create` into **Virgil · Agent**, background), then triggers Hermes execute via Host. Default execute driver is **extension Path B** (slim targets + `target_id`; no CDP — see [`BROWSER_LAYER.md`](BROWSER_LAYER.md)). Rollback to harness CDP: `browser.driver: harness` or `DESK_BROWSER_DRIVER=harness` (then enable `chrome://inspect/#remote-debugging` — [`tests/manual/harness_everyday_chrome_checklist.md`](../tests/manual/harness_everyday_chrome_checklist.md)). Cross-branch compare: [`tests/manual/path_compare_checklist.md`](../tests/manual/path_compare_checklist.md).
+**Run agent** (Agent column) provisions that item’s agent tab (`tabs.create` into **Virgil · Agent**, background), then triggers Hermes execute via Host. Default execute driver is **extension Eyes/Hands** (slim targets + `target_id`; no CDP — see [`BROWSER_LAYER.md`](BROWSER_LAYER.md)). Rollback to harness CDP: `browser.driver: harness` or `DESK_BROWSER_DRIVER=harness` (then enable `chrome://inspect/#remote-debugging` — [`tests/manual/harness_everyday_chrome_checklist.md`](../tests/manual/harness_everyday_chrome_checklist.md)). Cross-branch compare: [`tests/manual/path_compare_checklist.md`](../tests/manual/path_compare_checklist.md).
 
 **Mark done** closes You items. **Accept/Deny** on Waiting proposals.
 
@@ -34,7 +34,7 @@ Run once with a real tab ([`packages/e2e/README.md`](../packages/e2e/README.md))
 1. Handoff scrapes the human tab by default (scroll>0: short-lived background create, then close) — board cards without open agent tabs until **Run agent**
 2. Agent URL work → `openTab` in **Virgil · Agent** group (default `placement: agent`)
 3. Agent nav → `openTab` (background create); human tab untouched
-4. Post-act `command_result` includes `tab_id` / `url` / optional scrape excerpt; Path B **observe** defaults to **no** screenshot (`skip_screenshot`)
+4. Post-act `command_result` includes `tab_id` / `url` / optional scrape excerpt; Eyes/Hands **observe** defaults to **no** screenshot (`skip_screenshot`)
 5. **Run agent** on one Agent **root** → provisions that item’s tab only → `browser.command` events in log
 6. Mid-flight children: Agent accordion under parent; You/Waiting nest parks under **From: {parent}** groups (parent may live in Agent)
 7. Human remainder / auth gate → `mint_item` You with **`source.url`**. **Auth_gate:** panel **Show tab** focuses the existing agent tab (no duplicate); Mark done while on that tab may capture a viewport shot; **Resume** regroups into Virgil · Agent. **Do not** `openTab placement=human` (host denies). Auth gates leave parent **`awaiting_human`** until Mark done → **Resume agent**.

@@ -1,7 +1,7 @@
 # Eyes / Hands — interaction mental model
 
 **Audience:** Operator + agents working on Virgil Desk (or Virgil Hub L2).  
-**Status:** **Archive** — reference taxonomy (Aug 29, 2026). Not living product SoT. Living Path B: [`../BROWSER_LAYER.md`](../BROWSER_LAYER.md).
+**Status:** **Archive** — reference taxonomy (Aug 29, 2026). Not living product SoT. Living Eyes/Hands: [`../BROWSER_LAYER.md`](../BROWSER_LAYER.md).
 **Related:** [`DUAL_FOCUS_RESEARCH.md`](DUAL_FOCUS_RESEARCH.md), [`../BROWSER_LAYER.md`](../BROWSER_LAYER.md).
 
 Desk (and harness-style agents) split browser work into two jobs:
@@ -186,10 +186,10 @@ Rough orders of magnitude for **one observe→act cycle** on Desk-like work. “
 | Phase | Eyes | Hands | Driver |
 |-------|------|-------|--------|
 | Handoff / decompose | Extension scrape + screenshot | — | Extension |
-| Execute (default / Path B) | slim targets + optional `page_tree` + excerpt omit | DOM `target_id` | `browser.driver: extension` |
+| Execute (default / extension) | slim targets + optional `page_tree` + excerpt omit | DOM `target_id` | `browser.driver: extension` |
 | Execute (rollback) | dims / scrape; empty targets | CDP Input (`x,y` / selector) | `browser.driver: harness` |
 
-**Focus policy** (`activateTarget`) applies to harness only. Path B skips execute screenshots by default so `captureVisibleTab` does not steal the visible tab.
+**Focus policy** (`activateTarget`) applies to harness only. Eyes/Hands skips execute screenshots by default so `captureVisibleTab` does not steal the visible tab.
 
 ---
 

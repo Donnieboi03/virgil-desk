@@ -23,7 +23,7 @@ browser:
   observe_all_frames: true
   page_tree_max_chars: 2000
   page_tree_max_nodes: 400
-  # execute browser ops: extension (Path B) | harness (CDP rollback)
+  # execute browser ops: extension (Eyes/Hands) | harness (CDP rollback)
   driver: extension
   harness_bin: browser-harness
   harness_bu_name: virgil-desk
@@ -42,6 +42,14 @@ hermes:
     - skills
   execute_accept_hooks: false
   execute_max_turns: 40
+execute:
+  # hermes_oneshot = current Hermes CLI tool loop (default Q/A path)
+  # host_loop = Host-owned transcript + Eyes prune via ModelClient (OpenRouter)
+  runtime: hermes_oneshot
+  eyes_keep_last: 2
+  max_steps: 40
+  model: google/gemini-3.7-flash
+  model_provider: openrouter
 observability:
   persist_screenshots: false
 memory:

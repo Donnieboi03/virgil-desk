@@ -8,16 +8,18 @@ Extension (board SoT in `chrome.storage.local`) ↔ Host (policy + agent router)
 
 | Surface | Role |
 |---------|------|
-| MV3 extension | Board UI, tab pairs, Path B Eyes/Hands inject, WS client, Desk memory SoT |
+| MV3 extension | Board UI, tab pairs, Eyes/Hands inject, WS client, Desk memory SoT |
 | Host `:8787` | Handoff, `POST /v1/browser`, mint, execute, desk-memory REST, events |
-| Hermes (default agent) | Decompose + execute via `desk-browser` CLI |
+| Hermes (default agent) | Decompose (+ optional `hermes_oneshot` execute via `desk-browser` CLI) |
 | Config | [`config/desk.yaml`](../config/desk.yaml) — limits pushed to extension on register |
 
-Related: [`MEMORY.md`](MEMORY.md), [`BROWSER_LAYER.md`](BROWSER_LAYER.md) (Path B Eyes SoT), [`PROTOCOL.md`](PROTOCOL.md), [`PRODUCT.md`](PRODUCT.md), [`OBSERVABILITY.md`](OBSERVABILITY.md). Eyes/Hands taxonomy (archive): [`archive/INTERACTION_LAYERS.md`](archive/INTERACTION_LAYERS.md).
+**Execute runtime:** `execute.runtime` — `hermes_oneshot` (default) or **`host_loop`** (Host-owned messages + Eyes prune via `ModelClient`; backend-agnostic). See [`NEXTSTEPS.md`](NEXTSTEPS.md).
+
+Related: [`MEMORY.md`](MEMORY.md), [`BROWSER_LAYER.md`](BROWSER_LAYER.md) (Eyes/Hands SoT), [`PROTOCOL.md`](PROTOCOL.md), [`PRODUCT.md`](PRODUCT.md), [`OBSERVABILITY.md`](OBSERVABILITY.md). Eyes/Hands taxonomy (archive): [`archive/INTERACTION_LAYERS.md`](archive/INTERACTION_LAYERS.md).
 
 ---
 
-## Path B Eyes
+## Eyes/Hands
 
 Fail-only **`eyes_mode`** `0|1|2` on observe/open/scrape. Ladder, settle/challenge budgets, and caps live in [`BROWSER_LAYER.md`](BROWSER_LAYER.md). This doc owns Done / park / mint / locks only.
 

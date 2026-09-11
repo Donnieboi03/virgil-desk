@@ -138,7 +138,7 @@ If there is truly only one closure and no further agent/**or human** action (inc
 3. **Observe–act–observe:** `observe` → act by `target_id` → verify `act_resolved` / URL when opening.
 4. **Forbidden:** social send/connect, send email (without Accept), submit forms that pay/charge/sign, or post public content — propose / last-resort park You only.
 5. **Allowed:** email drafts, search/navigation Enter, opening threads, document reads, expanding panels — `press_key` on fill or `key` op.
-6. **Extension driver (default / Path B):**
+6. **Extension driver (default / extension):**
    ```bash
    desk-browser ... --op observe --wait
    desk-browser ... --op click --params '{"target_id": 7}' --wait
@@ -159,7 +159,7 @@ If there is truly only one closure and no further agent/**or human** action (inc
 
 ## Rollback
 
-If Host `browser.driver` is `harness`, Eyes may lack `interact_targets` — use `{x,y}` or CSS `selector` only in that mode. Prefer Path B extension unless the operator set harness.
+If Host `browser.driver` is `harness`, Eyes may lack `interact_targets` — use `{x,y}` or CSS `selector` only in that mode. Prefer extension unless the operator set harness.
 
 ## Input
 

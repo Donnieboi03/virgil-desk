@@ -37,7 +37,7 @@ def main() -> int:
     parser.add_argument(
         "--skip-screenshot",
         action="store_true",
-        help="Skip viewport capture (default for Path B observe via host config)",
+        help="Skip viewport capture (default for extension observe via host config)",
     )
     args = parser.parse_args()
 
