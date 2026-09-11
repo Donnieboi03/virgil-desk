@@ -2,6 +2,8 @@
 
 Portable checklist for Desk work not in the current MVP slice. Check items off as they ship.
 
+Deferred product bets (right-click handoff, feasibility battery, procedures, vault, Hub-shaped context): [`BACKLOG.md`](BACKLOG.md).
+
 ## Active
 
 ### Dual-focus (agent browse + human homework)
@@ -73,5 +75,6 @@ Mission-progress stop (URL unchanged K acts / repeated targets) — parked (easy
 ## Links
 
 - [`PRODUCT.md`](PRODUCT.md) — primary flows
+- [`BACKLOG.md`](BACKLOG.md) — parking lot (near / mid / Hub-shaped)
 - [`HERMES_SETUP.md`](HERMES_SETUP.md) — live Hermes wiring
 - [`OPERATOR.md`](OPERATOR.md) — live operator checklist

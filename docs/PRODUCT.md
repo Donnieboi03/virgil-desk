@@ -1,6 +1,6 @@
 # Product notes
 
-Virgil Desk is a **browser allocation desk**: you hand off the active tab, an agent backend decomposes work into three columns, and browser ops run through the extension under explicit policy.
+Virgil Desk is a **browser allocation desk**: you hand off the active tab, an agent backend decomposes work into three columns, and browser ops run through the extension under explicit policy. Intake is **page-bounded** (viewport handoff), not a full-life CRM — see honest scope in [`BACKLOG.md`](BACKLOG.md).
 
 ## What it is
 
@@ -28,6 +28,11 @@ Virgil Desk is a **browser allocation desk**: you hand off the active tab, an ag
 3. **Agent execution** — manual **Run agent** button on Agent column (auto-run planned — see [`NEXTSTEPS.md`](NEXTSTEPS.md))
 4. **Waiting proposals** — calendar slots (etc.) → Accept or Deny in the panel
 5. **You column** — **Mark done** when human clears auth/challenge or finishes remainder. Auth-gate Mark done unblocks the parent for **Resume agent**. Do **not** expect You cards for agent-verified expired/already-submitted links — those complete on Agent.
+
+## Follow-ups
+
+- Active checklist: [`NEXTSTEPS.md`](NEXTSTEPS.md)
+- Parking lot (right-click handoff, feasibility, procedures, vault, Hub-shaped): [`BACKLOG.md`](BACKLOG.md)
 
 ## Configuration
 
