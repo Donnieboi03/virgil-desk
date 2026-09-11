@@ -18,9 +18,9 @@ After decompose, automatically run Hermes execute for Agent column items with `s
 - Requires stable execute path + operator escape hatch
 - **Now:** operator clicks **Run tab** (one session over proposed Agent roots; `host_loop`) or per-card **Run agent**
 
-### Run tab vs per-card cost A/B
+### Run tab vs per-card cost
 
-Protocol: same-site handoff (≥5 Agent roots). Arm A = per-card Run agent; Arm B = Run tab. Compare `desk-events --run-id … --summary` `cost_usd` / `prompt_tokens`, outcome parity, wall time. Pass bar: B ≤ ~70% of A cost **or** written exception. See [`docs/RUN_TAB_AB.md`](RUN_TAB_AB.md).
+Dogfood A/B on a ≥5-item same-site board: Arm A = per-card **Run agent**; Arm B = **Run tab**. Compare `desk-events --summary` cost/tokens/outcomes — no separate protocol doc required; results live in chat/PR.
 
 ### Waiting column — agent tabs on Accept (future)
 

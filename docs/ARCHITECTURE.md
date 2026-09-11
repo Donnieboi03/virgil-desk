@@ -13,7 +13,7 @@ Extension (board SoT in `chrome.storage.local`) ↔ Host (policy + agent router)
 | Hermes (default agent) | Decompose (+ optional `hermes_oneshot` execute via `desk-browser` CLI) |
 | Config | [`config/desk.yaml`](../config/desk.yaml) — limits pushed to extension on register |
 
-**Execute runtime:** `execute.runtime` — `hermes_oneshot` (default) or **`host_loop`** (Host-owned messages + Eyes prune via `ModelClient`; backend-agnostic). With `host_loop`, **Run tab** (`POST /v1/runs/{run_id}/execute`) walks all proposed Agent roots in one session; per-item `POST /v1/items/{id}/execute` remains. See [`NEXTSTEPS.md`](NEXTSTEPS.md) and [`RUN_TAB_AB.md`](RUN_TAB_AB.md).
+**Execute runtime:** `execute.runtime` — `hermes_oneshot` (default) or **`host_loop`** (Host-owned messages + Eyes prune via `ModelClient`; backend-agnostic). With `host_loop`, **Run tab** (`POST /v1/runs/{run_id}/execute`) walks all proposed Agent roots in one session; per-item `POST /v1/items/{id}/execute` remains. See [`NEXTSTEPS.md`](NEXTSTEPS.md).
 
 Related: [`MEMORY.md`](MEMORY.md), [`BROWSER_LAYER.md`](BROWSER_LAYER.md) (Eyes/Hands SoT), [`PROTOCOL.md`](PROTOCOL.md), [`PRODUCT.md`](PRODUCT.md), [`OBSERVABILITY.md`](OBSERVABILITY.md). Eyes/Hands taxonomy (archive): [`archive/INTERACTION_LAYERS.md`](archive/INTERACTION_LAYERS.md).
 
